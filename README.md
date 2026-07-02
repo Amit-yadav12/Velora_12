@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Velora Banner]([https://img.shields.io/badge/Velora-AI%20Booking%20Platform-blue?style=for-the-badge](https://velora-ai-os-h5vj.arcada.app/))
+![Velora Banner]((https://velora-ai-os-h5vj.arcada.app/))
 
 **India's Next Generation AI Appointment & Business Booking Platform**
 
