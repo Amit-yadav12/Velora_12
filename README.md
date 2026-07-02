@@ -2,232 +2,176 @@
 
 <div align="center">
 
-![Velora Banner]((https://velora-ai-os-h5vj.arcada.app/))
+<a href="https://velora-ai-os-h5vj.arcada.app/">
+  <img src="logo.png" width="140" alt="Velora Logo"/>
+</a>
 
-**India's Next Generation AI Appointment & Business Booking Platform**
+# 🚀 Velora AI
 
-Built with ❤️ using **React, TypeScript, Vite, Firebase, Supabase & Google Maps**
+### **Book Anything. Instantly.**
+
+*India's AI-Powered Smart Appointment & Booking Platform*
+
+<p align="center">
+<a href="https://velora-ai-os-h5vj.arcada.app/">🌐 Live Demo</a> •
+<a href="#">📽 Demo Video</a> •
+<a href="#">📄 Documentation</a>
+</p>
+
+![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript)
+![Firebase](https://img.shields.io/badge/Firebase-Authentication-FFCA28?style=for-the-badge&logo=firebase)
+![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=for-the-badge&logo=supabase)
+![Google Maps](https://img.shields.io/badge/Google-Maps-4285F4?style=for-the-badge&logo=googlemaps)
 
 </div>
 
 ---
 
-# 📌 Problem Statement
+# 📖 About
 
-Millions of appointments are still managed manually across hospitals, salons, education centers, professional services, car rentals, hotels, sports facilities, and many other industries.
+Velora is an **AI-powered appointment and business booking platform** designed for India. It helps customers discover nearby businesses, book appointments in seconds, and receive automated confirmations while enabling businesses to manage services, staff, schedules, and bookings through a modern real-time dashboard.
 
-Common problems include:
+---
 
-- Manual booking systems
+# 🚨 Problem
+
+Millions of appointments are still managed manually, leading to:
+
 - Double bookings
-- Missed appointments
 - Long waiting times
-- No automated reminders
+- Missed appointments
 - Poor customer experience
-- Lack of real-time availability
+- No real-time availability
 - Inefficient business management
-
-Velora solves these problems with an intelligent AI-powered appointment platform.
 
 ---
 
 # 💡 Solution
 
-Velora is an AI-powered appointment marketplace where:
+Velora connects **Customers** and **Businesses** on one intelligent platform.
 
-- Customers discover nearby businesses.
-- Businesses register and manage appointments.
-- AI recommends the best appointment slots.
-- Google Maps helps users find nearby businesses.
-- Google Calendar synchronizes appointments.
-- Automated email confirmations keep everyone informed.
-- Real-time synchronization keeps dashboards updated instantly.
+- 📍 Find nearby businesses using Google Maps
+- 🤖 AI-powered appointment recommendations
+- 📅 Google Calendar synchronization
+- 📧 Automated email confirmations
+- ⚡ Real-time booking updates
+- 🏢 Self-service business onboarding
 
 ---
 
 # ✨ Features
 
-## Customer
+## 👤 Customer
 
-- Google Login
-- Email Login
-- Phone OTP Login
+- Google / Email / Phone OTP Login
+- Nearby Business Discovery
 - AI Smart Search
-- Nearby Businesses
-- Google Maps
 - AI Slot Recommendation
-- Interactive Booking Timeline
-- QR Ticket
+- Google Maps Navigation
 - Booking History
+- QR Ticket
+- PDF Confirmation
 - Google Calendar Sync
 - Email Confirmation
-- PDF Confirmation
-- Notifications
 - AI Assistant
 
 ---
 
-## Business (Admin)
+## 🏢 Business
 
-- Business Registration
+- Register Business
 - Business Profile
 - Staff Management
 - Service Management
-- Working Hours
-- Availability
-- Appointment Slots
-- Booking Management
+- Availability & Slots
+- Appointment Dashboard
 - Calendar
-- Reports
 - Customer Management
-- Real-time Dashboard
-- Analytics
+- Reports & Analytics
+- Real-Time Notifications
 
 ---
 
-## AI Features
+## 🤖 AI
 
-- AI Appointment Recommendation
 - AI Smart Search
-- AI Travel Planner
 - AI Booking Assistant
+- AI Slot Recommendation
+- AI Travel Planner
 - Natural Language Booking
-- Voice-ready Assistant Architecture
-- Intelligent Suggestions
+- Voice-ready Architecture
 
 ---
 
-# 🇮🇳 India-First Experience
+# 🇮🇳 India First
 
-Velora is designed primarily for Indian users.
+Velora is optimized for India with:
 
-Supports:
-
-- INR (₹)
+- ₹ INR
 - IST Time Zone
-- Indian Mobile Numbers
-- Indian Addresses
+- +91 Phone Numbers
 - Google Maps
 - Major Indian Cities
-- Demo Businesses
-- Multi-category Marketplace
+- Healthcare
+- Salons
+- Education
+- Hotels
+- Sports
+- Car Rentals
+- Professional Services
 
 ---
 
-# 🏗 Tech Stack
+# ⚙️ Tech Stack
 
-### Frontend
-
-- React 19
-- TypeScript
-- Vite
-- Tailwind CSS
-- shadcn/ui
-- Framer Motion
-
-### Backend
-
-- Supabase
-- PostgreSQL
-- Supabase Realtime
-
-### Authentication
-
-- Firebase Authentication
-- Google OAuth
-- Email Authentication
-- Phone OTP
-
-### Maps
-
-- Google Maps Platform
-- Places API
-- Directions API
-
-### Calendar
-
-- Google Calendar API
-
-### Email
-
-- Resend / SendGrid
-
-### Database
-
-- PostgreSQL
-
-### Deployment
-
-- Vercel
+| Frontend | Backend | Services |
+|----------|----------|----------|
+| React 19 | Supabase | Google Maps |
+| TypeScript | PostgreSQL | Google Calendar |
+| Vite | Firebase Auth | Resend |
+| Tailwind CSS | Realtime | QR Code |
+| Framer Motion | APIs | jsPDF |
 
 ---
 
-# ⚡ Core Workflow
+# 🔄 Booking Workflow
 
-Customer Login
-
-↓
-
+```text
+Login
+   ↓
 Location Detection
-
-↓
-
+   ↓
 Nearby Businesses
-
-↓
-
-Choose Category
-
-↓
-
-Choose Business
-
-↓
-
+   ↓
 Choose Service
-
-↓
-
-Choose Time Slot
-
-↓
-
+   ↓
+AI Recommended Slot
+   ↓
 Confirm Booking
-
-↓
-
-Google Calendar
-
-↓
-
-Confirmation Email
-
-↓
-
-Business Dashboard Updated
-
-↓
-
-Realtime Sync
+   ↓
+Booking Saved
+   ↓
+Email + Calendar
+   ↓
+Admin Dashboard Updated
+```
 
 ---
 
 # 📂 Project Structure
 
-```
+```text
 src/
-│
 ├── components/
 ├── pages/
-├── layouts/
-├── hooks/
 ├── contexts/
+├── hooks/
 ├── services/
 ├── lib/
 ├── utils/
-├── types/
 ├── assets/
-└── styles/
+└── types/
 ```
 
 ---
@@ -237,24 +181,25 @@ src/
 - Google Login
 - Email Login
 - Phone OTP
-- Secure Sessions
+- Firebase Authentication
 - Protected Routes
-- Role Based Access
-- Customer Dashboard
-- Business Dashboard
+- Role-Based Access
 
 ---
 
-# 📧 Automated Notifications
+# 📧 Automation
 
-After every successful booking:
+Every booking automatically:
 
-- Booking Confirmation Email
-- Google Calendar Event
-- QR Code
-- Booking ID
-- Reminder Emails
-- Realtime Dashboard Update
+- Saves to Supabase
+- Updates Customer Dashboard
+- Updates Business Dashboard
+- Sends HTML Email
+- Creates Google Calendar Event
+- Generates Booking ID
+- Generates QR Code
+- Generates PDF
+- Schedules Reminder Emails
 
 ---
 
@@ -265,26 +210,59 @@ After every successful booking:
 - Directions
 - ETA
 - Distance
-- Places Search
 - Navigation
+- Places Autocomplete
 
 ---
 
-# 📊 Admin Dashboard
+# 🚀 Quick Start
 
-Businesses can manage:
+```bash
+git clone <repository-url>
 
-- Services
-- Staff
-- Availability
-- Bookings
-- Customers
-- Reports
-- Notifications
-- Calendar
-- Business Profile
+npm install
+
+npm run dev
+```
+
+### Environment Variables
+
+```env
+VITE_SUPABASE_URL=
+VITE_SUPABASE_ANON_KEY=
+
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+
+VITE_GOOGLE_MAPS_API_KEY=
+
+VITE_RESEND_API_KEY=
+```
 
 ---
+
+
+
+# 🎯 Why Velora?
+
+Velora is more than a booking website—it is a scalable AI-powered appointment ecosystem that combines intelligent scheduling, real-time synchronization, Google integrations, automation, and premium user experience into one platform for customers and businesses.
+
+---
+
+<div align="center">
+
+## 🌐 Live Demo
+
+### **https://velora-ai-os-h5vj.arcada.app/**
+
+### ⭐ If you like Velora, please give this repository a Star!
+
+### **Built for Hackathons • Built for Startups • Built for the Future**
+
+**© 2026 Velora AI | Book Anything. Instantly.**
+
+</div>
 
 # 🚀 Getting Started
 
