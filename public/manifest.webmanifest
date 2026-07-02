@@ -1,0 +1,15 @@
+{
+  "name": "Velora — Book Anything",
+  "short_name": "Velora",
+  "description": "Premium AI-powered appointment booking. Book clinics, salons, coaches, courts and more instantly.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#05060a",
+  "theme_color": "#6366f1",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
