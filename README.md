@@ -2,9 +2,7 @@
 
 <div align="center">
 
-<a href="https://velora-ai-os-h5vj.arcada.app/">
-  <img src="logo.png" width="140" alt="Velora Logo"/>
-</a>
+
 
 # 🚀 Velora AI
 
@@ -14,8 +12,6 @@
 
 <p align="center">
 <a href="https://velora-ai-os-h5vj.arcada.app/">🌐 Live Demo</a> •
-<a href="#">📽 Demo Video</a> •
-<a href="#">📄 Documentation</a>
 </p>
 
 ![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react)
