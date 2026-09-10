@@ -4,6 +4,7 @@
 
 import { emitBookingsChanged, emitNotifsChanged } from '../services/events';
 import { canTransition } from './bookingStatus';
+import { ticketOrigin } from './site';
 
 export interface LocalBooking {
   id: number | string;
@@ -274,7 +275,7 @@ export async function createDemoBooking(input: {
 export function localBookingVerifyUrl(b: LocalBooking): string | null {
   if (!b.qr_salt) return null;
   try {
-    return `${window.location.origin}/verify/${encodeURIComponent(`local.${btoa(JSON.stringify({ ref: b.ref, s: b.qr_salt })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`)}`;
+    return `${ticketOrigin()}/verify/${encodeURIComponent(`local.${btoa(JSON.stringify({ ref: b.ref, s: b.qr_salt })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`)}`;
   } catch {
     return null;
   }

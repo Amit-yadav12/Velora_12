@@ -16,6 +16,7 @@ import { listLocalBookings, transitionLocalBooking, updateLocalBooking } from '.
 import { localVerifyUrl } from '../../lib/demoStore';
 import { isCancellable } from '../../lib/bookingStatus';
 import { googleCalendarUrl } from '../../lib/calendar';
+import { publicOrigin } from '../../lib/site';
 import { Modal } from '../../components/ui';
 
 function gcalLink(b: any) {
@@ -105,7 +106,7 @@ export default function Appointments() {
       const url = lb?.qr_salt ? localVerifyUrl(lb.ref, lb.qr_salt) : null;
       if (url) return url;
     }
-    return `${window.location.origin}/appointments`;
+    return `${publicOrigin()}/appointments`;
   }, [ticket, profile?.email]);
 
   const downloadTicketQr = async () => {

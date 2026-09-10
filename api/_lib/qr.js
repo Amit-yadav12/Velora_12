@@ -67,7 +67,7 @@ export function baseUrl(req) {
     const proto = /localhost|127\.0\.0\.1/i.test(host) ? 'http' : 'https';
     return `${proto}://${host}`;
   }
-  return 'https://velora.app';
+  return 'https://velora-ai-in.netlify.app';
 }
 
 export function verifyUrl(req, token) {

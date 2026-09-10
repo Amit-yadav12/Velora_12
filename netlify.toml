@@ -3,6 +3,10 @@
   publish = "dist"
   functions = "netlify/functions"
 
+[build.environment]
+  VITE_APP_URL = "https://velora-ai-in.netlify.app"
+  APP_URL = "https://velora-ai-in.netlify.app"
+
 [functions]
   node_bundler = "esbuild"
   external_node_modules = ["@supabase/supabase-js"]

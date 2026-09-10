@@ -5,6 +5,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Check, Navigation, CalendarPlus, Share2, Download, QrCode, CalendarCheck, MapPin, Clock, User, Sparkles, Loader2, Mail } from 'lucide-react';
 import { inr } from '../../lib/format';
 import { googleCalendarUrl } from '../../lib/calendar';
+import { publicOrigin } from '../../lib/site';
 
 interface Props {
   booking: any;
@@ -24,7 +25,7 @@ function gcalLink(b: any, biz: any) {
     start: b?.start_time,
     end: b?.end_time || b?.start_time,
     location: biz?.address || biz?.name || '',
-    details: `Velora booking ${b?.ref || ''}${b?.employee_name ? ` with ${b.employee_name}` : ''}. Manage: ${typeof window !== 'undefined' ? window.location.origin : ''}/appointments`,
+    details: `Velora booking ${b?.ref || ''}${b?.employee_name ? ` with ${b.employee_name}` : ''}. Manage: ${publicOrigin()}/appointments`,
   });
 }
 
@@ -69,7 +70,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
   };
 
   const share = async () => {
-    const data = { title: 'My Velora booking', text: `${booking.service_name} at ${business.name} on ${new Date(booking.start_time).toLocaleString()} — ${booking.ref}`, url: window.location.origin };
+    const data = { title: 'My Velora booking', text: `${booking.service_name} at ${business.name} on ${new Date(booking.start_time).toLocaleString()} — ${booking.ref}`, url: publicOrigin() };
     try { if (navigator.share) await navigator.share(data); else { await navigator.clipboard.writeText(`${data.text} ${data.url}`); } } catch { /* cancelled */ }
   };
 
@@ -126,7 +127,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
   };
 
   // Prefer the server-stored QR payload so the ticket matches DB records.
-  const qrData = String(qrPayload || (booking?.ref ? `${typeof window !== 'undefined' ? window.location.origin : ''}/appointments` : 'velora-ticket')).slice(0, 800);
+  const qrData = String(qrPayload || (booking?.ref ? `${publicOrigin()}/appointments` : 'velora-ticket')).slice(0, 800);
   const isPending = booking?.status === 'pending';
   const total = Number(invoice?.total ?? invoice?.amount ?? booking?.price ?? 0);
 

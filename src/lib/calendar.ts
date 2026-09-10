@@ -32,7 +32,7 @@ export function googleCalendarUrl(e: CalEvent): string {
 
 /** Builds a downloadable .ics file (works with Apple Calendar, Outlook, etc.). */
 export function icsBlob(e: CalEvent): Blob {
-  const uid = `${Date.now()}@velora.app`;
+  const uid = `${Date.now()}@velora-ai-in.netlify.app`;
   const ics = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Velora//Booking//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     'BEGIN:VEVENT',

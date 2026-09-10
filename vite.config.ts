@@ -39,6 +39,7 @@ export default defineConfig(async ({ mode }) => {
       },
     },
     envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
+    // APP_URL is server-side; expose VITE_APP_URL for Calendar/share on Netlify.
     define: processEnvDefines,
     server: {
       host: '0.0.0.0',

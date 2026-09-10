@@ -12,6 +12,7 @@ import {
   emitServicesChanged, emitStaffChanged,
 } from '../services/events';
 import { formatIndianAddress, istWallDate, istYmd } from './india';
+import { ticketOrigin } from './site';
 import { CATEGORY_DEFS } from './synthetic';
 
 export const DEMO_TENANT_ID = 'demo-tenant-velora';
@@ -891,7 +892,7 @@ export function parseLocalQrToken(token: string): { ref: string; s: string } | n
 
 export function localVerifyUrl(ref: string, salt: string): string {
   const t = makeLocalQrToken(ref, salt);
-  return `${window.location.origin}/verify/${encodeURIComponent(t)}`;
+  return `${ticketOrigin()}/verify/${encodeURIComponent(t)}`;
 }
 
 /* ------------------------------------------------------------------ */
