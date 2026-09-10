@@ -45,6 +45,10 @@ function ScrollToTop() {
 }
 
 export default function App() {
+  // Signal the boot watchdog (index.html) that first render committed.
+  useEffect(() => {
+    try { (window as any).__veloraBooted = true; } catch { /* ignore */ }
+  }, []);
   return (
     <ThemeProvider>
       <AuroraBackground />
