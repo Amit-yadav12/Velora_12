@@ -25,6 +25,7 @@ const ok = (name, cond, extra = '') => {
 };
 
 // Real modules
+const india = await import(run('src/lib/india.ts'));
 const demoStore = await import(run('src/lib/demoStore.ts'));
 const offlineStore = await import(run('src/lib/offlineStore.ts'));
 const metrics = await import(run('src/lib/metrics.ts'));
@@ -33,19 +34,24 @@ const bookingStatus = await import(run('src/lib/bookingStatus.ts'));
 console.log('\n—— 1. Demo tenant seeding ——');
 demoStore.ensureDemoSeeded();
 const biz = demoStore.listDemoBusinesses('Jaipur', true);
-ok('Seeds 2 showcase businesses', biz.length === 2, `got ${biz.length}`);
-ok('Aurora exists with services attached', biz[0].services.length === 4 && biz[0].staff.length === 4);
+ok('Showcase businesses present', biz.filter((b) => b.seeded).length === 2, `got ${biz.filter((b) => b.seeded).length}`);
+ok('Jaipur directory has 20+ extra businesses', biz.length >= 22, `got ${biz.length}`);
+ok('Aurora exists with services attached', biz.find((b) => b.id === 'demo-biz-aurora')?.services.length >= 4 && biz.find((b) => b.id === 'demo-biz-aurora')?.staff.length >= 4);
 ok('All seeded records carry tenant_id', biz.every((b) => b.tenant_id === demoStore.DEMO_TENANT_ID));
 ok('Demo ids recognized', demoStore.isDemoId('demo-biz-aurora') && !demoStore.isDemoId(100001));
+ok('Aurora has Indian PIN + state', biz[0].pin === '302001' && biz[0].state === 'Rajasthan');
+ok('Full Indian address includes PIN and India', /302001/.test(demoStore.demoFullAddress(biz[0], 'Jaipur')) && /India/.test(demoStore.demoFullAddress(biz[0], 'Jaipur')));
+ok('PIN validator', india.isValidIndianPin('302001') && !india.isValidIndianPin('012345') && !india.isValidIndianPin('12345'));
+ok('Phone validator', india.isValidIndianPhone('+91 98290 41100') && india.isValidIndianPhone('9829041100') && !india.isValidIndianPhone('12345'));
 
 console.log('\n—— 2. Business / service / staff CRUD (demo dataset) ——');
 const newBiz = demoStore.saveDemoBusiness({ name: 'Test Studio', category: 'Gyms', city: 'Jaipur' });
 ok('Add business persists', demoStore.listDemoBusinesses().some((b) => b.id === newBiz.id));
 const newSvc = demoStore.saveDemoService({ business_id: newBiz.id, name: 'Trial session', duration_min: 30, price: 300 });
 const newStaff = demoStore.saveDemoStaff({ business_id: newBiz.id, name: 'Test Coach', role: 'Trainer', service_ids: [newSvc.id] });
-ok('Service + staff persist to same dataset', demoStore.listDemoServices(newBiz.id).length === 1 && demoStore.listDemoStaff(newBiz.id).length === 1);
+ok('Service + staff persist to same dataset', demoStore.listDemoServices(newBiz.id).some((s) => s.id === newSvc.id) && demoStore.listDemoStaff(newBiz.id).some((s) => s.id === newStaff.id));
 demoStore.updateDemoService(newSvc.id, { active: false });
-ok('Deactivate service — customers can no longer book it', demoStore.listDemoServices(newBiz.id)[0].active === false);
+ok('Deactivate service — customers can no longer book it', demoStore.listDemoServices(newBiz.id).find((s) => s.id === newSvc.id)?.active === false);
 demoStore.deleteDemoBusiness(newBiz.id);
 ok('Cascade delete removes services + staff', demoStore.listDemoServices(newBiz.id).length === 0 && demoStore.listDemoStaff(newBiz.id).length === 0);
 
@@ -145,11 +151,13 @@ ok('Wrong salt is rejected', parseLocalQrToken(`local.${Buffer.from(JSON.stringi
 
 console.log('\n—— 11. Reset demo: isolated + restores clean state ——');
 demoStore.resetDemo();
-ok('Demo bookings cleared', offlineStore.listLocalBookings().length === 0);
-ok('Showcase businesses restored', demoStore.listDemoBusinesses('Jaipur').length === 2);
-ok('Services restored (8 across 2 businesses)', demoStore.listDemoServices().length === 8);
-ok('Staff restored (6 across 2 businesses)', demoStore.listDemoStaff().length === 6);
-ok('Notifications reset', offlineStore.listLocalNotificationsFor('admin').length === 0);
+ok('Operating sample restored after reset', offlineStore.listLocalBookings().length >= 16);
+ok('Showcase businesses restored', demoStore.listDemoBusinesses('Jaipur').filter((b) => b.seeded).length === 2);
+ok('Jaipur directory restored', demoStore.listDemoBusinesses('Jaipur').length >= 22);
+ok('Services restored across showcase businesses', demoStore.listDemoServices().length >= 8);
+ok('Staff restored across showcase businesses', demoStore.listDemoStaff().length >= 6);
+ok('Sample customers restored', demoStore.listDemoCustomers().length >= 8);
+ok('Admin sample notifications restored', offlineStore.listLocalNotificationsFor('admin').length >= 2);
 ok('Production keys untouched (no velora-demo in localStorage main keys)', !localStorage.getItem('velora-demo-businesses') || JSON.parse(localStorage.getItem('velora-demo-businesses')).every((b) => b.tenant_id === demoStore.DEMO_TENANT_ID));
 
 console.log(`\n═══ RESULT: ${pass} passed, ${fail} failed ═══`);

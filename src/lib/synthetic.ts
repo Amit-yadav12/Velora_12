@@ -891,11 +891,35 @@ export function getCityBusinesses(cityName: string, opts?: { category?: string; 
         const mainImg = def.img;
         // Deterministic photo gallery: main + 2 related from same category family.
         const gallery = [mainImg, mainImg, mainImg];
+        const services: BusinessService[] = def.services.map((t, si) => ({
+          id: id * 100 + si,
+          business_id: id,
+          name: t.n,
+          description: t.d,
+          duration_min: t.dur,
+          price: t.lo === 0 && t.hi === 0 ? 0 : round5(t.lo + rnd() * (t.hi - t.lo)),
+        }));
+        const staff: BusinessStaff[] = [];
+        const usedNames = new Set<string>();
+        const staffCount = Math.min(def.roles.length, Math.max(2, 2 + Math.floor(rnd() * 3)));
+        for (let i = 0; i < staffCount; i++) {
+          let nm = `${pick(rnd, FIRST)} ${pick(rnd, LAST)}`;
+          if (usedNames.has(nm)) nm = `${pick(rnd, FIRST)} ${pick(rnd, LAST)}`;
+          usedNames.add(nm);
+          staff.push({
+            id: id * 1000 + i,
+            business_id: id,
+            name: nm,
+            role: def.roles[i % def.roles.length],
+          });
+        }
         all.push({
           id,
           slug: `${city.slug}-${def.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${idx}`,
           synthetic: true,
           name,
+          services,
+          staff,
           tagline: pick(rnd, def.taglines),
           category: def.name,
           description: `${name} in ${area}, ${city.name} — ${pick(rnd, def.taglines).toLowerCase()}. Rated ${rating} by ${reviewCount}+ customers with instant Velora booking, live queue updates and easy rescheduling.`,
@@ -961,17 +985,19 @@ export function getSyntheticBusiness(id: number | string): SyntheticBusiness | n
 }
 
 export function attachDetails(b: SyntheticBusiness, def?: CategoryDef): SyntheticBusiness {
-  if (b.services && b.services.length > 0 && b.staff && b.staff.length > 0) return b;
   const d = def || CATEGORY_DEFS.find((c) => c.name === b.category) || CATEGORY_DEFS[0];
   const rnd = mulberry32(hashStr(`details|${b.id}`));
-  const svcCount = Math.min(d.services.length, 4 + Math.floor(rnd() * 3));
-  const svcIdxs = [...d.services.keys()].sort(() => rnd() - 0.5).slice(0, svcCount);
-  const services: BusinessService[] = svcIdxs.map((si) => {
-    const t = d.services[si];
+  const haveAll = (b.services || []).length >= d.services.length && (b.staff || []).length > 0;
+  if (haveAll) return b;
+  const existingNames = new Set((b.services || []).map((s) => s.name.toLowerCase()));
+  const extra: BusinessService[] = [];
+  d.services.forEach((t, si) => {
+    if (existingNames.has(t.n.toLowerCase())) return;
     const price = t.lo === 0 && t.hi === 0 ? 0 : round5(t.lo + rnd() * (t.hi - t.lo));
-    return { id: Number(b.id) * 100 + si, business_id: b.id as number, name: t.n, description: t.d, duration_min: t.dur, price };
+    extra.push({ id: Number(b.id) * 100 + si, business_id: b.id as number, name: t.n, description: t.d, duration_min: t.dur, price });
   });
-  services.sort((a, b2) => a.price - b2.price);
+  const services: BusinessService[] = [...(b.services || []), ...extra];
+  if (b.staff && b.staff.length > 0) return { ...b, services };
   const staffCount = 2 + Math.floor(rnd() * 4);
   const staff: BusinessStaff[] = [];
   const usedNames = new Set<string>();

@@ -5,7 +5,9 @@
 
 function fmt(dtISO: string) {
   // Google Calendar / ICS expect UTC basic format: YYYYMMDDTHHMMSSZ
-  return new Date(dtISO).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const d = new Date(dtISO);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 }
 
 export interface CalEvent {
@@ -30,7 +32,7 @@ export function googleCalendarUrl(e: CalEvent): string {
 
 /** Builds a downloadable .ics file (works with Apple Calendar, Outlook, etc.). */
 export function icsBlob(e: CalEvent): Blob {
-  const uid = `${Date.now()}@velora.app`;
+  const uid = `${Date.now()}@velora-ai-in.netlify.app`;
   const ics = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Velora//Booking//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     'BEGIN:VEVENT',

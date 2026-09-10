@@ -4,6 +4,7 @@
 
 import { emitBookingsChanged, emitNotifsChanged } from '../services/events';
 import { canTransition } from './bookingStatus';
+import { ticketOrigin } from './site';
 
 export interface LocalBooking {
   id: number | string;
@@ -204,7 +205,21 @@ export async function createDemoBooking(input: {
 }): Promise<{ booking: LocalBooking; invoice: LocalInvoice; qr_payload: string }> {
   const { saveDemoCustomer, genQrSalt, localVerifyUrl } = await import('./demoStore');
   const start = new Date(input.start_time);
+  if (Number.isNaN(start.getTime())) throw new Error('Please pick a valid time slot.');
   const end = new Date(start.getTime() + (input.service_duration || 30) * 60000);
+
+  const overlaps = listLocalBookings().filter(
+    (b) => String(b.business_id) === String(input.business_id)
+      && b.status !== 'cancelled' && b.status !== 'no_show'
+      && new Date(b.start_time) < end && new Date(b.end_time) > start,
+  );
+  const staffTaken = input.staff_name
+    ? overlaps.filter((b) => (b.staff_name || '').toLowerCase() === input.staff_name!.toLowerCase())
+    : overlaps;
+  if (input.staff_name && staffTaken.length >= 1) {
+    throw new Error('That slot was just taken. Please pick another time.');
+  }
+
   const ref = genLocalRef();
   const salt = genQrSalt();
   const price = Number(input.service_price) || 0;
@@ -260,7 +275,7 @@ export async function createDemoBooking(input: {
 export function localBookingVerifyUrl(b: LocalBooking): string | null {
   if (!b.qr_salt) return null;
   try {
-    return `${window.location.origin}/verify/${encodeURIComponent(`local.${btoa(JSON.stringify({ ref: b.ref, s: b.qr_salt })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`)}`;
+    return `${ticketOrigin()}/verify/${encodeURIComponent(`local.${btoa(JSON.stringify({ ref: b.ref, s: b.qr_salt })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`)}`;
   } catch {
     return null;
   }

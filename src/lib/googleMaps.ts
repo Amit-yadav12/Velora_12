@@ -14,11 +14,22 @@ export function googleKey(): string {
 /** Keyless universal embed — renders real Google Maps in an iframe. */
 export function googleEmbedUrl(query: string, center?: MapCenter, zoom = 14): string {
   const q = center ? `${query} near ${center.label || `${center.lat},${center.lng}`}` : query;
+  const key = googleKey();
+  if (key) {
+    return `https://www.google.com/maps/embed/v1/search?key=${encodeURIComponent(key)}&q=${encodeURIComponent(q)}&zoom=${zoom}`;
+  }
   return `https://www.google.com/maps?q=${encodeURIComponent(q)}&z=${zoom}&output=embed`;
 }
 
 /** Embed centered on exact coordinates with a query overlay. */
 export function googleEmbedCenter(center: MapCenter, query?: string, zoom = 14): string {
+  const key = googleKey();
+  if (key) {
+    if (query) {
+      return `https://www.google.com/maps/embed/v1/search?key=${encodeURIComponent(key)}&q=${encodeURIComponent(query)}&center=${center.lat},${center.lng}&zoom=${zoom}`;
+    }
+    return `https://www.google.com/maps/embed/v1/view?key=${encodeURIComponent(key)}&center=${center.lat},${center.lng}&zoom=${zoom}`;
+  }
   const q = query ? encodeURIComponent(query) : '';
   return `https://www.google.com/maps?q=${q}&ll=${center.lat},${center.lng}&z=${zoom}&output=embed`;
 }

@@ -6,7 +6,7 @@ import { LocationProvider } from './contexts/LocationContext';
 import { handleGoogleRedirect } from './lib/googleAuth';
 import { CustomerGate, AdminGate } from './app/Guards';
 import AuroraBackground from './components/premium/AuroraBackground';
-import { ensureDemoSeeded } from './lib/demoStore';
+import { ensureDemoOps, ensureDemoSeeded, ensureFullMenus } from './lib/demoStore';
 
 // Customer (product-first) pages — Home eager, rest lazy for fast first paint
 import Home from './pages/customer/Home';
@@ -51,7 +51,7 @@ export default function App() {
     try { (window as any).__veloraBooted = true; } catch { /* ignore */ }
     // Seed the isolated demo tenant (showcase businesses/services/staff) so
     // the demo environment is complete from the very first page load.
-    try { ensureDemoSeeded(); } catch { /* non-fatal */ }
+    try { ensureDemoSeeded(); ensureDemoOps(); } catch { /* non-fatal */ }
   }, []);
   return (
     <ThemeProvider>
