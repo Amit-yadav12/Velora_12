@@ -1,21 +1,67 @@
 // Netlify Functions adapter for Velora's Vercel-style /api/*.js handlers.
 // Routes /api/discover, /api/businesses, etc. to the corresponding file in ../../api/
 // Supports both Netlify's event/context and Vercel's req/res handler signatures.
+// ESM + CJS compatible — handles import.meta.url undefined in some bundlers.
 
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const API_ROOT = path.resolve(__dirname, '..', '..', 'api');
+let API_ROOT;
+try {
+  // ESM: use import.meta.url
+  if (typeof import.meta !== 'undefined' && import.meta.url) {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+    API_ROOT = path.resolve(__dirname, '..', '..', 'api');
+  } else {
+    throw new Error('no import.meta.url');
+  }
+} catch {
+  try {
+    // CJS fallback: __dirname is available
+    // @ts-ignore
+    const cjsDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
+    API_ROOT = path.resolve(cjsDir, '..', '..', 'api');
+  } catch {
+    // Final fallback: assume process.cwd() is repo root or /var/task
+    const cwd = process.cwd();
+    // Try common locations
+    const candidates = [
+      path.resolve(cwd, 'api'),
+      path.resolve(cwd, '..', 'api'),
+      path.resolve(cwd, '..', '..', 'api'),
+      '/var/task/api',
+      path.resolve('/var/task', 'api'),
+    ];
+    for (const cand of candidates) {
+      if (fs.existsSync(cand)) {
+        API_ROOT = cand;
+        break;
+      }
+    }
+    if (!API_ROOT) API_ROOT = candidates[0];
+  }
+}
 
 const handlerCache = new Map();
 
 async function loadHandler(name) {
   if (handlerCache.has(name)) return handlerCache.get(name);
   const file = path.join(API_ROOT, `${name}.js`);
-  if (!fs.existsSync(file)) return null;
+  if (!fs.existsSync(file)) {
+    // Try alternative path: maybe bundled in /var/task/api
+    const alt = path.join('/var/task', 'api', `${name}.js`);
+    if (fs.existsSync(alt)) {
+      const mod = await import(pathToFileURL(alt).href);
+      const fn = mod.default;
+      if (typeof fn === 'function') handlerCache.set(name, fn);
+      return fn;
+    }
+    return null;
+  }
   const mod = await import(pathToFileURL(file).href);
   const fn = mod.default;
   if (typeof fn === 'function') handlerCache.set(name, fn);
@@ -35,34 +81,28 @@ function parseBody(event) {
 export const handler = async (event, context) => {
   try {
     // Extract API name from path: /api/discover or /.netlify/functions/api/discover
-    // Netlify passes the full path in event.path and also event.rawUrl
     const rawPath = event.path || event.rawUrl || '';
     let apiName = '';
-    // Try to get from /api/ prefix
+
+    // First check if Netlify passed the splat via params? No, we parse path.
     const apiMatch = rawPath.match(/\/api\/([a-z0-9_-]+)/i);
     if (apiMatch) {
       apiName = apiMatch[1];
     } else {
-      // Fallback: check if path is /.netlify/functions/api/<name>
       const fnMatch = rawPath.match(/\/\.netlify\/functions\/api\/([a-z0-9_-]+)/i);
       if (fnMatch) apiName = fnMatch[1];
       else {
-        // Direct function name via query or last segment
         const parts = rawPath.split('/').filter(Boolean);
         const last = parts[parts.length - 1];
         if (last && /^[a-z0-9][a-z0-9_-]*$/i.test(last) && last !== 'api') apiName = last;
       }
     }
 
-    // If no name extracted, try to use the :splat param via event.path replacement
-    // Netlify redirect passes :splat as part of path after /api/
     if (!apiName) {
-      // event.queryStringParameters may contain the splat? No.
-      // As fallback, list available handlers for debugging
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'API endpoint not specified' }),
+        body: JSON.stringify({ error: 'API endpoint not specified', path: rawPath, apiRoot: API_ROOT }),
       };
     }
 
@@ -79,11 +119,10 @@ export const handler = async (event, context) => {
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: `API ${apiName} not found` }),
+        body: JSON.stringify({ error: `API ${apiName} not found`, apiRoot: API_ROOT }),
       };
     }
 
-    // Build Vercel-style req
     const query = event.queryStringParameters || {};
     const body = parseBody(event);
     const headers = event.headers || {};
@@ -96,7 +135,6 @@ export const handler = async (event, context) => {
       socket: { remoteAddress: headers['x-nf-client-connection-ip'] || headers['client-ip'] || 'unknown' },
     };
 
-    // Build Vercel-style res that captures output for Netlify return
     let statusCode = 200;
     const responseHeaders = {};
     let responseBody = null;
@@ -104,10 +142,19 @@ export const handler = async (event, context) => {
 
     const res = {
       statusCode: 200,
-      get headersSent() { return ended; },
-      setHeader: (k, v) => { responseHeaders[k] = v; return res; },
+      get headersSent() {
+        return ended;
+      },
+      setHeader: (k, v) => {
+        responseHeaders[k] = v;
+        return res;
+      },
       getHeader: (k) => responseHeaders[k],
-      status: (c) => { statusCode = c; res.statusCode = c; return res; },
+      status: (c) => {
+        statusCode = c;
+        res.statusCode = c;
+        return res;
+      },
       json: (data) => {
         if (!responseHeaders['Content-Type']) responseHeaders['Content-Type'] = 'application/json';
         responseBody = JSON.stringify(data ?? null);
@@ -128,7 +175,6 @@ export const handler = async (event, context) => {
 
     await handlerFn(req, res);
 
-    // If handler didn't end, default to 200 with empty body
     if (!ended) {
       if (!responseBody) {
         responseBody = JSON.stringify({ ok: true });
@@ -137,7 +183,6 @@ export const handler = async (event, context) => {
       ended = true;
     }
 
-    // Ensure CORS and security headers
     if (!responseHeaders['Access-Control-Allow-Origin']) {
       responseHeaders['Access-Control-Allow-Origin'] = '*';
     }
@@ -152,7 +197,7 @@ export const handler = async (event, context) => {
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Internal server error' }),
+      body: JSON.stringify({ error: 'Internal server error', detail: err.message }),
     };
   }
 };
