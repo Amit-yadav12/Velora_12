@@ -11,10 +11,14 @@ function color(occ: number) {
   return 'rgba(52,211,153,0.5)';
 }
 
-export default function Heatmap({ businessId, onPickDate }: { businessId?: number; onPickDate?: (date: string) => void }) {
+export default function Heatmap({ businessId, onPickDate }: { businessId?: number | string; onPickDate?: (date: string) => void }) {
   const [data, setData] = useState<any>(null);
   useEffect(() => {
-    fetch(`/api/heatmap${businessId ? `?business_id=${businessId}` : ''}`).then(r => r.json()).then(setData).catch(() => {});
+    let alive = true;
+    import('../../lib/hybridData').then(({ fetchHeatmap }) =>
+      fetchHeatmap(businessId).then((d) => alive && setData(d)).catch(() => {})
+    );
+    return () => { alive = false; };
   }, [businessId]);
   if (!data) return <div className="skeleton h-40 rounded-2xl" />;
 

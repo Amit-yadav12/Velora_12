@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Star, MapPin, Clock, Navigation, Phone, Heart, ChevronRight, Sparkles, Car } from 'lucide-react';
-import { categoryColor, mapsDirections } from '../../lib/product';
+import { categoryColor, mapsDirections, imgOnError } from '../../lib/product';
 import { CategoryIcon } from '../product';
 import { formatDistance, formatTravel } from '../../lib/geo';
 import { fadeUp } from '../../lib/motion';
+import { prefetchOnIntent } from '../../lib/smartCache';
 
 export default function DiscoverCard({ b, active, onHover, compact }: {
   b: any; index?: number; active?: boolean; onHover?: (id: number | null) => void; compact?: boolean;
@@ -22,12 +23,12 @@ export default function DiscoverCard({ b, active, onHover, compact }: {
     <motion.div
       variants={fadeUp}
       style={{ contentVisibility: 'auto', containIntrinsicSize: '220px' } as React.CSSProperties}
-      onMouseEnter={() => onHover?.(b.id)} onMouseLeave={() => onHover?.(null)}
+      onMouseEnter={() => { onHover?.(b.id); prefetchOnIntent(`/api/businesses?id=${b.id}`); }} onMouseLeave={() => onHover?.(null)}
       onClick={() => nav(`/business/${b.id}`)}
       className={`card overflow-hidden cursor-pointer transition-all ${active ? 'ring-2 ring-[var(--color-brand-indigo)] border-transparent' : ''}`}>
       <div className="flex gap-3 p-3">
         <div className="relative shrink-0">
-          <img src={b.image_url} alt={b.name} className={`rounded-xl object-cover ${compact ? 'h-20 w-20' : 'h-24 w-24'}`} loading="lazy" />
+          <img src={b.image_url} alt={b.name} onError={imgOnError(b.category)} className={`rounded-xl object-cover ${compact ? 'h-20 w-20' : 'h-24 w-24'}`} loading="lazy" />
           {b.ai_score >= 75 && <div className="absolute -top-1.5 -left-1.5 grad-btn text-white text-[9px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5"><Sparkles className="h-2.5 w-2.5" />{b.ai_score}</div>}
         </div>
         <div className="flex-1 min-w-0">

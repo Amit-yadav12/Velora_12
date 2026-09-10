@@ -3,61 +3,63 @@ import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Search, Clock, Star, Compass } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useLocation, DEFAULT_CENTER } from '../../contexts/LocationContext';
-import { Business, CATEGORIES } from '../../lib/product';
+import { useLocation } from '../../contexts/LocationContext';
+import { Business, CATEGORIES, imgOnError } from '../../lib/product';
 import { BusinessCard, SectionTitle, Rating, Grid } from '../../components/product';
 import { apiGet } from '../../lib/api';
 import { BusinessCardSkeleton } from '../../components/premium/Skeleton';
 import DiscoverCard from '../../components/premium/DiscoverCard';
 import LocationBar from '../../components/premium/LocationBar';
-
-// Fetch with a hard timeout so the UI never hangs on a slow request.
-function timedFetch(url: string, ms = 4500) {
-  return Promise.race([
-    fetch(url).then(r => r.json()),
-    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
-  ]);
-}
+import { fetchDiscover } from '../../lib/hybridData';
+import { readRecentViews, pushSearchHistory } from '../../lib/smartSearch';
+import { prefetch } from '../../lib/smartCache';
 
 export default function Home() {
   const { profile, user } = useAuth();
-  const { location } = useLocation();
-  const origin = location || DEFAULT_CENTER;
+  const { city, mapCenter } = useLocation();
+  const origin = mapCenter;
   const nav = useNavigate();
   const [q, setQ] = useState('');
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [recent, setRecent] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ONE fast primary call powers the whole page. Recently-viewed loads
-  // separately (non-blocking) so it can never delay the main content.
+  // ONE fast hybrid call powers the whole page — city-scoped, cached, with a
+  // synthetic ecosystem fallback so the page is never empty. Recently-viewed
+  // loads separately (non-blocking) so it can never delay the main content.
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    timedFetch(`/api/discover?lat=${origin.lat}&lng=${origin.lng}&sort=distance`)
-      .then((disc: any) => {
+    fetchDiscover({ city: city.name, lat: origin.lat, lng: origin.lng, sort: 'distance' })
+      .then((disc) => {
         if (!alive) return;
-        const results = disc?.results || [];
-        setBusinesses(results);
+        setBusinesses(disc.results as Business[]);
         setLoading(false);
+        // Intelligent prefetch: warm top detail pages during idle time.
+        prefetch(disc.results.slice(0, 6).map((b: any) => `/api/businesses?id=${b.id}`));
       })
-      .catch(() => {
-        // Fallback: plain business list (never leave the page empty).
-        fetch('/api/businesses').then(r => r.json()).then((d) => {
-          if (!alive) return;
-          setBusinesses(Array.isArray(d) ? d : []);
-          setLoading(false);
-        }).catch(() => alive && setLoading(false));
-      });
+      .catch(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [origin.lat, origin.lng]);
+  }, [city.name, origin.lat, origin.lng]);
 
   useEffect(() => {
+    // Instant local recents first, then server merge (city-pinned).
+    const local = readRecentViews().filter((r) => !r.city || r.city === city.name);
+    if (local.length) setRecent(local as unknown as Business[]);
     if (!user) return;
-    apiGet(`/api/track-view?user_id=${user.id}`).then((r) => Array.isArray(r) && setRecent(r)).catch(() => {});
-  }, [user]);
+    apiGet(`/api/track-view?user_id=${user.id}`)
+      .then((r) => {
+        if (!Array.isArray(r)) return;
+        const pinned = r.filter((b: any) => !b.city || b.city === city.name);
+        setRecent((prev) => {
+          const seen = new Set(pinned.map((b: any) => String(b.id)));
+          return [...pinned, ...prev.filter((b) => !seen.has(String(b.id)))].slice(0, 8) as Business[];
+        });
+      })
+      .catch(() => {});
+  }, [user, city.name]);
 
-  const submitSearch = (e: React.FormEvent) => { e.preventDefault(); nav(`/explore?q=${encodeURIComponent(q)}`); };
+  const submitSearch = (e: React.FormEvent) => { e.preventDefault(); if (q.trim()) pushSearchHistory(q.trim()); nav(`/explore?q=${encodeURIComponent(q)}`); };
 
   const featured = businesses.filter(b => (b as any).featured).slice(0, 3);
   const nearby = businesses.slice(0, 8);
@@ -132,7 +134,7 @@ export default function Home() {
       {/* Nearby */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <div><h2 className="text-lg font-semibold tracking-tight">Nearby you</h2><p className="text-xs text-dim">Sorted by distance from {origin.label || 'your area'}</p></div>
+          <div><h2 className="text-lg font-semibold tracking-tight">Nearby in {city.name}</h2><p className="text-xs text-dim">Sorted by distance from {origin.label || city.name}</p></div>
           <Link to="/explore?view=map" className="text-sm text-[var(--color-brand-indigo)] font-medium">Open map</Link>
         </div>
         <Grid className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -150,7 +152,7 @@ export default function Home() {
           <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
             {recent.map(b => (
               <Link key={b.id} to={`/business/${b.id}`} className="card overflow-hidden min-w-[220px] group">
-                <img src={b.image_url} alt={b.name} className="h-28 w-full object-cover" loading="lazy" />
+                <img src={b.image_url} alt={b.name} onError={imgOnError(b.category)} className="h-28 w-full object-cover" loading="lazy" />
                 <div className="p-3"><p className="text-sm font-medium truncate">{b.name}</p><div className="flex items-center justify-between mt-1"><span className="text-xs text-dim">{b.category}</span><Rating value={b.rating} sm /></div></div>
               </Link>
             ))}

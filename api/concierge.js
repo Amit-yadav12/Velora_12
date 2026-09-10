@@ -1,6 +1,7 @@
 import supabase from './db-client.js';
 import { cors, sanitizeText, isEmail } from './_lib/security.js';
 import { getAuth } from './_lib/auth.js';
+import { cityBusinesses } from './_lib/synthetic.js';
 
 // Conversational AI concierge. Understands natural-language requests and
 // returns a structured action the frontend can execute (navigate, book, etc.),
@@ -36,7 +37,18 @@ export default async function handler(req, res) {
     const auth = await getAuth(req);
     const message = sanitizeText(req.body?.message, 400) || '';
     const lower = message.toLowerCase();
-    const { data: businesses } = await supabase.from('businesses').select('*').eq('active', true);
+    const city = sanitizeText(req.body?.city, 40) || 'Jaipur';
+    let businesses = [];
+    try {
+      const { data } = await supabase.from('businesses').select('*').eq('active', true);
+      if (Array.isArray(data)) businesses = data;
+    } catch (e) { console.error('[concierge:db]', e.message); }
+    // Merge the synthetic city ecosystem so the concierge knows every city.
+    try {
+      const synth = cityBusinesses(city).filter((b) => !businesses.some((d) => String(d.id) === String(b.id)));
+      businesses = [...businesses, ...synth];
+    } catch (e) { console.error('[concierge:synth]', e.message); }
+    businesses = businesses.filter((b) => !b.city || b.city === city);
 
     // ---- Intent detection ----
     let intent = 'chat';
@@ -51,7 +63,7 @@ export default async function handler(req, res) {
     // Match a business/category from the message
     const matchBiz = (businesses || []).find((b) =>
       lower.includes(b.name.toLowerCase()) || lower.includes(b.category.toLowerCase().replace(/s$/, '')));
-    const categoryHints = { dentist: 'Dentists', dental: 'Dentists', doctor: 'Clinics', clinic: 'Clinics', salon: 'Salons', hair: 'Salons', spa: 'Salons', gym: 'Fitness Centers', fitness: 'Fitness Centers', hotel: 'Hotels', tennis: 'Sports Academies', court: 'Sports Academies', lawyer: 'Lawyers', legal: 'Lawyers', car: 'Car Rentals', rental: 'Car Rentals', tutor: 'Tutors' };
+    const categoryHints = { dentist: 'Dentists', dental: 'Dentists', doctor: 'Clinics', clinic: 'Clinics', hospital: 'Hospitals', pharmacy: 'Pharmacies', medicine: 'Pharmacies', lab: 'Diagnostic Centers', diagnostic: 'Diagnostic Centers', blood: 'Diagnostic Centers', salon: 'Salons', hair: 'Salons', spa: 'Spas', massage: 'Spas', skin: 'Beauty Clinics', facial: 'Beauty Clinics', gym: 'Gyms', fitness: 'Fitness Centers', yoga: 'Yoga Studios', physio: 'Physiotherapy Centers', restaurant: 'Restaurants', food: 'Restaurants', biryani: 'Restaurants', cafe: 'Cafés', coffee: 'Cafés', hotel: 'Hotels', stay: 'Hotels', cowork: 'Coworking Spaces', office: 'Coworking Spaces', cricket: 'Cricket Turfs', turf: 'Cricket Turfs', football: 'Football Grounds', soccer: 'Football Grounds', swim: 'Swimming Pools', pool: 'Swimming Pools', badminton: 'Badminton Courts', shuttle: 'Badminton Courts', coach: 'Coaching Institutes', jee: 'Coaching Institutes', neet: 'Coaching Institutes', tuition: 'Tutors', driving: 'Driving Schools', licence: 'Driving Schools', license: 'Driving Schools', passport: 'Passport Offices', visa: 'Consultants', aadhaar: 'Government Services', pan: 'Government Services', bank: 'Banks', loan: 'Banks', insurance: 'Insurance Offices', lawyer: 'Lawyers', legal: 'Lawyers', advocate: 'Lawyers', tax: 'Professional Services', gst: 'Professional Services', career: 'Consultants', pet: 'Pet Clinics', dog: 'Pet Clinics', vet: 'Veterinary Hospitals', car: 'Car Rentals', rental: 'Car Rentals', bike: 'Bike Rentals', scooter: 'Bike Rentals', garage: 'Car Service Centers', detailing: 'Car Service Centers', ev: 'EV Charging Stations', charging: 'EV Charging Stations', electrician: 'Electricians', plumber: 'Plumbers', plumbing: 'Plumbers', clean: 'Cleaners', venue: 'Event Venues', banquet: 'Event Venues', wedding: 'Event Venues', photo: 'Photography Studios', travel: 'Travel Agencies', holiday: 'Travel Agencies', flight: 'Travel Agencies', barber: 'Barbershops', beard: 'Barbershops', wellness: 'Wellness Centers', ayurveda: 'Wellness Centers', home: 'Home Services', tutor: 'Tutors', court: 'Sports Centers', tennis: 'Sports Centers', sports: 'Sports Centers' };
     let cat = null;
     for (const [k, v] of Object.entries(categoryHints)) if (lower.includes(k)) { cat = v; break; }
 
@@ -64,7 +76,7 @@ export default async function handler(req, res) {
     if (intent === 'find') {
       const results = cat ? (businesses || []).filter((b) => b.category === cat) : businesses || [];
       const top = results.sort((a, b) => b.rating - a.rating).slice(0, 3);
-      reply = top.length ? `I found ${results.length} ${cat || 'places'} for you. Top pick: ${top[0].name} (${top[0].rating}★) at ${top[0].address}.` : `I couldn't find matches. Try a category like salons, clinics or gyms.`;
+      reply = top.length ? `I found ${results.length} ${cat || 'places'} in ${city} for you. Top pick: ${top[0].name} (${top[0].rating}★) at ${top[0].address}.` : `I couldn't find matches in ${city}. Try a category like salons, clinics or gyms.`;
       action = { type: 'navigate', to: cat ? `/search?category=${encodeURIComponent(cat)}` : '/search', results: top.map((b) => ({ id: b.id, name: b.name })) };
     } else if (intent === 'book') {
       const target = matchBiz || (cat ? (businesses || []).filter((b) => b.category === cat).sort((a, b) => b.rating - a.rating)[0] : null);

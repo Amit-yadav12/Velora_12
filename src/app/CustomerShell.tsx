@@ -28,9 +28,17 @@ export default function CustomerShell({ children }: { children: React.ReactNode 
   const [spotlight, setSpotlight] = useState(false);
 
   const loadUnread = () => {
+    const countLocal = () => {
+      try {
+        const raw = localStorage.getItem('velora-local-notifs');
+        const arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr.filter((n: any) => !n.read).length : 0;
+      } catch { return 0; }
+    };
     fetch('/api/notifications?audience=customer').then(r => r.json()).then(d => {
-      if (Array.isArray(d)) setUnread(d.filter((n: any) => !n.read).length);
-    }).catch(() => {});
+      const server = Array.isArray(d) ? d.filter((n: any) => !n.read).length : 0;
+      setUnread(server + countLocal());
+    }).catch(() => setUnread(countLocal()));
   };
   useEffect(() => { loadUnread(); }, [loc.pathname]);
   useEffect(() => {

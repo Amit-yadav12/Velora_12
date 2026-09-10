@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, X, Send, Loader2, Navigation, ArrowRight, Mic } from 'lucide-react';
 import { apiSend } from '../../lib/api';
+import { useLocation } from '../../contexts/LocationContext';
 
 interface Msg { role: 'user' | 'ai'; text: string; action?: any; }
 const SUGGESTIONS = ['Book a dentist tomorrow afternoon', 'Find the nearest salon', 'Show my appointments', 'Reschedule my booking'];
 
 export default function AIConcierge() {
   const nav = useNavigate();
+  const { city, mapCenter } = useLocation();
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
@@ -22,7 +24,7 @@ export default function AIConcierge() {
     if (!text.trim()) return;
     setMsgs(m => [...m, { role: 'user', text }]); setInput(''); setThinking(true);
     try {
-      const res = await apiSend('/api/concierge', 'POST', { message: text });
+      const res = await apiSend('/api/concierge', 'POST', { message: text, city: city.name, lat: mapCenter.lat, lng: mapCenter.lng });
       setMsgs(m => [...m, { role: 'ai', text: res.reply, action: res.action }]);
     } catch { setMsgs(m => [...m, { role: 'ai', text: 'Sorry, something went wrong. Please try again.' }]); }
     finally { setThinking(false); }

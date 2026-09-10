@@ -1,6 +1,7 @@
 import supabase from './db-client.js';
 import { cors } from './_lib/security.js';
 import { travelTimeMin } from './_lib/maps.js';
+import { syntheticBusiness, isSyntheticId } from './_lib/synthetic.js';
 
 // AI Travel Planner: given a booking (or business + start time) and an origin,
 // computes travel time, recommended leave-time, and a \"leave now\" countdown.
@@ -12,9 +13,22 @@ export default async function handler(req, res) {
     let biz = null, start = start_time ? new Date(start_time) : null;
     if (booking_ref) {
       const { data: bk } = await supabase.from('bookings').select('*').eq('ref', booking_ref).single();
-      if (bk) { start = new Date(bk.start_time); const { data: b } = await supabase.from('businesses').select('*').eq('name', bk.resource_name).single(); biz = b; }
+      if (bk) {
+        start = new Date(bk.start_time);
+        if (isSyntheticId(bk.resource_id)) {
+          biz = syntheticBusiness(bk.resource_id);
+        } else {
+          const { data: b } = await supabase.from('businesses').select('*').eq('name', bk.resource_name).single(); biz = b;
+        }
+        // Local/demo bookings carry location only — synthesize a center point.
+        if (!biz && bk.location) biz = { name: bk.resource_name, address: bk.location, lat: origin_lat ? +origin_lat : null, lng: origin_lng ? +origin_lng : null };
+      }
     } else if (business_id) {
-      const { data: b } = await supabase.from('businesses').select('*').eq('id', business_id).single(); biz = b;
+      if (isSyntheticId(business_id)) biz = syntheticBusiness(business_id);
+      else {
+        const { data: b } = await supabase.from('businesses').select('*').eq('id', business_id).single(); biz = b;
+        if (!biz) biz = syntheticBusiness(business_id);
+      }
     }
     if (!biz || !start) return res.status(400).json({ error: 'Provide business_id/booking_ref and start_time' });
 

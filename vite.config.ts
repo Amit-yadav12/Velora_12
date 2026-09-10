@@ -29,6 +29,11 @@ export default defineConfig(async ({ mode }) => {
     },
     envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
     define: processEnvDefines,
+    server: {
+      host: '0.0.0.0',
+      // Allow cloud preview hosts (Arena/E2B sandboxes etc.).
+      allowedHosts: true as const,
+    },
     build: {
       // Split large vendor libs into their own cacheable chunks so the initial
       // parse/eval stays small and navigations feel instant.

@@ -10,6 +10,22 @@ export default async function handler(req, res) {
     const q = sanitizeText(req.query.q, 120);
     if (!q || q.length < 2) return res.status(200).json({ predictions: [] });
 
+    // Instant local matches for Velora's supported cities (no network needed).
+    try {
+      const { CITIES } = await import('./_lib/synthetic.js');
+      const term = q.toLowerCase();
+      const local = CITIES.filter((c) => c.name.toLowerCase().includes(term) || c.slug.includes(term))
+        .map((c) => ({ label: `${c.name}, India`, lat: c.lat, lng: c.lng, city: c.name }));
+      if (local.length > 0 && term.length >= 2) {
+        // Still try providers below for richer results, but keep locals first.
+        req._localCities = local;
+        if (local.some((c) => c.label.toLowerCase().startsWith(term))) {
+          // Strong city match — return immediately for snappy UX.
+          return res.status(200).json({ provider: 'local', predictions: local });
+        }
+      }
+    } catch { /* non-fatal */ }
+
     const key = process.env.GOOGLE_MAPS_API_KEY;
     if (key) {
       try {
@@ -45,11 +61,20 @@ export default async function handler(req, res) {
     }
 
     // Keyless fallback: OpenStreetMap Nominatim (global, no bias).
-    const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&q=${encodeURIComponent(q)}`;
-    const r = await fetch(url, { headers: { 'User-Agent': 'Velora-Booking/1.0 (booking app)' } });
-    const j = await r.json();
-    const predictions = (Array.isArray(j) ? j : []).map((p) => ({ label: p.display_name, lat: +p.lat, lng: +p.lon }));
-    return res.status(200).json({ provider: 'osm', predictions });
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=6&q=${encodeURIComponent(q)}`;
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 5000);
+      const r = await fetch(url, { headers: { 'User-Agent': 'Velora-Booking/1.0 (booking app)' }, signal: ctrl.signal });
+      clearTimeout(t);
+      const j = await r.json();
+      const predictions = (Array.isArray(j) ? j : []).map((p) => ({ label: p.display_name, lat: +p.lat, lng: +p.lon }));
+      const local = req._localCities || [];
+      return res.status(200).json({ provider: 'osm', predictions: [...local, ...predictions].slice(0, 8) });
+    } catch (e) {
+      if (req._localCities?.length) return res.status(200).json({ provider: 'local', predictions: req._localCities });
+      throw e;
+    }
   } catch (err) {
     console.error('[geocode:error]', err.message);
     res.status(200).json({ predictions: [] });
