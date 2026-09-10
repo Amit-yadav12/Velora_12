@@ -6,7 +6,7 @@ import { LocationProvider } from './contexts/LocationContext';
 import { handleGoogleRedirect } from './lib/googleAuth';
 import { CustomerGate, AdminGate } from './app/Guards';
 import AuroraBackground from './components/premium/AuroraBackground';
-import { ensureDemoOps, ensureDemoSeeded, ensureFullMenus } from './lib/demoStore';
+import { ensureDemoOps, ensureDemoSeeded } from './lib/demoStore';
 
 // Customer (product-first) pages — Home eager, rest lazy for fast first paint
 import Home from './pages/customer/Home';
@@ -48,7 +48,7 @@ function ScrollToTop() {
 export default function App() {
   // Signal the boot watchdog (index.html) that first render committed.
   useEffect(() => {
-    try { (window as any).__veloraBooted = true; } catch { /* ignore */ }
+    try { window.__veloraBooted = true; } catch { /* ignore */ }
     // Seed the isolated demo tenant (showcase businesses/services/staff) so
     // the demo environment is complete from the very first page load.
     try { ensureDemoSeeded(); ensureDemoOps(); } catch { /* non-fatal */ }

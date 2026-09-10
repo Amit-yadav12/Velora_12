@@ -7,12 +7,16 @@ import { toast } from '../../services/events';
 import { ist, istTime, istDate, istDateTime } from '../../lib/format';
 import { inr } from '../../lib/format';
 import { canTransition, isActionable } from '../../lib/bookingStatus';
+import type { ConsoleAction } from '../../services/consoleActions';
+import type { ConsoleBooking } from '../../lib/types';
+import type { LucideIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 export default function AdminAppointments() {
   const { bookings, loading, reload } = useConsoleData();
   const [filter, setFilter] = useState('all');
   const [busy, setBusy] = useState<number | string | null>(null);
-  const [detail, setDetail] = useState<any>(null);
+  const [detail, setDetail] = useState<ConsoleBooking | null>(null);
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: bookings.length, pending: 0, confirmed: 0, completed: 0, cancelled: 0 };
@@ -21,18 +25,18 @@ export default function AdminAppointments() {
   }, [bookings]);
 
   const filtered = useMemo(
-    () => filter === 'all' ? bookings : bookings.filter((b: any) => b.status === filter),
+    () => filter === 'all' ? bookings : bookings.filter((b) => b.status === filter),
     [bookings, filter],
   );
 
-  const act = async (b: any, action: any) => {
+  const act = async (b: ConsoleBooking, action: ConsoleAction) => {
     setBusy(b.id);
     const ok = await applyBookingAction(b, action);
     if (ok) {
       const applied: Record<string, string> = { confirm: 'confirmed', complete: 'completed', cancel: 'cancelled', check_in: 'checked_in', no_show: 'no_show' };
       toast(action === 'cancel' ? 'Booking cancelled' : `Booking ${(applied[action] || 'updated').replace('_', ' ').toLowerCase()}`, 'success');
       const nextStatus = applied[action];
-      setDetail((d: any) => (d && String(d.id) === String(b.id) && nextStatus ? { ...d, status: nextStatus } : d));
+      setDetail((d) => (d && String(d.id) === String(b.id) && nextStatus ? { ...d, status: nextStatus } : d));
       reload();
     }
     setBusy(null);
@@ -40,7 +44,7 @@ export default function AdminAppointments() {
 
   const exportCsv = () => {
     const rows = [['Ref', 'Customer', 'Email', 'Service', 'Staff', 'Business', 'When', 'Status', 'Price']];
-    filtered.forEach((b: any) => rows.push([b.ref, b.customer_name, b.customer_email, b.service_name, b.employee_name || '', b.resource_name, istDate(b.start_time) + ' ' + istTime(b.start_time), b.status, b.price]));
+    filtered.forEach((b) => rows.push([b.ref, b.customer_name || '', b.customer_email || '', b.service_name, b.employee_name || '', b.resource_name || '', istDate(b.start_time) + ' ' + istTime(b.start_time), b.status, String(b.price ?? '')]));
     const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
     const a = document.createElement('a');
@@ -81,7 +85,7 @@ export default function AdminAppointments() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((b: any) => (
+                {filtered.map((b) => (
                   <tr key={b.id} className="border-b border-app last:border-0 hover:bg-[var(--surface-hover)] transition-colors">
                     <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{b.ref} {b.local && <DemoBadge />}</td>
                     <td className="px-4 py-3">
@@ -132,8 +136,8 @@ export default function AdminAppointments() {
             <div className="grid sm:grid-cols-2 gap-3">
               <InfoRow icon={Mail} label="Customer" value={<span>{detail.customer_name}<span className="block text-xs text-dim">{detail.customer_email}</span></span>} />
               {detail.customer_phone && <InfoRow icon={Phone} label="Phone" value={detail.customer_phone} />}
-              <InfoRow icon={Clock} label="When" value={`${istDate(detail.start_time)}, ${istTime(detail.start_time)} — ${istTime(detail.end_time)}`} />
-              <InfoRow icon={Clock} label="Duration" value={`${Math.max(0, Math.round((new Date(detail.end_time).getTime() - new Date(detail.start_time).getTime()) / 60000))} min`} />
+              <InfoRow icon={Clock} label="When" value={`${istDate(detail.start_time)}, ${istTime(detail.start_time)} — ${istTime(detail.end_time || detail.start_time)}`} />
+              <InfoRow icon={Clock} label="Duration" value={`${Math.max(0, Math.round((new Date(detail.end_time || detail.start_time).getTime() - new Date(detail.start_time).getTime()) / 60000))} min`} />
               <InfoRow icon={MapPin} label="Service" value={`${detail.service_name}${detail.employee_name ? ` · ${detail.employee_name}` : ''}`} />
               <InfoRow icon={MapPin} label="Business" value={detail.resource_name} />
               <InfoRow icon={MapPin} label="Location" value={detail.location || '—'} />
@@ -172,7 +176,7 @@ export default function AdminAppointments() {
   );
 }
 
-function InfoRow({ icon: Icon, label, value }: { icon: any; label: string; value: any }) {
+function InfoRow({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: ReactNode }) {
   return (
     <div className="rounded-xl border border-app p-3 flex items-start gap-3">
       <div className="h-8 w-8 rounded-lg bg-surface grid place-items-center shrink-0"><Icon className="h-4 w-4 text-dim" /></div>

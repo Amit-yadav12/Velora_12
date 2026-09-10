@@ -4,11 +4,12 @@
 // ratings, photos, hours) which we merge with Velora's synthetic booking data.
 
 import type { City } from './cities';
+import type { Business } from './product';
 
 export interface MapCenter { lat: number; lng: number; label?: string }
 
 export function googleKey(): string {
-  return (import.meta as any)?.env?.VITE_GOOGLE_MAPS_API_KEY || '';
+  return import.meta.env?.VITE_GOOGLE_MAPS_API_KEY || '';
 }
 
 /** Keyless universal embed — renders real Google Maps in an iframe. */
@@ -112,7 +113,7 @@ export async function fetchLivePlaces(opts: {
 }
 
 /** Normalize a live Google place into a Velora business shape (booking-ready). */
-export function liveToBusiness(p: LivePlace, cityName: string, categoryFallback = 'Clinics'): any {
+export function liveToBusiness(p: LivePlace, cityName: string, categoryFallback = 'Clinics'): Business {
   // Production fallback uses local /biz/ images, zero placeholder-image.
   const fallbackImg = `/biz/clinic.jpg`;
   return {

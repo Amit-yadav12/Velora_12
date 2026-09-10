@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ist } from '../../lib/format';
 import { motion } from 'framer-motion';
 import { TrendingDown, Sparkles } from 'lucide-react';
+import type { HeatmapData } from '../../lib/types';
 
 function color(occ: number) {
   if (occ >= 80) return 'rgba(239,68,68,0.85)';
@@ -12,7 +13,7 @@ function color(occ: number) {
 }
 
 export default function Heatmap({ businessId, onPickDate }: { businessId?: number | string; onPickDate?: (date: string) => void }) {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<HeatmapData | null>(null);
   useEffect(() => {
     let alive = true;
     import('../../lib/hybridData').then(({ fetchHeatmap }) =>
@@ -30,7 +31,7 @@ export default function Heatmap({ businessId, onPickDate }: { businessId?: numbe
         <div><p className="font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4 text-[var(--color-brand-indigo)]" /> Availability forecast</p><p className="text-xs text-dim mt-0.5">Predicted occupancy · next 14 days</p></div>
       </div>
       <div className="grid grid-cols-7 gap-1.5">
-        {days.map((d: any, i: number) => (
+        {days.map((d, i: number) => (
           <motion.button key={d.date} onClick={() => onPickDate?.(d.date)}
             initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.02 }}
             whileHover={{ scale: 1.08 }}

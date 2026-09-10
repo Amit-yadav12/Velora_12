@@ -1,6 +1,8 @@
 // Velora AI smart search — fuzzy matching, instant suggestions, trending,
 // recently-viewed and personalized ranking. Pure functions, no network.
 
+import type { Business } from './product';
+
 export interface SearchFilters {
   category?: string;
   minRating?: number;
@@ -73,7 +75,7 @@ export interface Suggestion { kind: 'business' | 'category' | 'service' | 'area'
 
 export function buildSuggestions(opts: {
   query: string;
-  businesses: any[];
+  businesses: Business[];
   categories: { name: string }[];
   city: string;
   limit?: number;
@@ -167,7 +169,7 @@ export function pushSearchHistory(q: string): void {
 
 // ---- Personalized ranking ----
 
-export function personalizedBoost(biz: any): number {
+export function personalizedBoost(biz: Business): number {
   try {
     const recent = readRecentViews();
     if (!recent.length) return 0;

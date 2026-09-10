@@ -12,8 +12,13 @@ import { onBusinessesChanged, onDemoReset, onServicesChanged } from '../../servi
 import DiscoverCard from '../../components/premium/DiscoverCard';
 import LocationBar from '../../components/premium/LocationBar';
 import { fetchDiscover } from '../../lib/hybridData';
-import { readRecentViews, pushSearchHistory } from '../../lib/smartSearch';
+import { readRecentViews, pushSearchHistory, type RecentView } from '../../lib/smartSearch';
 import { prefetch } from '../../lib/smartCache';
+
+const recentToCard = (r: RecentView): Business => ({
+  id: r.id, name: r.name, category: r.category, city: r.city,
+  image_url: r.image_url, rating: r.rating ?? 0, review_count: 0,
+});
 
 export default function Home() {
   const { profile, user } = useAuth();
@@ -34,10 +39,10 @@ export default function Home() {
     fetchDiscover({ city: city.name, lat: origin.lat, lng: origin.lng, sort: 'distance' })
       .then((disc) => {
         if (!alive) return;
-        setBusinesses(disc.results as Business[]);
+        setBusinesses(disc.results);
         setLoading(false);
         // Intelligent prefetch: warm top detail pages during idle time.
-        prefetch(disc.results.slice(0, 6).map((b: any) => `/api/businesses?id=${b.id}`));
+        prefetch(disc.results.slice(0, 6).map((b) => `/api/businesses?id=${b.id}`));
       })
       .catch(() => alive && setLoading(false));
     return () => { alive = false; };
@@ -47,26 +52,25 @@ export default function Home() {
   useEffect(() => {
     const refresh = () => {
       fetchDiscover({ city: city.name, lat: origin.lat, lng: origin.lng, sort: 'distance' })
-        .then((disc) => setBusinesses(disc.results as Business[]))
+        .then((disc) => setBusinesses(disc.results))
         .catch(() => {});
     };
     const offs = [onBusinessesChanged(refresh), onServicesChanged(refresh), onDemoReset(refresh)];
     return () => { offs.forEach((off) => off()); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [city.name, origin.lat, origin.lng]);
 
   useEffect(() => {
     // Instant local recents first, then server merge (city-pinned).
     const local = readRecentViews().filter((r) => !r.city || r.city === city.name);
-    if (local.length) setRecent(local as unknown as Business[]);
+    if (local.length) setRecent(local.map(recentToCard));
     if (!user) return;
-    apiGet(`/api/track-view?user_id=${user.id}`)
+    apiGet<RecentView[]>(`/api/track-view?user_id=${user.id}`)
       .then((r) => {
         if (!Array.isArray(r)) return;
-        const pinned = r.filter((b: any) => !b.city || b.city === city.name);
+        const pinned = r.filter((b) => !b.city || b.city === city.name);
         setRecent((prev) => {
-          const seen = new Set(pinned.map((b: any) => String(b.id)));
-          return [...pinned, ...prev.filter((b) => !seen.has(String(b.id)))].slice(0, 8) as Business[];
+          const seen = new Set(pinned.map((b) => String(b.id)));
+          return [...pinned.map(recentToCard), ...prev.filter((b) => !seen.has(String(b.id)))].slice(0, 8);
         });
       })
       .catch(() => {});
@@ -74,10 +78,10 @@ export default function Home() {
 
   const submitSearch = (e: React.FormEvent) => { e.preventDefault(); if (q.trim()) pushSearchHistory(q.trim()); nav(`/explore?q=${encodeURIComponent(q)}`); };
 
-  const featured = businesses.filter(b => (b as any).featured).slice(0, 3);
+  const featured = businesses.filter(b => b.featured).slice(0, 3);
   const nearby = businesses.slice(0, 8);
-  const openNow = businesses.filter((b: any) => b.open_now && b.next_available).slice(0, 4);
-  const recommended = [...businesses].sort((a: any, b: any) => (b.ai_score || b.rating) - (a.ai_score || a.rating)).slice(0, 8);
+  const openNow = businesses.filter((b) => b.open_now && b.next_available).slice(0, 4);
+  const recommended = [...businesses].sort((a, b) => (b.ai_score || b.rating) - (a.ai_score || a.rating)).slice(0, 8);
 
   return (
     <div className="space-y-9">
@@ -117,7 +121,7 @@ export default function Home() {
         <section>
           <SectionTitle title="Available right now" />
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {openNow.map((b: any, i) => (
+            {openNow.map((b, i) => (
               <motion.div key={b.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
                 <Link to={`/business/${b.id}`} className="card p-4 block group h-full">
                   <div className="flex items-center gap-2 text-xs text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 pulse-dot" /> Open now</div>
@@ -151,7 +155,7 @@ export default function Home() {
           <Link to="/explore?view=map" className="text-sm text-[var(--color-brand-indigo)] font-medium">Open map</Link>
         </div>
         <Grid className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {(loading ? Array.from({ length: 8 }) : nearby).map((b: any, i) => b ? <DiscoverCard key={b.id} b={b} /> : <BusinessCardSkeleton key={i} />)}
+          {(loading ? Array.from({ length: 8 }, () => null) : nearby).map((b, i) => b ? <DiscoverCard key={b.id} b={b} /> : <BusinessCardSkeleton key={i} />)}
         </Grid>
         {!loading && nearby.length === 0 && (
           <button onClick={() => nav('/explore')} className="card p-6 w-full flex items-center gap-3 text-left"><div className="h-10 w-10 rounded-xl grad-btn grid place-items-center"><Compass className="h-5 w-5 text-white" /></div><div><p className="font-medium">Explore all providers</p><p className="text-sm text-dim">Browse every business across categories.</p></div></button>

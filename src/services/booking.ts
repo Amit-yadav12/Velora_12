@@ -2,6 +2,7 @@
 // Every attempt carries an idempotency key so retries, double-clicks and
 // flaky networks can never create duplicate bookings server-side.
 import { apiSend } from '../lib/api';
+import { errMsg, type BookingConfirmation } from '../lib/types';
 
 export interface BookingPayload {
   business_id: number | string;
@@ -39,11 +40,11 @@ function friendlyError(message: string): string {
   return message;
 }
 
-export async function submitBooking(payload: BookingPayload): Promise<any> {
+export async function submitBooking(payload: BookingPayload): Promise<BookingConfirmation> {
   const body = { ...payload, idempotency_key: payload.idempotency_key || newIdempotencyKey() };
   try {
-    return await apiSend('/api/book', 'POST', body);
-  } catch (e: any) {
-    throw new Error(friendlyError(e?.message));
+    return await apiSend<BookingConfirmation>('/api/book', 'POST', body);
+  } catch (e: unknown) {
+    throw new Error(friendlyError(errMsg(e)));
   }
 }

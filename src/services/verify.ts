@@ -67,7 +67,7 @@ export async function verifyToken(input: string): Promise<VerifyResult> {
   } catch {
     throw new Error("We couldn't reach Velora right now. Check your connection and try again.");
   }
-  const data = (await res.json().catch(() => ({}))) as VerifyResult;
-  if (!res.ok) throw new Error((data as any)?.error || 'Verification failed. Please try again.');
+  const data = (await res.json().catch(() => ({}))) as VerifyResult & { error?: string };
+  if (!res.ok) throw new Error(data.error || 'Verification failed. Please try again.');
   return data;
 }

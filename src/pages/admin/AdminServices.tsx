@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Plus, Trash2, Pencil, Power } from 'lucide-react';
 import { PageHeader, Spinner, EmptyState, DemoBadge, Modal, Field, inputCls, btnGhost, btnPrimary } from '../../components/ui';
 import { useConsoleData } from '../../lib/useConsoleData';
@@ -6,27 +6,29 @@ import { inr } from '../../lib/format';
 import { saveDemoService, updateDemoService, deleteDemoService } from '../../lib/demoStore';
 import { apiSend } from '../../lib/api';
 import { toast } from '../../services/events';
+import { errMsg } from '../../lib/types';
+import type { BusinessService } from '../../lib/product';
 
 interface SvcForm { business_id: string; name: string; description: string; duration_min: number; price: number; }
 
 export default function AdminServices() {
   const { services, businesses, loading, reload } = useConsoleData();
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<BusinessService | null>(null);
   const [form, setForm] = useState<SvcForm>({ business_id: '', name: '', description: '', duration_min: 30, price: 0 });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
-  const bizName = (id: any) => businesses.find((b) => String(b.id) === String(id))?.name || '—';
-  const demoBiz = useMemo(() => businesses.filter((b: any) => String(b.id).startsWith('demo-biz-')), [businesses]);
-  const list = useMemo(() => [...services].sort((a: any, b: any) => String(bizName(a.business_id)).localeCompare(String(bizName(b.business_id)))), [services, businesses]);
+  const bizName = useCallback((id: number | string) => businesses.find((b) => String(b.id) === String(id))?.name || '—', [businesses]);
+  const demoBiz = useMemo(() => businesses.filter((b) => String(b.id).startsWith('demo-biz-')), [businesses]);
+  const list = useMemo(() => [...services].sort((a, b) => String(bizName(a.business_id)).localeCompare(String(bizName(b.business_id)))), [services, bizName]);
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ business_id: demoBiz[0]?.id || '', name: '', description: '', duration_min: 30, price: 0 });
+    setForm({ business_id: demoBiz[0] ? String(demoBiz[0].id) : '', name: '', description: '', duration_min: 30, price: 0 });
     setErr(''); setOpen(true);
   };
-  const openEdit = (s: any) => {
+  const openEdit = (s: BusinessService) => {
     setEditing(s);
     setForm({ business_id: String(s.business_id), name: s.name, description: s.description || '', duration_min: s.duration_min, price: s.price });
     setErr(''); setOpen(true);
@@ -49,24 +51,24 @@ export default function AdminServices() {
       toast(editing ? 'Service updated' : 'Service created — bookable immediately', 'success');
       setOpen(false);
       reload();
-    } catch (e: any) {
-      setErr(e?.message || 'Could not save the service.');
+    } catch (e: unknown) {
+      setErr(errMsg(e) || 'Could not save the service.');
     } finally {
       setBusy(false);
     }
   };
 
-  const toggleActive = async (s: any) => {
+  const toggleActive = async (s: BusinessService) => {
     const next = s.active === false;
     if (s.demo) updateDemoService(String(s.id), { active: next });
-    else { try { await apiSend('/api/admin', 'PUT', { resource: 'services', id: s.id, active: next }); } catch (e: any) { toast(e.message, 'error'); return; } }
+    else { try { await apiSend('/api/admin', 'PUT', { resource: 'services', id: s.id, active: next }); } catch (e: unknown) { toast(errMsg(e), 'error'); return; } }
     toast(next ? 'Service active — customers can book it' : 'Service deactivated — hidden from booking', next ? 'success' : 'info');
     reload();
   };
 
-  const del = async (s: any) => {
+  const del = async (s: BusinessService) => {
     if (s.demo) deleteDemoService(String(s.id));
-    else { try { await apiSend('/api/admin', 'DELETE', { resource: 'services', id: s.id }); } catch (e: any) { toast(e.message, 'error'); return; } }
+    else { try { await apiSend('/api/admin', 'DELETE', { resource: 'services', id: s.id }); } catch (e: unknown) { toast(errMsg(e), 'error'); return; } }
     toast('Service deleted', 'info');
     reload();
   };
@@ -95,7 +97,7 @@ export default function AdminServices() {
                 </tr>
               </thead>
               <tbody>
-                {list.map((s: any) => (
+                {list.map((s) => (
                   <tr key={s.id} className="border-b border-app last:border-0 hover:bg-[var(--surface-hover)] transition-colors">
                     <td className="px-4 py-3">
                       <p className="font-medium">{s.name} {s.demo && <DemoBadge />}</p>
@@ -127,7 +129,7 @@ export default function AdminServices() {
           <Field label="Business *">
             <select className={inputCls} value={form.business_id} onChange={(e) => setForm({ ...form, business_id: e.target.value })} disabled={!!editing}>
               <option value="">Select business</option>
-              {(demoBiz.length ? [...demoBiz, ...businesses.filter((b: any) => !String(b.id).startsWith('demo-biz-'))] : businesses).map((b: any) => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+              {(demoBiz.length ? [...demoBiz, ...businesses.filter((b) => !String(b.id).startsWith('demo-biz-'))] : businesses).map((b) => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
             </select>
           </Field>
           <Field label="Service name *"><input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Signature Haircut" /></Field>

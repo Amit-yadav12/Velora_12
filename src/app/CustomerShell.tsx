@@ -12,6 +12,7 @@ import AIConcierge from '../components/premium/AIConcierge';
 import InstallPrompt from '../components/premium/InstallPrompt';
 import ToastHost from '../components/premium/ToastHost';
 import { onNotifsChanged } from '../services/events';
+import type { NotificationRow } from '../lib/types';
 
 const tabs = [
   { to: '/', label: 'Home', icon: Home },
@@ -35,11 +36,11 @@ export default function CustomerShell({ children }: { children: React.ReactNode 
       try {
         const raw = localStorage.getItem('velora-local-notifs');
         const arr = raw ? JSON.parse(raw) : [];
-        return Array.isArray(arr) ? arr.filter((n: any) => !n.read && n.audience === 'customer').length : 0;
+        return Array.isArray(arr) ? arr.filter((n: NotificationRow) => !n.read && n.audience === 'customer').length : 0;
       } catch { return 0; }
     };
     fetch('/api/notifications?audience=customer').then(r => r.json()).then(d => {
-      const server = Array.isArray(d) ? d.filter((n: any) => !n.read && n.audience !== 'admin').length : 0;
+      const server = Array.isArray(d) ? d.filter((n: NotificationRow) => !n.read && n.audience !== 'admin').length : 0;
       setUnread(server + countLocal());
     }).catch(() => setUnread(countLocal()));
   };

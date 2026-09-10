@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
+import { X, type LucideIcon } from 'lucide-react';
 
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
   return (
@@ -46,7 +46,7 @@ export function EmptyState({ title, sub, action }: { title: string; sub?: string
 
 /** Premium metric card — same shell as the existing dashboard cards. */
 export function StatCard({ label, value, icon: Icon, color = '#818cf8', sub, delay = 0 }: {
-  label: string; value: ReactNode; icon: any; color?: string; sub?: string; delay?: number;
+  label: string; value: ReactNode; icon: LucideIcon; color?: string; sub?: string; delay?: number;
 }) {
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay }} className="card p-5 group hover:border-[var(--border-strong)] transition-colors">

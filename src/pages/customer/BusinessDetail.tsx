@@ -6,7 +6,8 @@ import { Business, BusinessService, BusinessStaff, categoryColor, imgOnError } f
 import { CategoryIcon } from '../../components/product';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiSend } from '../../lib/api';
-import { submitBooking, newIdempotencyKey } from '../../services/booking';
+import { submitBooking, newIdempotencyKey, type BookingPayload } from '../../services/booking';
+import { errMsg, type BookingConfirmation, type ReviewRow } from '../../lib/types';
 import { onBookingsChanged, onBusinessesChanged, onServicesChanged, onStaffChanged, toast } from '../../services/events';
 import { inr, istDate, istTime, istToday } from '../../lib/format';
 import { isValidIndianPhone } from '../../lib/india';
@@ -28,7 +29,7 @@ export default function BusinessDetail() {
   const nav = useNavigate();
   const [params] = useSearchParams();
   const { profile, user } = useAuth();
-  const [biz, setBiz] = useState<(Business & any) | null>(null);
+  const [biz, setBiz] = useState<Business | null>(null);
   const [loading, setLoading] = useState(true);
   const [service, setService] = useState<BusinessService | null>(null);
   const [staff, setStaff] = useState<BusinessStaff | null>(null);
@@ -39,9 +40,9 @@ export default function BusinessDetail() {
   const [slot, setSlot] = useState('');
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<BookingConfirmation | null>(null);
   const [err, setErr] = useState('');
-  const [reviews, setReviews] = useState<any[]>([]);
+  const [reviews, setReviews] = useState<ReviewRow[]>([]);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [custName, setCustName] = useState('');
   const [custEmail, setCustEmail] = useState('');
@@ -55,7 +56,7 @@ export default function BusinessDetail() {
       setCustName((n) => n || profile.full_name || '');
       setCustEmail((e) => e || profile.email || '');
     }
-  }, [profile?.full_name, profile?.email]);
+  }, [profile]);
 
   useEffect(() => {
     let alive = true;
@@ -63,8 +64,8 @@ export default function BusinessDetail() {
     setResult(null);
     setErr('');
     // Live Google places resolve from the cached hydrated profile first.
-    const cached = id ? cacheGet<any>(`business:${id}`) : null;
-    const apply = (d: any) => {
+    const cached = id ? cacheGet<Business>(`business:${id}`) : null;
+    const apply = (d: Business | null) => {
       if (!alive || !d) return;
       setBiz(d);
       setService(d?.services?.[0] || null);
@@ -81,7 +82,7 @@ export default function BusinessDetail() {
     }
     if (user && id) apiSend('/api/track-view', 'POST', { business_id: id, user_id: user.id }).catch(() => {});
     const refresh = () => {
-      fetchBusiness(id!, city.name).then((d) => { if (d && alive) { setBiz(d); setService((s) => d.services?.find((x: any) => String(x.id) === String(s?.id)) || d.services?.[0] || s); } }).catch(() => {});
+      fetchBusiness(id!, city.name).then((d) => { if (d && alive) { setBiz(d); setService((s) => d.services?.find((x) => String(x.id) === String(s?.id)) || d.services?.[0] || s); } }).catch(() => {});
     };
     const offs = [onBusinessesChanged(refresh), onServicesChanged(refresh), onStaffChanged(refresh), onBookingsChanged(refresh)];
     return () => { alive = false; offs.forEach((off) => off()); };
@@ -101,10 +102,10 @@ export default function BusinessDetail() {
       setSlots([]); setRecommended([]);
     }).finally(() => alive && setLoadingSlots(false));
     return () => { alive = false; };
-  }, [biz, service, date, staff?.id, coords?.lat, coords?.lng]);
+  }, [biz, service, date, staff, coords]);
 
   // Stable per slot+service so retries replay the same booking, never a duplicate.
-  const idemKey = useMemo(() => newIdempotencyKey(), [service?.id, slot]);
+  const idemKey = useMemo(() => `${service?.id || 'svc'}|${slot}|${newIdempotencyKey()}`, [service?.id, slot]);
 
   // Booking flow: review the details (editable contact info), then confirm.
   const openReview = () => {
@@ -129,7 +130,7 @@ export default function BusinessDetail() {
           && b.status !== 'cancelled' && b.status !== 'no_show'
           && new Date(b.start_time) < end && new Date(b.end_time) > start,
       );
-      const activeStaffCount = ((biz as any).staff || []).filter((s: any) => s.active !== false).length;
+      const activeStaffCount = (biz!.staff || []).filter((s) => s.active !== false).length;
       const capacity = staff ? 1 : Math.max(1, activeStaffCount);
       const blocking = staff
         ? overlaps.filter((b) => (b.staff_name || '').toLowerCase() === staff.name.toLowerCase())
@@ -149,12 +150,12 @@ export default function BusinessDetail() {
           service_duration: service!.duration_min || 30, service_price: Number(service!.price) || 0,
           staff_id: staff?.id != null ? String(staff.id) : null, staff_name: staff?.name || null,
           start_time: slot,
-          city: (biz as any).city || city.name, location: biz!.address,
+          city: biz!.city || city.name, location: biz!.address,
           customer_name: custName.trim(), customer_email: custEmail.trim(), customer_phone: custPhone.trim(),
           status: 'pending',
         });
         setResult({
-          booking: { ...booking, employee_name: booking.staff_name }, invoice, business: biz,
+          booking: { ...booking, employee_name: booking.staff_name }, invoice, business: biz || undefined,
           maps_link: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz!.address || biz!.name)}`,
           qr_payload, local: true,
           pipeline: { email: 'log-fallback' },
@@ -163,7 +164,7 @@ export default function BusinessDetail() {
         return;
       }
 
-      const payload: any = {
+      const payload: BookingPayload = {
         business_id: biz!.id, service_id: service!.id, staff_id: staff?.id || null,
         start_time: slot, customer_name: custName.trim(), customer_email: custEmail.trim(),
         idempotency_key: idemKey,
@@ -171,9 +172,9 @@ export default function BusinessDetail() {
       // Live Google businesses travel with their hydrated snapshot.
       if (typeof biz!.id === 'string' && String(biz!.id).startsWith('live-')) {
         payload.business_snapshot = {
-          name: biz!.name, address: biz!.address, phone: (biz as any).phone,
-          lat: biz!.lat, lng: biz!.lng, services: (biz!.services || []).map((s: any) => ({ id: s.id, name: s.name, duration_min: s.duration_min, price: s.price })),
-          staff: ((biz as any).staff || []).map((s: any) => ({ id: s.id, name: s.name })),
+          name: biz!.name, address: biz!.address, phone: biz!.phone,
+          lat: biz!.lat, lng: biz!.lng, services: (biz!.services || []).map((s) => ({ id: s.id, name: s.name, duration_min: s.duration_min, price: s.price })),
+          staff: (biz!.staff || []).map((s) => ({ id: s.id, name: s.name })),
         };
       }
       const res = await submitBooking(payload);
@@ -184,8 +185,8 @@ export default function BusinessDetail() {
           saveLocalBooking({
             id: bk.id, ref: bk.ref, business_id: biz!.id, business_name: biz!.name,
             service_name: service!.name, staff_name: staff?.name || null,
-            start_time: bk.start_time, end_time: bk.end_time, status: bk.status,
-            price: Number(service!.price) || 0, city: (biz as any).city || city.name,
+            start_time: bk.start_time, end_time: bk.end_time || bk.start_time, status: bk.status || 'confirmed',
+            price: Number(service!.price) || 0, city: biz!.city || city.name,
             location: biz!.address, customer_name: custName.trim(), customer_email: custEmail.trim(),
           });
           if (res.invoice) {
@@ -203,7 +204,7 @@ export default function BusinessDetail() {
       } catch { /* non-fatal */ }
       setResult(res);
       toast(res?.deduplicated ? 'Booking already confirmed' : 'Booking confirmed', 'success');
-      } catch (e: any) {
+      } catch (e: unknown) {
       // Ultimate fallback: confirm locally so the demo flow never dead-ends.
       try {
         const ref = genLocalRef();
@@ -225,20 +226,20 @@ export default function BusinessDetail() {
         saveLocalBooking({
           id: bk.id, ref, business_id: biz!.id, business_name: biz!.name, service_name: service!.name,
           staff_name: staff?.name || null, start_time: bk.start_time, end_time: bk.end_time,
-          status: 'confirmed', price: Number(service!.price) || 0, city: (biz as any).city || city.name,
+          status: 'confirmed', price: Number(service!.price) || 0, city: biz!.city || city.name,
           location: biz!.address, customer_name: custName.trim(), customer_email: custEmail.trim(), customer_phone: custPhone.trim(),
           qr_salt: salt,
         });
         saveLocalInvoice({ id: ref, number: invoice.number, booking_ref: ref, customer_name: custName.trim() || '', amount: Number(service!.price) || 0, tax, total: invoice.total, status: 'issued' });
         pushLocalNotification({ audience: 'customer', title: 'Booking confirmed', body: `${service!.name} at ${biz!.name} — ${ref}`, type: 'success', read: false, booking_ref: ref });
         setResult({
-          booking: bk, invoice, business: biz,
+          booking: bk, invoice, business: biz || undefined,
           maps_link: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz!.address || biz!.name)}`,
           qr_payload: localVerifyUrl(ref, salt),
           pipeline: { email: 'log-fallback' },
         });
       } catch {
-        setErr(e.message);
+        setErr(errMsg(e));
       }
     } finally { setSubmitting(false); setReviewOpen(false); }
   };
@@ -246,20 +247,20 @@ export default function BusinessDetail() {
   const mapSrc = useMemo(() => {
     if (!biz) return null;
     // Real Google Maps centered on the business (keyless embed).
-    return googleEmbedUrl(`${biz.name}, ${biz.address || biz.city || ''}`, biz.lat != null ? { lat: biz.lat, lng: biz.lng!, label: biz.name } : { lat: coords.lat, lng: coords.lng, label: city.name }, 15);
+    return googleEmbedUrl(`${biz.name}, ${biz.address || biz.city || ''}`, biz.lat != null && biz.lng != null ? { lat: biz.lat, lng: biz.lng, label: biz.name } : { lat: coords.lat, lng: coords.lng, label: city.name }, 15);
   }, [biz, coords.lat, coords.lng, city.name]);
 
   if (loading) return <div className="grid place-items-center py-32"><Loader2 className="h-6 w-6 animate-spin text-dim" /></div>;
   if (!biz) return <div className="card p-12 text-center">Business not found.</div>;
 
   const color = categoryColor(biz.category);
-  const offers = (biz as any).offers || [];
-  const facilities: string[] = (biz as any).facilities || [];
-  const amenities: string[] = (biz as any).amenities || [];
-  const photos: string[] = (biz as any).photos || [];
-  const isLive = !!(biz as any).live;
+  const offers = biz.offers || [];
+  const facilities: string[] = biz.facilities || [];
+  const amenities: string[] = biz.amenities || [];
+  const photos: string[] = biz.photos || [];
+  const isLive = !!biz.live;
 
-  if (result?.booking) return <SuccessExperience booking={result.booking} invoice={result.invoice || { total: Number(service?.price) || 0, number: result.booking.ref }} business={biz} mapsLink={result.maps_link || `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz.address || biz.name)}`} qrPayload={result.qr_payload} gmailComposeUrl={result.gmail_compose_url} emailStatus={result.pipeline?.email} onClose={() => nav('/appointments')} />;
+  if (result?.booking) return <SuccessExperience booking={result.booking} invoice={result.invoice || { total: Number(service?.price) || 0, number: result.booking.ref }} business={biz} mapsLink={result.maps_link || `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz.address || biz.name)}`} qrPayload={result.qr_payload || undefined} gmailComposeUrl={result.gmail_compose_url} emailStatus={result.pipeline?.email} onClose={() => nav('/appointments')} />;
 
   // Review + confirm — the final step of the booking engine
   const reviewModal = (
@@ -321,26 +322,26 @@ export default function BusinessDetail() {
         <div className="lg:col-span-2 space-y-6">
           <div className="flex flex-wrap gap-4 text-sm">
             <span className="inline-flex items-center gap-1.5"><Star className="h-4 w-4 fill-amber-400 text-amber-400" /><span className="font-medium">{Number(biz.rating).toFixed(1)}</span><span className="text-dim">({biz.review_count})</span></span>
-            <span className="inline-flex items-center gap-1.5 text-muted"><MapPin className="h-4 w-4" /> {biz.address}{(biz as any).pin && !String(biz.address).includes((biz as any).pin) ? ` ${ (biz as any).pin}` : ''}</span>
+            <span className="inline-flex items-center gap-1.5 text-muted"><MapPin className="h-4 w-4" /> {biz.address}{biz.pin && !String(biz.address).includes(biz.pin) ? ` ${biz.pin}` : ''}</span>
             <span className="inline-flex items-center gap-1.5 text-muted"><Clock className="h-4 w-4" /> {biz.open_time}–{biz.close_time}</span>
             {biz.phone && <a href={`tel:${biz.phone}`} className="inline-flex items-center gap-1.5 text-[var(--color-brand-indigo)]"><Phone className="h-4 w-4" /> {biz.phone}</a>}
           </div>
           {/* Live Google signals + queue snapshot */}
           <div className="flex flex-wrap gap-2">
-            {(biz as any).open_now != null && (
-              <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${(biz as any).open_now ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
-                <span className={`h-1.5 w-1.5 rounded-full ${(biz as any).open_now ? 'bg-emerald-400 pulse-dot' : 'bg-red-400'}`} />
-                {(biz as any).open_now ? 'Open now (live)' : 'Closed now (live)'}
+            {biz.open_now != null && (
+              <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${biz.open_now ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${biz.open_now ? 'bg-emerald-400 pulse-dot' : 'bg-red-400'}`} />
+                {biz.open_now ? 'Open now (live)' : 'Closed now (live)'}
               </span>
             )}
-            {(biz as any).wait_min != null && (
-              <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted"><Users className="h-3.5 w-3.5" /> ~{(biz as any).wait_min} min wait{(biz as any).queue_length ? ` · ${(biz as any).queue_length} in queue` : ''}</span>
+            {biz.wait_min != null && (
+              <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted"><Users className="h-3.5 w-3.5" /> ~{biz.wait_min} min wait{biz.queue_length ? ` · ${biz.queue_length} in queue` : ''}</span>
             )}
-            {(biz as any).ai_popularity != null && (
-              <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted"><Sparkles className="h-3.5 w-3.5 text-[var(--color-brand-indigo)]" /> {(biz as any).ai_popularity}% loved this week</span>
+            {biz.ai_popularity != null && (
+              <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted"><Sparkles className="h-3.5 w-3.5 text-[var(--color-brand-indigo)]" /> {biz.ai_popularity}% loved this week</span>
             )}
-            {(biz as any).website && (
-              <a href={(biz as any).website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted hover:text-[var(--text)]"><Globe className="h-3.5 w-3.5" /> Website</a>
+            {biz.website && (
+              <a href={biz.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted hover:text-[var(--text)]"><Globe className="h-3.5 w-3.5" /> Website</a>
             )}
           </div>
           <p className="text-muted">{biz.description}</p>
@@ -350,7 +351,7 @@ export default function BusinessDetail() {
             <div>
               <h2 className="font-semibold mb-3">Offers for you</h2>
               <div className="grid sm:grid-cols-2 gap-2.5">
-                {offers.map((o: any, i: number) => (
+                {offers.map((o, i: number) => (
                   <div key={i} className="rounded-2xl border border-dashed border-[var(--color-brand-indigo)]/40 bg-[var(--color-brand-indigo)]/5 p-3.5 flex items-start gap-3">
                     <div className="h-9 w-9 rounded-xl grad-btn grid place-items-center shrink-0"><Tag className="h-4 w-4 text-white" /></div>
                     <div className="min-w-0">

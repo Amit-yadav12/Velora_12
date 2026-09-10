@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { BadgeCheck, ShieldAlert, TicketX, Clock, Loader2, CalendarClock, Building2, Sparkles, ArrowRight } from 'lucide-react';
 import { LogoMark } from '../components/Logo';
 import { verifyToken, type VerifyResult } from '../services/verify';
+import { errMsg } from '../lib/types';
 
 function fmtWhen(iso?: string | null) {
   if (!iso) return '—';
@@ -27,7 +28,7 @@ export default function Verify() {
     setState({ loading: true, result: null, error: '' });
     verifyToken(token || '')
       .then((result) => alive && setState({ loading: false, result, error: '' }))
-      .catch((e: any) => alive && setState({ loading: false, result: null, error: e?.message || 'Verification failed.' }));
+      .catch((e: unknown) => alive && setState({ loading: false, result: null, error: errMsg(e) || 'Verification failed.' }));
     return () => { alive = false; };
   }, [token]);
 

@@ -1,8 +1,9 @@
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import supabase from '../lib/supabase';
+import type { User } from '@supabase/supabase-js';
 
 interface Profile { id: string; email: string; full_name: string; role: string; }
-interface Ctx { user: any; profile: Profile | null; loading: boolean; role: string; signOut: () => Promise<void>; refresh: () => void; }
+interface Ctx { user: User | null; profile: Profile | null; loading: boolean; role: string; signOut: () => Promise<void>; refresh: () => void; }
 const AuthContext = createContext<Ctx>({ user: null, profile: null, loading: true, role: 'customer', signOut: async () => {}, refresh: () => {} });
 
 const CACHE_KEY = 'velora-profile';
@@ -12,15 +13,15 @@ const writeCache = (p: Profile | null) => {
 };
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   // Guard against redirect loops / duplicate profile fetches.
   const lastUid = useRef<string | null>(null);
 
-  const applyProfile = (p: Profile | null) => { setProfile(p); writeCache(p); };
+  const applyProfile = useCallback((p: Profile | null) => { setProfile(p); writeCache(p); }, []);
 
-  const loadProfile = async (u: any) => {
+  const loadProfile = useCallback(async (u: User | null) => {
     if (!u) { applyProfile(null); return; }
     // Only trust cache if it matches this exact user.
     const cached = readCache();
@@ -29,7 +30,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data } = await supabase.from('profiles').select('*').eq('id', u.id).single();
       if (data) { applyProfile(data as Profile); return; }
       const created: Profile = {
-        id: u.id, email: u.email,
+        id: u.id, email: u.email || '',
         full_name: u.user_metadata?.full_name || u.email?.split('@')[0] || 'Guest',
         role: 'customer',
       };
@@ -38,10 +39,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error('[auth] loadProfile failed:', e);
       if (!cached || cached.id !== u.id) {
-        applyProfile({ id: u.id, email: u.email, full_name: u.email?.split('@')[0] || 'Guest', role: 'customer' });
+        applyProfile({ id: u.id, email: u.email || '', full_name: u.email?.split('@')[0] || 'Guest', role: 'customer' });
       }
     }
-  };
+  }, [applyProfile]);
 
   useEffect(() => {
     let mounted = true;
@@ -68,7 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
     });
     return () => { mounted = false; clearTimeout(safety); subscription.unsubscribe(); };
-  }, []);
+  }, [loadProfile, applyProfile]);
 
   const signOut = async () => {
     lastUid.current = null;

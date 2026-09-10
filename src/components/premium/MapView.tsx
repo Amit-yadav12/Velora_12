@@ -4,16 +4,16 @@ import 'leaflet/dist/leaflet.css';
 import { categoryColor } from '../../lib/product';
 import { Coords } from '../../lib/geo';
 
-interface MapBusiness { id: number; name: string; lat?: number; lng?: number; category: string; rating: number; ai_score?: number; }
+interface MapBusiness { id: number | string; name: string; lat?: number; lng?: number; category: string; rating: number; ai_score?: number; }
 
 // Lightweight, key-free interactive map (Leaflet + OSM tiles) with animated
 // pins, a pulsing "you are here" marker, and hover/active sync.
 export default function MapView({ origin, businesses, activeId, onSelect, theme }: {
-  origin: Coords; businesses: MapBusiness[]; activeId?: number | null; onSelect?: (id: number) => void; theme: 'dark' | 'light';
+  origin: Coords; businesses: MapBusiness[]; activeId?: number | string | null; onSelect?: (id: number | string) => void; theme: 'dark' | 'light';
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
-  const markersRef = useRef<Record<number, L.Marker>>({});
+  const markersRef = useRef<Record<string, L.Marker>>({});
   const originRef = useRef<L.Marker | null>(null);
   const tileRef = useRef<L.TileLayer | null>(null);
 
@@ -63,7 +63,7 @@ export default function MapView({ origin, businesses, activeId, onSelect, theme 
       markersRef.current[b.id] = marker;
       pts.push([bLat, bLng]);
     });
-    if (pts.length > 1) { try { map.fitBounds(L.latLngBounds(pts as any), { padding: [50, 50], maxZoom: 14 }); } catch { /* non-fatal */ } }
+    if (pts.length > 1) { try { map.fitBounds(L.latLngBounds(pts), { padding: [50, 50], maxZoom: 14 }); } catch { /* non-fatal */ } }
     // eslint-disable-next-line
   }, [businesses, activeId]);
 

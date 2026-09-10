@@ -1,9 +1,9 @@
 import { motion } from 'framer-motion';
-import { Moon, Sun, Bell, Globe, Shield, LogOut, ChevronRight } from 'lucide-react';
+import { Moon, Sun, Bell, Globe, Shield, LogOut, ChevronRight, type LucideIcon } from 'lucide-react';
 import { useTheme } from '../../lib/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 
 function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
   return <button onClick={onChange} className={`relative h-6 w-11 rounded-full transition-colors ${on ? 'grad-btn' : 'bg-[var(--surface-hover)]'}`}><motion.span layout className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow" style={{ left: on ? 22 : 2 }} /></button>;
@@ -35,7 +35,7 @@ export default function Settings() {
   );
 }
 
-function Setting({ icon: Icon, title, sub, children }: any) {
+function Setting({ icon: Icon, title, sub, children }: { icon: LucideIcon; title: string; sub: string; children: ReactNode }) {
   return (
     <div className="p-4 flex items-center gap-3">
       <div className="h-9 w-9 rounded-xl bg-surface grid place-items-center shrink-0"><Icon className="h-4 w-4 text-[var(--color-brand-indigo)]" /></div>

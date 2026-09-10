@@ -29,3 +29,6 @@ jobs:
 
       - name: Typecheck + production build
         run: npm run build
+
+      - name: Demo engine tests
+        run: npm run verify:demo

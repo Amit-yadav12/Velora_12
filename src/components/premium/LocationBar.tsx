@@ -76,7 +76,7 @@ export default function LocationBar() {
                 <button key={i} onClick={() => {
                   // City predictions pin the city; addresses set a manual point.
                   const first = (p.label || '').split(',')[0].trim();
-                  const asCity = getCity(first) || ((p as any).city ? getCity((p as any).city) : null);
+                  const asCity = getCity(first) || (p.city ? getCity(p.city) : null);
                   if (asCity) setCity(asCity.name);
                   else setManual({ ...p, label: p.label?.split(',').slice(0, 2).join(',') });
                   setOpen(false); setQ(''); setPreds([]);

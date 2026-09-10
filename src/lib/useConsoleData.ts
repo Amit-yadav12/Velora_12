@@ -8,17 +8,19 @@ import supabase from './supabase';
 import { apiGet } from './api';
 import { listLocalBookings } from './offlineStore';
 import { listDemoBusinesses, listDemoServices, listDemoStaff, listDemoCustomers } from './demoStore';
-import { deriveCustomers } from './metrics';
+import { deriveCustomers, type CustomerRecord } from './metrics';
 import {
   onBookingsChanged, onBusinessesChanged, onDemoReset, onNotifsChanged, onServicesChanged, onStaffChanged,
 } from '../services/events';
+import type { Business, BusinessService, BusinessStaff } from './product';
+import type { ConsoleBooking, ExplicitCustomer } from './types';
 
 export interface ConsoleData {
-  bookings: any[];
-  businesses: any[];
-  services: any[];
-  staff: any[];
-  customers: any[];
+  bookings: ConsoleBooking[];
+  businesses: Business[];
+  services: BusinessService[];
+  staff: BusinessStaff[];
+  customers: CustomerRecord[];
   loading: boolean;
   reload: () => void;
 }
@@ -32,15 +34,15 @@ export function useConsoleData(city?: string): ConsoleData {
   const load = useCallback(async () => {
     // Fail-soft parallel loads: each source degrades independently.
     const [serverBookings, serverBiz, serverServices, serverStaff, serverCustomers] = await Promise.all([
-      apiGet('/api/bookings').catch(() => null),
-      city ? apiGet(`/api/businesses?city=${encodeURIComponent(city)}`).catch(() => null) : apiGet('/api/admin?resource=business').catch(() => null),
-      apiGet('/api/admin?resource=services').catch(() => null),
-      apiGet('/api/admin?resource=staff').catch(() => null),
-      apiGet('/api/admin?resource=customers').catch(() => null),
+      apiGet<ConsoleBooking[]>('/api/bookings').catch(() => null),
+      city ? apiGet<Business[]>(`/api/businesses?city=${encodeURIComponent(city)}`).catch(() => null) : apiGet<Business[]>('/api/admin?resource=business').catch(() => null),
+      apiGet<BusinessService[]>('/api/admin?resource=services').catch(() => null),
+      apiGet<BusinessStaff[]>('/api/admin?resource=staff').catch(() => null),
+      apiGet<ExplicitCustomer[]>('/api/admin?resource=customers').catch(() => null),
     ]);
 
     // Bookings: server + demo tenant, de-duplicated by ref (server wins).
-    const serverB = Array.isArray(serverBookings) ? serverBookings : [];
+    const serverB: ConsoleBooking[] = Array.isArray(serverBookings) ? serverBookings : [];
     const localB = listLocalBookings().map((b) => ({
       id: b.id, ref: b.ref,
       customer_name: b.customer_name || 'Guest', customer_email: b.customer_email || '',
@@ -53,26 +55,26 @@ export function useConsoleData(city?: string): ConsoleData {
       qr_payload: b.qr_salt ? `local:${b.qr_salt}` : null,
       local: true,
     }));
-    const refs = new Set(serverB.map((b: any) => b.ref));
-    const bookings = [...serverB, ...localB.filter((b) => !refs.has(b.ref))];
+    const refs = new Set(serverB.map((b) => b.ref));
+    const bookings: ConsoleBooking[] = [...serverB, ...localB.filter((b) => !refs.has(b.ref))];
 
     // Businesses / services / staff: demo tenant merged with server rows.
     const demoBiz = listDemoBusinesses(city, true);
     const demoSvc = listDemoServices().map((s) => ({ ...s, demo: true }));
     const demoStaff = listDemoStaff().map((s) => ({ ...s, demo: true }));
-    const serverBizRows = Array.isArray(serverBiz) ? serverBiz : [];
-    const serverSvcRows = Array.isArray(serverServices) ? serverServices : [];
-    const serverStaffRows = Array.isArray(serverStaff) ? serverStaff : [];
-    const demoBizIds = new Set(demoBiz.map((b: any) => String(b.id)));
-    const demoSvcIds = new Set(demoSvc.map((s: any) => String(s.id)));
-    const demoStaffIds = new Set(demoStaff.map((s: any) => String(s.id)));
-    const businesses = [...demoBiz, ...serverBizRows.filter((b: any) => !demoBizIds.has(String(b.id)))];
-    const services = [...demoSvc, ...serverSvcRows.filter((s: any) => !demoSvcIds.has(String(s.id)))];
-    const staff = [...demoStaff, ...serverStaffRows.filter((s: any) => !demoStaffIds.has(String(s.id)))];
+    const serverBizRows: Business[] = Array.isArray(serverBiz) ? serverBiz : [];
+    const serverSvcRows: BusinessService[] = Array.isArray(serverServices) ? serverServices : [];
+    const serverStaffRows: BusinessStaff[] = Array.isArray(serverStaff) ? serverStaff : [];
+    const demoBizIds = new Set(demoBiz.map((b) => String(b.id)));
+    const demoSvcIds = new Set(demoSvc.map((s) => String(s.id)));
+    const demoStaffIds = new Set(demoStaff.map((s) => String(s.id)));
+    const businesses: Business[] = [...demoBiz, ...serverBizRows.filter((b) => !demoBizIds.has(String(b.id)))];
+    const services: BusinessService[] = [...demoSvc, ...serverSvcRows.filter((s) => !demoSvcIds.has(String(s.id)))];
+    const staff: BusinessStaff[] = [...demoStaff, ...serverStaffRows.filter((s) => !demoStaffIds.has(String(s.id)))];
 
     // Customers: derived from the SAME booking dataset + explicit profiles.
     const explicit = [
-      ...(Array.isArray(serverCustomers) ? serverCustomers : []).map((c: any) => ({
+      ...(Array.isArray(serverCustomers) ? serverCustomers : []).map((c) => ({
         id: c.id, email: c.email, full_name: c.full_name, phone: c.phone, created_at: c.created_at,
       })),
       ...listDemoCustomers().map((c) => ({ id: c.id, email: c.email, full_name: c.name, phone: c.phone, created_at: c.created_at })),

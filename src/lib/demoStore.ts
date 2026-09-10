@@ -14,6 +14,7 @@ import {
 import { formatIndianAddress, istWallDate, istYmd } from './india';
 import { ticketOrigin } from './site';
 import { CATEGORY_DEFS } from './synthetic';
+import type { LocalBooking, LocalInvoice } from './offlineStore';
 
 export const DEMO_TENANT_ID = 'demo-tenant-velora';
 
@@ -88,6 +89,19 @@ export interface DemoCustomer {
   email: string;
   phone?: string;
   created_at: string;
+}
+
+/** Demo business as served to discovery + console (tenant-tagged, details optional). */
+export interface DemoBusinessView extends DemoBusiness {
+  demo: boolean;
+  services?: DemoService[];
+  staff?: DemoStaff[];
+}
+
+/** Demo business with services + staff attached (detail/slots paths). */
+export interface DemoBusinessDetails extends DemoBusinessView {
+  services: DemoService[];
+  staff: DemoStaff[];
 }
 
 /* ------------------------------------------------------------------ */
@@ -379,7 +393,7 @@ export function ensureDemoOps(): void {
     if (localStorage.getItem(K_OPS)) return;
   } catch { return; }
   ensureDemoSeeded();
-  const existingBookings = read<any>('velora-local-bookings');
+  const existingBookings = read<LocalBooking>('velora-local-bookings');
   if (existingBookings.length > 0) {
     try { localStorage.setItem(K_OPS, JSON.stringify({ at: new Date().toISOString(), skipped: true })); } catch { /* ignore */ }
     return;
@@ -425,8 +439,8 @@ export function ensureDemoOps(): void {
     { biz: 'apex', svc: 3, staff: 1, day: 5, h: 12, m: 0, status: 'confirmed', cust: 7 },
   ];
 
-  const bookings: any[] = [];
-  const invoices: any[] = [];
+  const bookings: LocalBooking[] = [];
+  const invoices: LocalInvoice[] = [];
   const customers: DemoCustomer[] = people.map((p, i) => ({
     id: `demo-cust-ops${i + 1}`,
     name: p.name,
@@ -508,7 +522,7 @@ export function ensureDemoOps(): void {
  * to the active city (they travel with the demo); user-created demo
  * businesses appear in their own city. `withDetails` attaches services+staff.
  */
-export function listDemoBusinesses(city?: string, withDetails = false): any[] {
+export function listDemoBusinesses(city?: string, withDetails = false): DemoBusinessView[] {
   ensureDemoSeeded();
   const biz = read<DemoBusiness>(K_BIZ);
   const services = read<DemoService>(K_SVC);
@@ -517,7 +531,7 @@ export function listDemoBusinesses(city?: string, withDetails = false): any[] {
     .filter((b) => b.active !== false || true) // keep inactive visible to the console
     .filter((b) => !city || b.seeded || !b.city || b.city === city)
     .map((b) => {
-      const base = { ...b, city: city || b.city || '', demo: true, tenant_id: DEMO_TENANT_ID };
+      const base: DemoBusinessView = { ...b, city: city || b.city || '', demo: true, tenant_id: DEMO_TENANT_ID };
       if (withDetails) {
         return {
           ...base,
@@ -537,7 +551,7 @@ export function demoFullAddress(b: Partial<DemoBusiness> & { area?: string; city
   });
 }
 
-export function getDemoBusiness(id: number | string): any | null {
+export function getDemoBusiness(id: number | string): DemoBusinessDetails | null {
   ensureDemoSeeded();
   const b = read<DemoBusiness>(K_BIZ).find((x) => x.id === String(id));
   if (!b) return null;
@@ -784,7 +798,7 @@ export function demoSlots(
 ): DemoSlot[] {
   const biz = getDemoBusiness(businessId);
   if (!biz) return [];
-  const svc = (biz.services || []).find((s: any) => String(s.id) === String(serviceId)) || (biz.services || [])[0];
+  const svc = (biz.services || []).find((s) => String(s.id) === String(serviceId)) || (biz.services || [])[0];
   if (!svc || svc.active === false) return [];
   const dur = svc.duration_min || 30;
 
@@ -792,7 +806,7 @@ export function demoSlots(
   const closeH = parseInt((biz.close_time || '20:00').split(':')[0], 10) || 20;
 
   // Staff constraints: specific staff member's hours + working days.
-  const staff = staffName ? (biz.staff || []).find((s: any) => s.name === staffName && s.active !== false) : null;
+  const staff = staffName ? (biz.staff || []).find((s) => s.name === staffName && s.active !== false) : null;
   const dayName = DAY_NAMES[istWallDate(date, 12, 0).getDay()];
   const staffAvailableThatDay = !staff || (staff.days || []).includes(dayName);
   const staffOpen = staff ? parseInt(staff.start.split(':')[0], 10) : openH;
@@ -802,7 +816,7 @@ export function demoSlots(
 
   // Active staff capacity (for "any staff" bookings the slot blocks only when
   // every specialist is busy at that time).
-  const activeStaff = (biz.staff || []).filter((s: any) => s.active !== false);
+  const activeStaff = (biz.staff || []).filter((s) => s.active !== false);
   const capacity = Math.max(1, staff ? 1 : activeStaff.length);
 
   const relevant = existingBookings.filter(
@@ -860,7 +874,7 @@ function b64u(obj: unknown): string {
   try { return btoa(JSON.stringify(obj)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
   catch { return ''; }
 }
-function unb64u(s: string): any | null {
+function unb64u(s: string): unknown {
   try {
     const b = s.replace(/-/g, '+').replace(/_/g, '/');
     return JSON.parse(atob(b + '='.repeat((4 - (b.length % 4)) % 4)));
@@ -885,7 +899,7 @@ export function makeLocalQrToken(ref: string, salt: string): string {
 
 export function parseLocalQrToken(token: string): { ref: string; s: string } | null {
   if (!token.startsWith('local.')) return null;
-  const data = unb64u(token.slice(6));
+  const data = unb64u(token.slice(6)) as { ref?: unknown; s?: unknown } | null;
   if (!data || typeof data.ref !== 'string' || typeof data.s !== 'string') return null;
   return { ref: data.ref, s: data.s };
 }

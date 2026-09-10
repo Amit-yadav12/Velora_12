@@ -12,8 +12,11 @@ import {
 import { cachedFetch, cacheGet, cacheSet, timedJson } from './smartCache';
 import { fetchLivePlaces, liveToBusiness, type LivePlace } from './googleMaps';
 import { searchBusinesses, applyFilters, personalizedBoost } from './smartSearch';
-import { getDemoBusiness, isDemoBusinessId, listDemoBusinesses, demoSlots, demoFullAddress } from './demoStore';
+import { getDemoBusiness, isDemoBusinessId, listDemoBusinesses, demoSlots, demoFullAddress, type DemoBusinessDetails } from './demoStore';
 import { listLocalBookings } from './offlineStore';
+import type { Business } from './product';
+import type { Slot } from '../components/premium/BookingTimeline';
+import type { HeatmapData, NearestData, ReviewRow } from './types';
 
 export interface DiscoverParams {
   city?: string;
@@ -31,10 +34,20 @@ export interface DiscoverParams {
 
 export interface DiscoverResult {
   count: number;
-  results: any[];
-  top_pick: any | null;
+  results: Business[];
+  top_pick: Business | null;
   live_count: number;
   source: 'api' | 'synthetic' | 'mixed';
+}
+
+export interface SlotsResult {
+  slots: Slot[];
+  recommended: Slot[];
+  travel_min: number;
+}
+
+interface DiscoverApiResponse {
+  results?: Business[];
 }
 
 function haversineKm(aLat: number, aLng: number, bLat?: number, bLng?: number): number | null {
@@ -51,14 +64,14 @@ function haversineKm(aLat: number, aLng: number, bLat?: number, bLng?: number): 
  * the active city centre (deterministic offset per id) so distance, "open
  * now" and AI scoring all work exactly like every other business.
  */
-function demoBusinessesForCity(cityName: string): any[] {
+function demoBusinessesForCity(cityName: string): Business[] {
   const city = getCity(cityName);
   const list = listDemoBusinesses(cityName, true);
-  return list.map((b: any) => {
+  return list.map((b) => {
     const h = hashStr(String(b.id));
     const lat = (city?.lat ?? 0) + ((h % 40) - 20) / 500;
     const lng = (city?.lng ?? 0) + (((h >> 6) % 40) - 20) / 500;
-    const activeServices = (b.services || []).filter((s: any) => s.active !== false);
+    const activeServices = (b.services || []).filter((s) => s.active !== false);
     return {
       ...b,
       address: `${b.area}, ${cityName}`,
@@ -68,13 +81,13 @@ function demoBusinessesForCity(cityName: string): any[] {
       // Only ACTIVE services are bookable — deactivating a service in the
       // console hides it from customers instantly.
       services: activeServices,
-      staff: (b.staff || []).filter((s: any) => s.active !== false),
-      price_from: activeServices.length ? Math.min(...activeServices.map((s: any) => Number(s.price) || 0)) : null,
+      staff: (b.staff || []).filter((s) => s.active !== false),
+      price_from: activeServices.length ? Math.min(...activeServices.map((s) => Number(s.price) || 0)) : null,
     };
   });
 }
 
-function enrich(b: any, lat: number, lng: number): any {
+function enrich(b: Business, lat: number, lng: number): Business {
   const km = haversineKm(lat, lng, b.lat, b.lng);
   const now = new Date();
   const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false }).format(now));
@@ -103,7 +116,7 @@ function enrich(b: any, lat: number, lng: number): any {
   if (b.ai_popularity) score += (b.ai_popularity - 70) / 6;
   score += personalizedBoost(b);
   if (b.live) { score += 4; reasons.push('live on Google Maps'); }
-  const priceFrom = b.price_from ?? (Array.isArray(b.services) && b.services.length ? Math.min(...b.services.map((s: any) => Number(s.price) || 0)) : null);
+  const priceFrom = b.price_from ?? (Array.isArray(b.services) && b.services.length ? Math.min(...b.services.map((s) => Number(s.price) || 0)) : null);
   return {
     ...b,
     distance_km: km != null ? Math.round(km * 10) / 10 : (b.distance_km ?? null),
@@ -117,7 +130,7 @@ function enrich(b: any, lat: number, lng: number): any {
   };
 }
 
-function sortResults(list: any[], sort: string): any[] {
+function sortResults(list: Business[], sort: string): Business[] {
   const s = sort || 'ai';
   const arr = [...list];
   if (s === 'distance') arr.sort((a, b) => (a.distance_km ?? 999) - (b.distance_km ?? 999));
@@ -143,13 +156,13 @@ export async function fetchDiscover(p: DiscoverParams): Promise<DiscoverResult> 
       .filter((b) => !category || b.category === category || (CATEGORY_ALIASES[category] && b.category === CATEGORY_ALIASES[category]))
       .filter((b) => !p.q || `${b.name} ${b.category} ${b.description || ''}`.toLowerCase().includes(p.q.toLowerCase()))
       .map((b) => enrich(b, p.lat, p.lng));
-    const rest = hit.results.filter((b: any) => !isDemoBusinessId(b.id));
+    const rest = hit.results.filter((b) => !isDemoBusinessId(b.id));
     const results = [...freshDemo, ...rest];
     return { ...hit, results, count: results.length };
   }
 
   // 1) Server (DB + synthetic merged, city-scoped)
-  let serverResults: any[] | null = null;
+  let serverResults: Business[] | null = null;
   try {
     const sp = new URLSearchParams({
       lat: String(p.lat), lng: String(p.lng), city: effCity,
@@ -157,7 +170,7 @@ export async function fetchDiscover(p: DiscoverParams): Promise<DiscoverResult> 
       ...(p.q ? { q: p.q } : {}),
       sort: 'recommended',
     });
-    const d = await cachedFetch<any>(`/api/discover?${sp.toString()}`, { ttl: 30000, timeout: 5000 });
+    const d = await cachedFetch<DiscoverApiResponse>(`/api/discover?${sp.toString()}`, { ttl: 30000, timeout: 5000 });
     if (d && Array.isArray(d.results)) serverResults = d.results;
   } catch {
     serverResults = null;
@@ -166,12 +179,12 @@ export async function fetchDiscover(p: DiscoverParams): Promise<DiscoverResult> 
   // 2) Synthetic city ecosystem (always available, instant)
   let synthetic = getCityBusinesses(effCity, { category: category || undefined });
   if (p.q) {
-    const hits = searchBusinesses(synthetic as any[], p.q, 120);
+    const hits = searchBusinesses(synthetic, p.q, 120);
     synthetic = hits.map((h) => h.item);
   }
 
   // 3) Merge: server wins on id conflicts; synthetic fills the city out
-  let merged: any[];
+  let merged: Business[];
   let source: DiscoverResult['source'];
   if (serverResults && serverResults.length > 0) {
     // Server already merges DB+synthetic; still top-up with client synthetic for depth.
@@ -224,7 +237,7 @@ export async function fetchDiscover(p: DiscoverParams): Promise<DiscoverResult> 
   return payload;
 }
 
-function mergeDedup(primary: any[], secondary: any[]): any[] {
+function mergeDedup(primary: Business[], secondary: Business[]): Business[] {
   const seen = new Set(primary.map((b) => String(b.id)));
   const out = [...primary];
   for (const b of secondary) {
@@ -237,7 +250,7 @@ function mergeDedup(primary: any[], secondary: any[]): any[] {
 }
 
 /** Single business — synthetic ids resolve instantly locally; DB ids via API. */
-export async function fetchBusiness(id: number | string, city?: string): Promise<any | null> {
+export async function fetchBusiness(id: number | string, city?: string): Promise<Business | null> {
   // Demo tenant business — instant local resolution, services + staff attached.
   if (isDemoBusinessId(id)) {
     const raw = getDemoBusiness(id);
@@ -256,8 +269,8 @@ export async function fetchBusiness(id: number | string, city?: string): Promise
         lng: (cityMeta?.lng ?? 0) + (((h >> 6) % 40) - 20) / 500,
         rating: Number(raw.rating) || 4.5,
         open_now: true,
-        services: (raw.services || []).filter((s: any) => s.active !== false),
-        staff: (raw.staff || []).filter((s: any) => s.active !== false),
+        services: (raw.services || []).filter((s) => s.active !== false),
+        staff: (raw.staff || []).filter((s) => s.active !== false),
       };
       return full;
     }
@@ -265,7 +278,7 @@ export async function fetchBusiness(id: number | string, city?: string): Promise
   }
 
   const key = `business:${id}`;
-  const hit = cacheGet<any>(key);
+  const hit = cacheGet<Business>(key);
   if (hit) return hit;
 
   // Live Google place id
@@ -287,7 +300,7 @@ export async function fetchBusiness(id: number | string, city?: string): Promise
 
   // Server (DB row or server-side synthetic)
   try {
-    const d = await cachedFetch<any>(`/api/businesses?id=${encodeURIComponent(String(id))}${city ? `&city=${encodeURIComponent(city)}` : ''}`, { ttl: 120000, timeout: 5000 });
+    const d = await cachedFetch<Business>(`/api/businesses?id=${encodeURIComponent(String(id))}${city ? `&city=${encodeURIComponent(city)}` : ''}`, { ttl: 120000, timeout: 5000 });
     if (d && d.id) {
       cacheSet(key, d, 300000);
       return d;
@@ -303,7 +316,7 @@ export async function fetchBusiness(id: number | string, city?: string): Promise
 }
 
 /** Resolve a live place into a full booking-ready profile (live info + synthetic services). */
-export function hydrateLiveBusiness(place: LivePlace, cityName: string, category?: string): any {
+export function hydrateLiveBusiness(place: LivePlace, cityName: string, category?: string): Business {
   const shell = liveToBusiness(place, cityName, category);
   // Deterministic synthetic services/staff/offers derived from the place id so
   // live businesses feel fully bookable.
@@ -327,7 +340,7 @@ export function hydrateLiveBusiness(place: LivePlace, cityName: string, category
   return { ...shell, services, staff, synthetic: false, live_bookable: true };
 }
 
-export async function fetchSlots(businessId: number | string, serviceId: number | string | null, date: string, origin?: { lat: number; lng: number }, staffName?: string | null): Promise<{ slots: any[]; recommended: any[]; travel_min: number }> {
+export async function fetchSlots(businessId: number | string, serviceId: number | string | null, date: string, origin?: { lat: number; lng: number }, staffName?: string | null): Promise<SlotsResult> {
   // Demo tenant: real availability from opening hours, service duration,
   // staff rosters and existing (non-cancelled) local bookings.
   if (isDemoBusinessId(businessId)) {
@@ -337,8 +350,10 @@ export async function fetchSlots(businessId: number | string, serviceId: number 
   }
   const loc = origin ? `&origin_lat=${origin.lat}&origin_lng=${origin.lng}` : '';
   try {
-    const d = await timedJson(`/api/smart-slots?business_id=${encodeURIComponent(String(businessId))}${serviceId ? `&service_id=${encodeURIComponent(String(serviceId))}` : ''}&date=${date}${loc}`, 5000);
-    if (d && Array.isArray(d.slots)) return d;
+    const d = (await timedJson(`/api/smart-slots?business_id=${encodeURIComponent(String(businessId))}${serviceId ? `&service_id=${encodeURIComponent(String(serviceId))}` : ''}&date=${date}${loc}`, 5000)) as SlotsResult | null;
+    if (d && Array.isArray(d.slots)) {
+      return { slots: d.slots, recommended: d.recommended || [], travel_min: d.travel_min || 0 };
+    }
   } catch { /* synthetic fallback below */ }
   const biz = isSyntheticId(businessId) ? getSyntheticBusiness(businessId) : null;
   const svc = biz?.services?.find((s) => String(s.id) === String(serviceId)) || biz?.services?.[0];
@@ -348,15 +363,15 @@ export async function fetchSlots(businessId: number | string, serviceId: number 
   return { slots, recommended, travel_min: 0 };
 }
 
-export async function fetchHeatmap(businessId?: number | string): Promise<any> {
+export async function fetchHeatmap(businessId?: number | string): Promise<HeatmapData> {
   try {
-    const d = await cachedFetch<any>(`/api/heatmap${businessId ? `?business_id=${encodeURIComponent(String(businessId))}` : ''}`, { ttl: 120000, timeout: 5000 });
+    const d = await cachedFetch<HeatmapData>(`/api/heatmap${businessId ? `?business_id=${encodeURIComponent(String(businessId))}` : ''}`, { ttl: 120000, timeout: 5000 });
     if (d && d.days) return d;
   } catch { /* synthetic fallback */ }
   return getSyntheticHeatmap(Number(businessId) || 0);
 }
 
-export async function fetchReviews(businessId: number | string): Promise<any[]> {
+export async function fetchReviews(businessId: number | string): Promise<ReviewRow[]> {
   if (isSyntheticId(businessId) || String(businessId).startsWith('live-') || isDemoBusinessId(businessId)) {
     return getSyntheticReviews(businessId, 8);
   }
@@ -369,7 +384,7 @@ export async function fetchReviews(businessId: number | string): Promise<any[]> 
  * dataset: existing local bookings for this business block their slots, so a
  * slot booked by the demo customer disappears for everyone until cancelled.
  */
-function buildDemoSlots(biz: any, serviceId: number | string | null, date: string, staffName?: string | null): { slots: any[]; recommended: any[]; travel_min: number } {
+function buildDemoSlots(biz: DemoBusinessDetails, serviceId: number | string | null, date: string, staffName?: string | null): SlotsResult {
   const existing = listLocalBookings().map((b) => ({
     business_id: b.business_id, staff_name: b.staff_name,
     start_time: b.start_time, end_time: b.end_time, status: b.status,
@@ -380,16 +395,16 @@ function buildDemoSlots(biz: any, serviceId: number | string | null, date: strin
 }
 
 /** Nearest-per-category for the city, centered on the given point. */
-export async function fetchNearest(lat: number, lng: number, city: string): Promise<any> {
+export async function fetchNearest(lat: number, lng: number, city: string): Promise<NearestData> {
   try {
-    const d = await cachedFetch<any>(`/api/nearest?lat=${lat}&lng=${lng}&city=${encodeURIComponent(city)}`, { ttl: 60000, timeout: 5000 });
+    const d = await cachedFetch<NearestData>(`/api/nearest?lat=${lat}&lng=${lng}&city=${encodeURIComponent(city)}`, { ttl: 60000, timeout: 5000 });
     if (d && (d.overall_nearest || d.nearest_per_category)) return d;
   } catch { /* synthetic fallback */ }
   const all = getCityBusinesses(city).map((b) => {
     const km = haversineKm(lat, lng, b.lat, b.lng);
     return { ...b, distance_km: km, travel_min: km != null ? Math.round((km / 35) * 60) : null };
   }).filter((b) => b.distance_km != null).sort((a, b) => (a.distance_km || 999) - (b.distance_km || 999));
-  const byCat: Record<string, any> = {};
+  const byCat: Record<string, Business> = {};
   for (const b of all) if (!byCat[b.category]) byCat[b.category] = b;
   return { overall_nearest: all[0] || null, nearest_per_category: Object.values(byCat), total_within_5km: all.filter((b) => (b.distance_km || 99) <= 5).length };
 }

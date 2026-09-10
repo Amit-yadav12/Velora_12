@@ -6,6 +6,7 @@ import { apiSend } from '../lib/api';
 import { transitionLocalBooking, pushLocalNotification } from '../lib/offlineStore';
 import { STATUS_LABEL } from '../lib/bookingStatus';
 import { toast } from './events';
+import { errMsg, type ConsoleBooking } from '../lib/types';
 
 export type ConsoleAction = 'confirm' | 'check_in' | 'complete' | 'cancel' | 'no_show';
 
@@ -17,7 +18,7 @@ const ACTION_STATUS: Record<ConsoleAction, string> = {
   no_show: 'no_show',
 };
 
-export async function applyBookingAction(b: any, action: ConsoleAction): Promise<boolean> {
+export async function applyBookingAction(b: ConsoleBooking, action: ConsoleAction): Promise<boolean> {
   const toStatus = ACTION_STATUS[action];
   try {
     if (b.local) {
@@ -50,8 +51,8 @@ export async function applyBookingAction(b: any, action: ConsoleAction): Promise
       await apiSend('/api/bookings', 'PUT', { id: b.id, action: 'status', status: toStatus });
     }
     return true;
-  } catch (e: any) {
-    toast(e?.message || 'The change could not be applied. Refreshing…', 'error');
+  } catch (e: unknown) {
+    toast(errMsg(e) || 'The change could not be applied. Refreshing…', 'error');
     return false;
   }
 }

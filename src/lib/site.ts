@@ -3,7 +3,7 @@ export const LIVE_URL = 'https://velora-ai-in.netlify.app';
 
 function envAppUrl(): string {
   try {
-    const v = (import.meta as any)?.env?.VITE_APP_URL || '';
+    const v = import.meta.env?.VITE_APP_URL || '';
     return String(v).replace(/\/$/, '');
   } catch {
     return '';

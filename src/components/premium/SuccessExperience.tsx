@@ -6,11 +6,13 @@ import { Check, Navigation, CalendarPlus, Share2, Download, QrCode, CalendarChec
 import { inr } from '../../lib/format';
 import { googleCalendarUrl } from '../../lib/calendar';
 import { publicOrigin } from '../../lib/site';
+import type { Business } from '../../lib/product';
+import type { TicketBooking, TicketInvoice } from '../../lib/types';
 
 interface Props {
-  booking: any;
-  business: any;
-  invoice: any;
+  booking: TicketBooking;
+  business: Business;
+  invoice: TicketInvoice;
   mapsLink: string;
   qrPayload?: string;
   gmailComposeUrl?: string;
@@ -19,7 +21,7 @@ interface Props {
   onClose?: () => void;
 }
 
-function gcalLink(b: any, biz: any) {
+function gcalLink(b: TicketBooking, biz: Business) {
   return googleCalendarUrl({
     title: `${b?.service_name || 'Appointment'} — ${biz?.name || 'Velora'}`,
     start: b?.start_time,
@@ -98,7 +100,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
       ctx.fillRect(0, 0, px, px);
       const pad = Math.round(px * 0.08); // quiet zone keeps it scannable
       const size = px - pad * 2;
-      const vb = (svg as any).viewBox?.baseVal;
+      const vb = (svg as SVGSVGElement).viewBox?.baseVal;
       const ratio = vb && vb.width ? vb.width / vb.height : 1;
       let w = size, h = size;
       if (ratio > 1) h = Math.round(size / ratio); else w = Math.round(size * ratio);

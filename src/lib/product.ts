@@ -26,7 +26,7 @@ export interface Business {
   maps_url?: string;
   facilities?: string[];
   amenities?: string[];
-  offers?: { title: string; desc: string; code: string; pct: number; valid_till: string }[];
+  offers?: BusinessOffer[];
   photos?: string[];
   hours_text?: string[];
   price_level?: number;
@@ -43,9 +43,25 @@ export interface Business {
   ai_score?: number;
   ai_reason?: string[] | string;
   live_bookable?: boolean;
+  // Full address parts (demo tenant + console editing)
+  line1?: string;
+  street?: string;
+  state?: string;
+  pin?: string;
+  country?: string;
+  // Console state
+  active?: boolean;
+  demo?: boolean;
 }
-export interface BusinessService { id: number | string; business_id: number | string; name: string; description?: string; duration_min: number; price: number; }
-export interface BusinessStaff { id: number | string; business_id: number | string; name: string; role?: string; avatar_url?: string; }
+export interface BusinessOffer { title: string; desc: string; code: string; pct: number; valid_till?: string }
+export interface BusinessService {
+  id: number | string; business_id: number | string; name: string; description?: string; duration_min: number; price: number;
+  active?: boolean; demo?: boolean;
+}
+export interface BusinessStaff {
+  id: number | string; business_id: number | string; name: string; role?: string; avatar_url?: string;
+  active?: boolean; demo?: boolean; service_ids?: (number | string)[]; days?: string[]; start?: string; end?: string;
+}
 
 // NOTE: first 10 entries preserve the original catalogue order exactly.
 // New categories extend the ecosystem without disturbing existing UI.

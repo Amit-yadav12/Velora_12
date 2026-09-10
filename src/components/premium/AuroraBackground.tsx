@@ -1,4 +1,4 @@
-import { motion, useReducedMotion } from 'framer-motion';
+import { motion, useReducedMotion, type TargetAndTransition } from 'framer-motion';
 import { useEffect, useState } from 'react';
 
 /**
@@ -20,7 +20,7 @@ export default function AuroraBackground() {
     return () => mq.removeEventListener('change', update);
   }, [reduce]);
 
-  const orb = (cls: string, anim: any, dur: number) => (
+  const orb = (cls: string, anim: TargetAndTransition, dur: number) => (
     animate
       ? <motion.div className={`aurora-orb ${cls}`} animate={anim} transition={{ duration: dur, repeat: Infinity, ease: 'easeInOut' }} />
       : <div className={`aurora-orb ${cls}`} />
