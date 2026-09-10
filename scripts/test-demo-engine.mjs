@@ -15,8 +15,11 @@ try { globalThis.navigator = dom.window.navigator; } catch { /* node 22 has a gl
 globalThis.btoa = (s) => Buffer.from(s, 'binary').toString('base64');
 globalThis.atob = (s) => Buffer.from(s, 'base64').toString('binary');
 
-const { execSync } = await import('node:child_process');
-const run = (m) => `file:///home/user/Velora_12/${m}`;
+const { dirname, resolve } = await import('node:path');
+const { fileURLToPath } = await import('node:url');
+// Repo root resolved from the script location — works on any machine/CI path.
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const run = (m) => `file://${ROOT}/${m}`;
 
 let pass = 0, fail = 0;
 const ok = (name, cond, extra = '') => {
