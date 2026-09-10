@@ -23,6 +23,7 @@ import { pushRecentView } from '../../lib/smartSearch';
 import { saveLocalBooking, saveLocalInvoice, pushLocalNotification, genLocalRef, createDemoBooking, listLocalBookings } from '../../lib/offlineStore';
 import { isDemoBusinessId, genQrSalt, localVerifyUrl } from '../../lib/demoStore';
 import { cacheGet } from '../../lib/smartCache';
+import supabase from '../../lib/supabase';
 
 export default function BusinessDetail() {
   const { id } = useParams();
@@ -85,7 +86,13 @@ export default function BusinessDetail() {
       fetchBusiness(id!, city.name).then((d) => { if (d && alive) { setBiz(d); setService((s) => d.services?.find((x) => String(x.id) === String(s?.id)) || d.services?.[0] || s); } }).catch(() => {});
     };
     const offs = [onBusinessesChanged(refresh), onServicesChanged(refresh), onStaffChanged(refresh), onBookingsChanged(refresh)];
-    return () => { alive = false; offs.forEach((off) => off()); };
+    const ch = supabase.channel(`business-detail-${id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'businesses' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_services' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_staff' }, refresh)
+      .subscribe();
+    return () => { alive = false; supabase.removeChannel(ch); offs.forEach((off) => off()); };
   }, [id, user, city.name]);
 
   useEffect(() => {

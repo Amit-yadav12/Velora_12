@@ -12,7 +12,7 @@ import { onBookingsChanged, toast } from '../../services/events';
 import ProgressTracker from '../../components/premium/ProgressTracker';
 import { inr, istTime, ist, istDate, istDateTimeLocal } from '../../lib/format';
 import QueueTracker from '../../components/premium/QueueTracker';
-import { listLocalBookings, transitionLocalBooking, updateLocalBooking } from '../../lib/offlineStore';
+import { listLocalBookings, pushLocalNotification, transitionLocalBooking, updateLocalBooking } from '../../lib/offlineStore';
 import { localVerifyUrl } from '../../lib/demoStore';
 import { isCancellable } from '../../lib/bookingStatus';
 import { googleCalendarUrl } from '../../lib/calendar';
@@ -96,6 +96,10 @@ export default function Appointments() {
     if (target.local) {
       // Validated state-machine transition (pending|confirmed → cancelled).
       ok = transitionLocalBooking(id, 'cancelled') !== null;
+      if (ok) {
+        pushLocalNotification({ audience: 'customer', title: 'Booking cancelled', body: `${target.service_name} — ${target.ref}`, type: 'warning', read: false, booking_ref: target.ref });
+        pushLocalNotification({ audience: 'admin', title: 'Booking cancelled by customer', body: `${target.ref} — slot now open`, type: 'warning', read: false, booking_ref: target.ref });
+      }
     } else {
       try { await apiSend('/api/bookings', 'PUT', { id, action: 'cancel' }); }
       catch { ok = false; }
@@ -167,6 +171,8 @@ export default function Appointments() {
         );
         if (clashes.length > 0) { setErr('That time is already booked. Pick another slot.'); return; }
         updateLocalBooking(resched.id, { start_time: iso, end_time: endIso });
+        pushLocalNotification({ audience: 'customer', title: 'Booking rescheduled', body: `${resched.ref} moved to ${ist(iso, { dateStyle: 'medium', timeStyle: 'short' })} IST`, type: 'info', read: false, booking_ref: resched.ref });
+        pushLocalNotification({ audience: 'admin', title: 'Booking rescheduled by customer', body: `${resched.ref} moved to ${ist(iso, { dateStyle: 'medium', timeStyle: 'short' })} IST`, type: 'info', read: false, booking_ref: resched.ref });
       } else {
         await apiSend('/api/bookings', 'PUT', { id: resched.id, action: 'reschedule', start_time: iso });
       }

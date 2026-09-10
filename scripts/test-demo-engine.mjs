@@ -33,6 +33,26 @@ const demoStore = await import(run('src/lib/demoStore.ts'));
 const offlineStore = await import(run('src/lib/offlineStore.ts'));
 const metrics = await import(run('src/lib/metrics.ts'));
 const bookingStatus = await import(run('src/lib/bookingStatus.ts'));
+const events = await import(run('src/services/events.ts'));
+
+console.log('\n—— 0. Real-time event transport ——');
+let bookingSignals = 0;
+const offBookingSignal = events.onBookingsChanged(() => { bookingSignals += 1; });
+events.emitBookingsChanged();
+ok('Same-tab booking event arrives synchronously', bookingSignals === 1, `got ${bookingSignals}`);
+const busPayload = localStorage.getItem('velora-bus');
+window.dispatchEvent(new StorageEvent('storage', { key: 'velora-bus', newValue: busPayload }));
+ok('Cross-tab storage event reaches booking subscriber', bookingSignals === 2, `got ${bookingSignals}`);
+offBookingSignal();
+events.emitBookingsChanged();
+ok('Unsubscribe removes both event listeners', bookingSignals === 2, `got ${bookingSignals}`);
+
+let entitySignals = 0;
+const entityOffs = [
+  events.onBusinessesChanged(() => { entitySignals += 1; }),
+  events.onServicesChanged(() => { entitySignals += 1; }),
+  events.onStaffChanged(() => { entitySignals += 1; }),
+];
 
 console.log('\n—— 1. Demo tenant seeding ——');
 demoStore.ensureDemoSeeded();
@@ -48,6 +68,7 @@ ok('PIN validator', india.isValidIndianPin('302001') && !india.isValidIndianPin(
 ok('Phone validator', india.isValidIndianPhone('+91 98290 41100') && india.isValidIndianPhone('9829041100') && !india.isValidIndianPhone('12345'));
 
 console.log('\n—— 2. Business / service / staff CRUD (demo dataset) ——');
+entitySignals = 0;
 const newBiz = demoStore.saveDemoBusiness({ name: 'Test Studio', category: 'Gyms', city: 'Jaipur' });
 ok('Add business persists', demoStore.listDemoBusinesses().some((b) => b.id === newBiz.id));
 const newSvc = demoStore.saveDemoService({ business_id: newBiz.id, name: 'Trial session', duration_min: 30, price: 300 });
@@ -57,6 +78,8 @@ demoStore.updateDemoService(newSvc.id, { active: false });
 ok('Deactivate service — customers can no longer book it', demoStore.listDemoServices(newBiz.id).find((s) => s.id === newSvc.id)?.active === false);
 demoStore.deleteDemoBusiness(newBiz.id);
 ok('Cascade delete removes services + staff', demoStore.listDemoServices(newBiz.id).length === 0 && demoStore.listDemoStaff(newBiz.id).length === 0);
+ok('Every entity mutation emits an immediate refresh signal', entitySignals === 9, `got ${entitySignals}`);
+entityOffs.forEach((off) => off());
 
 console.log('\n—— 3. Availability engine ——');
 const aurora = 'demo-biz-aurora';
@@ -111,6 +134,22 @@ ok('Upcoming revenue +₹800', m.upcomingRevenue === 800, `got ${m.upcomingReven
 ok('Sales count 1', m.salesCount === 1);
 ok('Avg value 800', m.avgValue === 800);
 ok('Completed revenue 0 (not yet delivered)', m.completedRevenue === 0);
+
+let liveSales = m.salesCount;
+const offLiveMetrics = events.onBookingsChanged(() => {
+  liveSales = metrics.revenueMetrics(offlineStore.listLocalBookings()).salesCount;
+});
+const liveBooking = await offlineStore.createDemoBooking({
+  business_id: aurora, business_name: 'Aurora Luxe Salon & Spa',
+  service_id: svc1.id, service_name: svc1.name, service_duration: 45, service_price: 650,
+  start_time: slots.find((s) => s.available && s.time !== pick.time).time,
+  customer_name: 'Realtime Customer', customer_email: 'realtime@velora.ai',
+});
+ok('Booking event recomputes dashboard sales with no refetch', liveSales === 2, `got ${liveSales}`);
+offlineStore.transitionLocalBooking(liveBooking.booking.id, 'confirmed');
+ok('Business transition is visible through the same live record', offlineStore.listLocalBookings().find((b) => b.id === liveBooking.booking.id)?.status === 'confirmed');
+offlineStore.transitionLocalBooking(liveBooking.booking.id, 'cancelled');
+offLiveMetrics();
 
 console.log('\n—— 6. Business confirms → customer sees CONFIRMED ——');
 ok('pending→confirmed allowed', bookingStatus.canTransition('pending', 'confirmed'));
@@ -188,6 +227,11 @@ const local = fmt.istDateTimeLocal(sampleIso);
 ok('IST wall clock for input (11:00, not 05:30)', local.endsWith('T11:00'), local);
 const back = new Date(`${local}:00+05:30`).toISOString();
 ok('Round-trip preserves the instant', back === sampleIso, back);
+const boundaryMetrics = metrics.revenueMetrics([{
+  id: 'ist-boundary', ref: 'IST', status: 'confirmed', price: 100,
+  start_time: '2026-09-16T05:30:00.000Z',
+}], new Date('2026-09-15T20:00:00.000Z')); // 01:30 IST on 16 Sep
+ok('Dashboard today boundary is Asia/Kolkata, not runtime-local', boundaryMetrics.todayCount === 1 && boundaryMetrics.todayRevenue === 100);
 
 console.log('\n—— 12. Deactivated business leaves customer discovery ——');
 demoStore.resetDemo();

@@ -131,7 +131,10 @@ export default async function handler(req, res) {
         if (error) throw error;
         await supabase.from('booking_history').insert({ booking_id: id, action: `status:${status}`, detail: `Marked ${status}`, actor });
         await audit(actor, 'booking.status', id, { ref: existing.ref, status }, ip);
-        await supabase.from('notifications').insert([{ audience: 'admin', title: `Booking ${status.replace('_', ' ')}`, body: `${existing.ref} · ${existing.customer_name}`, type: status === 'completed' ? 'success' : 'info', booking_ref: existing.ref }]);
+        await supabase.from('notifications').insert([
+          { user_id: existing.customer_id || null, audience: 'customer', title: `Booking ${status.replace('_', ' ')}`, body: `${existing.service_name} — ${existing.ref}`, type: status === 'completed' ? 'success' : 'info', booking_ref: existing.ref },
+          { audience: 'admin', title: `Booking ${status.replace('_', ' ')}`, body: `${existing.ref} · ${existing.customer_name}`, type: status === 'completed' ? 'success' : 'info', booking_ref: existing.ref },
+        ]);
         return res.status(200).json(data);
       }
 

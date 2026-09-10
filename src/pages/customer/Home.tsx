@@ -16,6 +16,7 @@ import LocationBar from '../../components/premium/LocationBar';
 import { fetchDiscover } from '../../lib/hybridData';
 import { readRecentViews, pushSearchHistory, type RecentView } from '../../lib/smartSearch';
 import { prefetch } from '../../lib/smartCache';
+import supabase from '../../lib/supabase';
 
 const recentToCard = (r: RecentView): Business => ({
   id: r.id, name: r.name, category: r.category, city: r.city,
@@ -59,7 +60,11 @@ export default function Home() {
         .catch(() => {});
     };
     const offs = [onBusinessesChanged(refresh), onServicesChanged(refresh), onDemoReset(refresh)];
-    return () => { offs.forEach((off) => off()); };
+    const ch = supabase.channel('home-discovery-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'businesses' }, refresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_services' }, refresh)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); offs.forEach((off) => off()); };
   }, [city.name, origin.lat, origin.lng]);
 
   useEffect(() => {

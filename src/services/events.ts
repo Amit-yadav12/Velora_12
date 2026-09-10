@@ -14,6 +14,7 @@ export const EVENTS = {
 } as const;
 
 const BUS_KEY = 'velora-bus';
+let sequence = 0;
 
 function ping(kind: string) {
   try {
@@ -22,7 +23,10 @@ function ping(kind: string) {
     /* non-DOM env */
   }
   try {
-    localStorage.setItem(BUS_KEY, JSON.stringify({ kind, t: Date.now() }));
+    // A storage event is not fired when a key is assigned the same value.
+    // Include a per-tab sequence so two mutations in the same millisecond are
+    // still observable by every other tab.
+    localStorage.setItem(BUS_KEY, JSON.stringify({ kind, t: Date.now(), sequence: ++sequence }));
   } catch {
     /* private mode */
   }
