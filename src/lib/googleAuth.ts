@@ -27,14 +27,16 @@ export interface GoogleAuthResult {
   error?: string;
 }
 
-export async function signInWithGoogleNative(nextPath = '/'): Promise<GoogleAuthResult> {
-  // Demo mode: simulate Google login instantly
+export async function signInWithGoogleNative(nextPath = '/', role: 'customer' | 'admin' = 'customer'): Promise<GoogleAuthResult> {
+  // Demo mode: simulate the Google account for the selected role so the
+  // business/customer split keeps working with zero backend.
   if (isDemoMode) {
-    const email = 'customer@velora.ai';
+    const isAdmin = role === 'admin';
+    const email = isAdmin ? 'admin@velora.ai' : 'customer@velora.ai';
     const { error } = await supabase.auth.signInWithPassword({ email, password: 'velora123' });
     if (error) {
       // Demo auto-provision
-      await supabase.auth.signUp({ email, password: 'velora123', options: { data: { full_name: 'Demo Customer' } } });
+      await supabase.auth.signUp({ email, password: 'velora123', options: { data: { full_name: isAdmin ? 'Demo Admin' : 'Demo Customer' } } });
     }
     return { ok: true, method: 'demo' };
   }

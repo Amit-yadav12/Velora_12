@@ -113,7 +113,7 @@ export default function Verify() {
                 </div>
               )}
 
-              {r.demo && <p className="text-[11px] text-dim mt-3">Signature verified offline · live status unavailable</p>}
+              {r.demo && <p className="text-[11px] text-dim mt-3">Demo ticket · verified against this device&apos;s demo booking data</p>}
 
               <Link to="/" className="mt-5 w-full grad-btn text-white rounded-xl py-3 text-sm font-medium flex items-center justify-center gap-2">
                 Open Velora <ArrowRight className="h-4 w-4" />

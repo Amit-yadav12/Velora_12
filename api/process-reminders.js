@@ -41,12 +41,24 @@ export default async function handler(req, res) {
 
       if (r.kind === 'leave_now') {
         const { data: biz } = await supabase.from('businesses').select('*').eq('name', bk.resource_name).single();
-        let travel = 15;
-        // travel estimate best-effort (origin unknown server-side → skip if none)
+        // Real travel estimate ONLY when the customer's coordinates are known.
+        // No stored origin → never invent a number; point them at live Maps.
+        let travel = 0;
+        try {
+          const { data: prof } = await supabase.from('profiles').select('lat,lng').eq('id', bk.customer_id).single();
+          if (prof?.lat != null && prof?.lng != null && biz?.lat != null && biz?.lng != null) {
+            travel = await travelTimeMin({ lat: prof.lat, lng: prof.lng }, { lat: biz.lat, lng: biz.lng });
+          }
+        } catch { /* origin unknown — skip estimate */ }
+        const lines = [
+          { k: 'Appointment', v: whenIST },
+          { k: 'Where', v: bk.location || biz?.address || '—' },
+          travel > 0 ? { k: 'Est. travel', v: `~${travel} min` } : { k: 'Travel time', v: 'Live estimate in Maps' },
+        ];
         await sendEmail({
           to: bk.customer_email, subject: `Leave now for your appointment — ${bk.ref}`,
           title: 'Time to leave', name: bk.customer_name,
-          lines: [{ k: 'Appointment', v: whenIST }, { k: 'Where', v: bk.location || biz?.address || '—' }, { k: 'Est. travel', v: `~${travel} min` }],
+          lines,
           cta: { label: 'Get directions', href: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(bk.location || bk.resource_name)}` },
         });
       }

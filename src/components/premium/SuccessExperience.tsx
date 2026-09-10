@@ -17,6 +17,8 @@ interface Props {
   qrPayload?: string;
   gmailComposeUrl?: string;
   emailStatus?: string;
+  /** True only when server-side reminders were actually persisted. */
+  remindersScheduled?: boolean;
   onDone?: () => void;
   onClose?: () => void;
 }
@@ -31,10 +33,12 @@ function gcalLink(b: TicketBooking, biz: Business) {
   });
 }
 
-export default function SuccessExperience({ booking, business, invoice, mapsLink, qrPayload, gmailComposeUrl, emailStatus, onDone, onClose }: Props) {
+export default function SuccessExperience({ booking, business, invoice, mapsLink, qrPayload, gmailComposeUrl, emailStatus, remindersScheduled, onDone, onClose }: Props) {
   const nav = useNavigate();
   const done = onDone || onClose || (() => nav('/'));
+  // Honest email badge: only claim a send when a provider actually accepted it.
   const emailSent = emailStatus === 'sending' || emailStatus === 'resend' || emailStatus === 'sendgrid' || emailStatus === 'smtp-relay';
+  const emailQueued = emailStatus === 'queued';
   const [particles, setParticles] = useState<{ x: number; d: number; c: string; s: number }[]>([]);
   const [pdfLoading, setPdfLoading] = useState(false);
 
@@ -194,10 +198,18 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
             <div className="mt-3 flex flex-wrap gap-1.5">
               {isPending ? (
                 <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400"><Clock className="h-3 w-3" /> Awaiting business confirmation</span>
+              ) : emailSent ? (
+                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400"><Check className="h-3 w-3" /> Confirmation email sent</span>
+              ) : emailQueued ? (
+                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-400"><Mail className="h-3 w-3" /> Confirmation queued — email provider pending</span>
               ) : (
-                <span className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full ${emailSent ? 'bg-emerald-500/15 text-emerald-400' : 'bg-blue-500/15 text-blue-400'}`}>{emailSent ? <><Check className="h-3 w-3" /> Confirmation email sent</> : <><Mail className="h-3 w-3" /> Emailing your confirmation</>}</span>
+                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-400"><Mail className="h-3 w-3" /> No email provider configured — see options below</span>
               )}
-              <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400"><Check className="h-3 w-3" /> Reminders scheduled</span>
+              {remindersScheduled ? (
+                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400"><Check className="h-3 w-3" /> Reminders scheduled</span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400"><Check className="h-3 w-3" /> In-app updates on</span>
+              )}
             </div>
           </div>
         </motion.div>

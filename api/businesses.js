@@ -1,5 +1,5 @@
 import supabase from './db-client.js';
-import { cors, sanitizeText } from './_lib/security.js';
+import { cors, sanitizeText, enforceRateLimit } from './_lib/security.js';
 import { cityBusinesses, syntheticBusiness, isSyntheticId } from './_lib/synthetic.js';
 
 // Product catalog for customers: businesses, their services & staff.
@@ -7,6 +7,7 @@ import { cityBusinesses, syntheticBusiness, isSyntheticId } from './_lib/synthet
 export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
+  if (!enforceRateLimit(req, res, 'businesses', { limit: 120, windowMs: 60_000 })) return;
   try {
     if (req.method === 'GET') {
       const { id, category, q, featured, city } = req.query;

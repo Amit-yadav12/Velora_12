@@ -1,5 +1,5 @@
 import supabase from './db-client.js';
-import { cors, sanitizeText } from './_lib/security.js';
+import { cors, sanitizeText, enforceRateLimit } from './_lib/security.js';
 import { cityBusinesses, isSyntheticId, hashStr, mulberry32 } from './_lib/synthetic.js';
 
 // FAST location-aware discovery, CITY-SCOPED. Merges Supabase rows with the
@@ -21,6 +21,7 @@ function haversineKm(a, b) {
 export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
+  if (!enforceRateLimit(req, res, 'discover', { limit: 120, windowMs: 60_000 })) return;
   try {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
     const { lat, lng, category, q, sort = 'recommended', open_now, max_km, min_rating, city, price_max } = req.query;

@@ -66,7 +66,9 @@ function haversineKm(aLat: number, aLng: number, bLat?: number, bLng?: number): 
  */
 function demoBusinessesForCity(cityName: string): Business[] {
   const city = getCity(cityName);
-  const list = listDemoBusinesses(cityName, true);
+  // Deactivated demo businesses never reach customer discovery (the console
+  // still lists them via listDemoBusinesses for management).
+  const list = listDemoBusinesses(cityName, true).filter((b) => b.active !== false);
   return list.map((b) => {
     const h = hashStr(String(b.id));
     const lat = (city?.lat ?? 0) + ((h % 40) - 20) / 500;
@@ -254,7 +256,7 @@ export async function fetchBusiness(id: number | string, city?: string): Promise
   // Demo tenant business — instant local resolution, services + staff attached.
   if (isDemoBusinessId(id)) {
     const raw = getDemoBusiness(id);
-    if (raw) {
+    if (raw && raw.active !== false) {
       const cityName = city || raw.city || DEFAULT_CITY_NAME;
       const cityMeta = getCity(cityName);
       const h = hashStr(String(raw.id));

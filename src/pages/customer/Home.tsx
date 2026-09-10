@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Clock, Star, Compass } from 'lucide-react';
+import { Search, Clock, Star, Compass, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLocation } from '../../contexts/LocationContext';
 import { Business, CATEGORIES, imgOnError } from '../../lib/product';
@@ -98,6 +98,20 @@ export default function Home() {
           <button className="absolute right-2 top-1/2 -translate-y-1/2 grad-btn text-white text-sm font-medium rounded-xl px-4 py-2.5">Search</button>
         </motion.form>
       </section>
+
+      {/* Guest demo entry — the same working demo dataset as the business console */}
+      {!user && (
+        <section>
+          <Link to="/welcome?next=/" className="card p-4 flex items-center gap-3 group hover:border-[var(--border-strong)] transition-colors">
+            <div className="h-10 w-10 rounded-xl grad-btn grid place-items-center shrink-0"><ShieldCheck className="h-5 w-5 text-white" /></div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">Try the live demo</p>
+              <p className="text-xs text-dim">Book real demo businesses in Jaipur and watch the business console update instantly — no account needed.</p>
+            </div>
+            <span className="text-xs text-[var(--color-brand-indigo)] font-medium shrink-0">Open demo →</span>
+          </Link>
+        </section>
+      )}
 
       {/* Categories */}
       <section>

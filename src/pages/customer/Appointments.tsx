@@ -4,13 +4,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import { Calendar, MapPin, Clock, Navigation, X, CalendarClock, Loader2, Star, ChevronDown, Car, QrCode, CalendarPlus, Download, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import supabase, { isDemoMode } from '../../lib/supabase';
 import { useLocation } from '../../contexts/LocationContext';
 import { mapsDirections } from '../../lib/product';
 import { apiGet, apiSend } from '../../lib/api';
-import supabase from '../../lib/supabase';
 import { onBookingsChanged, toast } from '../../services/events';
 import ProgressTracker from '../../components/premium/ProgressTracker';
-import { inr, istTime, ist, istDate } from '../../lib/format';
+import { inr, istTime, ist, istDate, istDateTimeLocal } from '../../lib/format';
 import QueueTracker from '../../components/premium/QueueTracker';
 import { listLocalBookings, transitionLocalBooking, updateLocalBooking } from '../../lib/offlineStore';
 import { localVerifyUrl } from '../../lib/demoStore';
@@ -35,7 +35,9 @@ function LeaveNow({ bookingRef, origin }: { bookingRef: string; origin?: { lat: 
   useEffect(() => {
     const geo = origin ? `&origin_lat=${origin.lat}&origin_lng=${origin.lng}` : '';
     if (!bookingRef) return;
-    fetch(`/api/travel-planner?booking_ref=${encodeURIComponent(bookingRef)}${geo}`).then(r => r.json()).then(setPlan).catch(() => {});
+    // apiGet attaches the session token — booking lookups are owner-checked.
+    apiGet<TravelPlan>(`/api/travel-planner?booking_ref=${encodeURIComponent(bookingRef)}${geo}`, { timeout: 6000 })
+      .then(setPlan).catch(() => {});
   }, [bookingRef, origin]);
   if (!plan || plan.error) return null;
   const soon = plan.mins_until_leave <= 60 && plan.mins_until_leave > -30;
@@ -62,13 +64,18 @@ export default function Appointments() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [expanded, setExpanded] = useState<number | string | null>(null);
+  // Earliest reschedule time (30 min from now, IST) for the datetime-local input.
+  // eslint-disable-next-line react-hooks/purity -- relative wall-clock is intentional
+  const reschedMin = useMemo(() => istDateTimeLocal(new Date(Date.now() + 30 * 60000)), []);
 
   const load = useCallback(async () => {
     const email = profile?.email || user?.email || '';
     const d = await apiGet<ConsoleBooking[]>(`/api/my-bookings?email=${encodeURIComponent(email)}`).catch(() => []);
     const server = Array.isArray(d) ? d : [];
     // Merge local/demo bookings (synthetic + offline continuity), de-duped by ref.
-    const local = listLocalBookings(email).map((b) => ({
+    // Demo mode: the local store IS the demo tenant, so the demo customer sees
+    // every demo booking. Production: strictly the signed-in user's email.
+    const local = listLocalBookings(isDemoMode ? null : email).map((b) => ({
       id: b.id, ref: b.ref, service_name: b.service_name, employee_name: b.staff_name,
       resource_name: b.business_name, start_time: b.start_time, end_time: b.end_time,
       status: b.status, price: b.price, location: b.location, local: true,
@@ -103,7 +110,7 @@ export default function Appointments() {
     if (!ticket) return '';
     if (ticket.qr_payload) return ticket.qr_payload;
     if (ticket.local) {
-      const lb = listLocalBookings(profile?.email).find((b) => b.ref === ticket.ref);
+      const lb = listLocalBookings(isDemoMode ? null : profile?.email).find((b) => b.ref === ticket.ref);
       const url = lb?.qr_salt ? localVerifyUrl(lb.ref, lb.qr_salt) : null;
       if (url) return url;
     }
@@ -140,10 +147,26 @@ export default function Appointments() {
     if (!resched) return;
     setErr(''); setBusy(true);
     try {
-      const iso = new Date(newTime).toISOString();
+      // datetime-local gives "YYYY-MM-DDTHH:mm" — interpret it as IST wall
+      // clock (Asia/Kolkata), never browser-local, so appointments cannot
+      // shift by 5.5 hours or move to the wrong day.
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(newTime)) { setErr('Pick a valid date and time.'); return; }
+      const iso = new Date(`${newTime}:00+05:30`).toISOString();
+      if (Number.isNaN(new Date(iso).getTime())) { setErr('Pick a valid date and time.'); return; }
+      if (new Date(iso).getTime() <= Date.now()) { setErr('New time must be in the future.'); return; }
       if (resched.local) {
         const dur = new Date(resched.end_time || resched.start_time).getTime() - new Date(resched.start_time).getTime();
-        updateLocalBooking(resched.id, { start_time: iso, end_time: new Date(new Date(iso).getTime() + dur).toISOString() });
+        const endIso = new Date(new Date(iso).getTime() + dur).toISOString();
+        // Same double-booking guard as the booking flow: the new window must
+        // be free for this business (excluding this booking itself).
+        const clashes = listLocalBookings().filter(
+          (b) => String(b.id) !== String(resched.id)
+            && String((b as unknown as { business_id?: string }).business_id) === String((resched as unknown as { business_id?: string }).business_id)
+            && b.status !== 'cancelled' && b.status !== 'no_show'
+            && new Date(b.start_time) < new Date(endIso) && new Date(b.end_time) > new Date(iso),
+        );
+        if (clashes.length > 0) { setErr('That time is already booked. Pick another slot.'); return; }
+        updateLocalBooking(resched.id, { start_time: iso, end_time: endIso });
       } else {
         await apiSend('/api/bookings', 'PUT', { id: resched.id, action: 'reschedule', start_time: iso });
       }
@@ -222,7 +245,7 @@ export default function Appointments() {
                     <button onClick={() => setTicket(b)} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><QrCode className="h-3.5 w-3.5" /> Ticket</button>
                     {b.location && <a href={mapsDirections(b.location)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><Navigation className="h-3.5 w-3.5" /> Directions</a>}
                     <a href={gcalLink(b)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><CalendarPlus className="h-3.5 w-3.5" /> Calendar</a>
-                    <button onClick={() => { setResched(b); setNewTime(new Date(b.start_time).toISOString().slice(0, 16)); }} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><CalendarClock className="h-3.5 w-3.5" /> Reschedule</button>
+                    <button onClick={() => { setResched(b); setNewTime(istDateTimeLocal(b.start_time)); }} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><CalendarClock className="h-3.5 w-3.5" /> Reschedule</button>
                     <button onClick={() => cancel(b.id)} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-red-400/50 hover:text-red-400"><X className="h-3.5 w-3.5" /> Cancel</button>
                     <button onClick={() => setExpanded(e => e === b.id ? null : b.id)} className="ml-auto inline-flex items-center gap-1 text-xs text-[var(--color-brand-indigo)] font-medium">Track {expanded === b.id ? <ChevronDown className="h-3.5 w-3.5 rotate-180 transition-transform" /> : <ChevronDown className="h-3.5 w-3.5 transition-transform" />}</button>
                   </div>
@@ -253,7 +276,8 @@ export default function Appointments() {
           <div className="fixed inset-0 z-50 grid place-items-center p-4"><div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setResched(null)} />
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="relative glass rounded-2xl p-6 w-full max-w-sm">
               <h3 className="font-semibold">Reschedule</h3><p className="text-sm text-dim mt-1">{resched.service_name} · {resched.ref}</p>
-              <input type="datetime-local" value={newTime} onChange={e => setNewTime(e.target.value)} className="mt-4 w-full rounded-xl bg-elev border border-app px-3 py-2.5 text-sm outline-none focus:border-[var(--color-brand-indigo)]" />
+              <input type="datetime-local" value={newTime} min={reschedMin} onChange={e => setNewTime(e.target.value)} className="mt-4 w-full rounded-xl bg-elev border border-app px-3 py-2.5 text-sm outline-none focus:border-[var(--color-brand-indigo)]" />
+              <p className="mt-1 text-[11px] text-dim">Times are shown in India Standard Time (IST).</p>
               {err && <p className="text-sm text-red-400 mt-2">{err}</p>}
               <div className="mt-4 flex gap-2"><button onClick={() => setResched(null)} className="flex-1 rounded-xl border border-app py-2.5 text-sm">Keep it</button><button onClick={doResched} disabled={busy} className="flex-1 grad-btn text-white rounded-xl py-2.5 text-sm font-medium flex items-center justify-center gap-2">{busy && <Loader2 className="h-4 w-4 animate-spin" />} Confirm</button></div>
             </motion.div>

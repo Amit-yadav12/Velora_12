@@ -30,6 +30,35 @@ function genRef() {
 // Idempotency store: same key => same response, never a duplicate booking.
 // Persistent when the `idempotency_keys` table exists, in-memory otherwise.
 const idemMemory = new Map();
+
+// Slot ledger: authoritative overlap protection even when no database is
+// reachable (previews, demo deployments). Keyed by business|staff|start; pruned
+// when the slot is in the past. The DB clash check below runs on top of this.
+const slotLedger = new Map();
+function ledgerKey(businessId, staffName, startIso) {
+  return `${String(businessId)}|${(staffName || 'any').toLowerCase()}|${startIso}`;
+}
+function ledgerClash(businessId, start, end, staffName, capacity) {
+  let sameStaff = 0, anyStaff = 0, now = Date.now();
+  for (const [k, v] of slotLedger) {
+    if (v.end <= now) { slotLedger.delete(k); continue; }
+    const [biz, st, t] = k.split('|');
+    if (biz !== String(businessId)) continue;
+    const s = Number(t);
+    if (s < end.getTime() && v.end > start.getTime()) {
+      if (st !== 'any' && st === (staffName || '').toLowerCase()) sameStaff++;
+      if (st === 'any') anyStaff++;
+    }
+  }
+  if (staffName) return sameStaff >= 1;
+  return anyStaff + Math.min(sameStaff, 1) >= capacity;
+}
+function ledgerAdd(businessId, staffName, start, end) {
+  slotLedger.set(ledgerKey(businessId, staffName, start.getTime()), { end: end.getTime() });
+  if (slotLedger.size > 2000) {
+    for (const [k, v] of slotLedger) if (v.end <= Date.now()) slotLedger.delete(k);
+  }
+}
 async function findReplay(key) {
   if (idemMemory.has(key)) return idemMemory.get(key);
   try {
@@ -125,18 +154,8 @@ export default async function handler(req, res) {
     }
     const end = new Date(start.getTime() + (svc.duration_min || 30) * 60000);
 
-    // 3. Conflict prevention (same business, overlapping slot) — best effort.
-    try {
-      const { data: clash } = await supabase.from('bookings').select('id')
-        .eq('resource_name', biz.name).neq('status', 'cancelled')
-        .lt('start_time', end.toISOString()).gt('end_time', start.toISOString());
-      assert(!clash || clash.length === 0, 'That slot was just taken. Please pick another time.', 409);
-    } catch (e) {
-      if (e.status === 409) throw e;
-      console.error('[book:clash-check]', e.message);
-    }
-
-    // 4. Optional staff (DB, synthetic roster, or live snapshot)
+    // 3. Optional staff (DB, synthetic roster, or live snapshot) — resolved
+    //    BEFORE the conflict check so the ledger can enforce staff capacity.
     let staffName = b._staffName || null;
     if (b.staff_id && !staffName) {
       if (isSyntheticId(b.business_id) && Array.isArray(biz.staff)) {
@@ -147,6 +166,27 @@ export default async function handler(req, res) {
           staffName = st?.name || null;
         } catch { /* non-fatal */ }
       }
+    }
+
+    // 4. Conflict prevention (same business, overlapping slot).
+    // 4a. In-memory ledger — works even with no database (preview/demo deploys).
+    //     Capacity-aware: a named staff member owns their slot exclusively;
+    //     "any staff" only closes when every specialist is busy. Only enforced
+    //     when the roster is known (synthetic/live snapshot); DB businesses
+    //     rely on the database clash check below, which is authoritative.
+    if (Array.isArray(biz.staff)) {
+      const staffCapacity = Math.max(1, biz.staff.length);
+      assert(!ledgerClash(biz.id, start, end, staffName || null, staffCapacity), 'That slot was just taken. Please pick another time.', 409);
+    }
+    // 4b. Database clash check (authoritative when a DB is configured).
+    try {
+      const { data: clash } = await supabase.from('bookings').select('id')
+        .eq('resource_name', biz.name).neq('status', 'cancelled')
+        .lt('start_time', end.toISOString()).gt('end_time', start.toISOString());
+      assert(!clash || clash.length === 0, 'That slot was just taken. Please pick another time.', 409);
+    } catch (e) {
+      if (e.status === 409) throw e;
+      console.error('[book:clash-check]', e.message);
     }
 
     // 5. Persist (DB write; demo-mode confirmation if the DB is unreachable)
@@ -227,6 +267,9 @@ export default async function handler(req, res) {
       `Total: ₹${(Number(svc.price) + tax).toLocaleString('en-IN')} (incl. 18% GST)`, ``, `Directions: ${mapsLink}`, `Verify ticket: ${qrPayload}`,
     ].join('\n');
     const gmailComposeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(customer_email)}&su=${encodeURIComponent(`Your booking is confirmed — ${ref}`)}&body=${encodeURIComponent(gmailBody)}`;
+
+    // 7b. Record the slot in the ledger so concurrent requests cannot double-book.
+    ledgerAdd(biz.id, staffName, start, end);
 
     // 8. Respond INSTANTLY (< 2s). Email + calendar run in the background so the
     //    confirmation screen appears immediately with every detail.

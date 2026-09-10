@@ -9,6 +9,24 @@ async function getMeta(bookingId) {
   return data || null;
 }
 
+// Mirrors src/lib/bookingStatus.ts — the server-side authority for status
+// transitions. Customers AND staff can never make a nonsensical move,
+// regardless of where the change originates.
+const STATUS_TRANSITIONS = {
+  pending: ['confirmed', 'cancelled'],
+  confirmed: ['checked_in', 'in_progress', 'completed', 'cancelled'],
+  checked_in: ['completed', 'no_show'],
+  in_progress: ['completed'],
+  completed: [],
+  cancelled: [],
+  no_show: [],
+};
+
+function canTransition(from, to) {
+  const allowed = STATUS_TRANSITIONS[from] || [];
+  return allowed.includes(to);
+}
+
 async function audit(actor, action, entityId, metadata, ip) {
   try { await supabase.from('audit_logs').insert({ actor, action, entity: 'booking', entity_id: String(entityId), metadata, ip }); }
   catch (e) { console.error('[audit]', e.message); }
@@ -55,7 +73,7 @@ export default async function handler(req, res) {
       const actor = auth.user.email;
 
       if (action === 'cancel') {
-        assert(existing.status !== 'cancelled', 'Booking is already cancelled.');
+        assert(canTransition(existing.status, 'cancelled'), `A ${existing.status} booking cannot be cancelled.`);
         const { data, error } = await supabase.from('bookings').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', id).select().single();
         if (error) throw error;
         await supabase.from('booking_history').insert({ booking_id: id, action: 'cancelled', detail: 'Booking cancelled', actor });
@@ -74,6 +92,7 @@ export default async function handler(req, res) {
       }
 
       if (action === 'reschedule') {
+        assert(['pending', 'confirmed', 'checked_in', 'in_progress'].includes(existing.status), `A ${existing.status} booking cannot be rescheduled.`);
         assert(isISODate(req.body.start_time), 'A valid new start time is required.');
         const start = new Date(req.body.start_time);
         assert(start.getTime() > Date.now(), 'New time must be in the future.');
@@ -106,7 +125,7 @@ export default async function handler(req, res) {
 
       if (action === 'status') {
         const status = sanitizeText(req.body.status, 20);
-        assert(['confirmed', 'in_progress', 'checked_in', 'completed', 'no_show'].includes(status), 'Invalid status.');
+        assert(canTransition(existing.status, status), `Invalid transition: ${existing.status} → ${status}.`);
         if (status === 'checked_in') await supabase.from('booking_meta').upsert({ booking_id: id, checked_in: true, updated_at: new Date().toISOString() });
         const { data, error } = await supabase.from('bookings').update({ status, updated_at: new Date().toISOString() }).eq('id', id).select().single();
         if (error) throw error;

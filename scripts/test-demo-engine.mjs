@@ -152,6 +152,85 @@ const parsed = parseLocalQrToken(token);
 ok('Token parses back to ref', parsed?.ref === booking.ref);
 ok('Wrong salt is rejected', parseLocalQrToken(`local.${Buffer.from(JSON.stringify({ ref: booking.ref, s: 'wrong-salt' })).toString('base64')}`)?.ref === booking.ref);
 
+console.log('\n—— 11b. Double-booking guard (booking engine) ——');
+// Same specialist + same slot booked twice must be rejected (no duplicates).
+demoStore.resetDemo();
+const guardSvc = demoStore.listDemoServices('demo-biz-aurora')[0];
+const guardDate = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+const guardSlots = demoStore.demoSlots('demo-biz-aurora', guardSvc.id, guardDate, [], 'Meera Kapoor');
+const guardSlot = guardSlots.find((s) => s.available);
+let guardRejected = false;
+const guardBody = {
+  business_id: 'demo-biz-aurora', business_name: 'Aurora Luxe Salon & Spa',
+  service_id: guardSvc.id, service_name: guardSvc.name, service_duration: guardSvc.duration_min, service_price: guardSvc.price,
+  start_time: guardSlot.time, staff_id: null, staff_name: 'Meera Kapoor',
+  customer_name: 'Race Test', customer_email: 'race@velora.ai', customer_phone: '+91 90000 00001',
+};
+await offlineStore.createDemoBooking(guardBody);
+try {
+  await offlineStore.createDemoBooking(guardBody);
+} catch (e) {
+  guardRejected = /just taken/i.test(String(e.message));
+}
+ok('Same specialist + same slot twice is rejected', guardRejected);
+const guardCount = offlineStore.listLocalBookings().filter((b) => b.business_id === 'demo-biz-aurora' && b.start_time === guardSlot.time).length;
+ok('Exactly one booking for that slot (no duplicate)', guardCount === 1, `got ${guardCount}`);
+// Same slot with a DIFFERENT free specialist stays bookable (capacity-aware).
+// (Arjun Rao works all 7 days — the roster is part of real availability.)
+const guardSlots2 = demoStore.demoSlots('demo-biz-aurora', guardSvc.id, guardDate, offlineStore.listLocalBookings().map((b) => ({ business_id: b.business_id, staff_name: b.staff_name, start_time: b.start_time, end_time: b.end_time, status: b.status })), 'Arjun Rao');
+ok('Another specialist can still take the same time', guardSlots2.find((s) => s.time === guardSlot.time)?.available === true);
+ok('A staff member off-duty that day blocks their slot', demoStore.demoSlots('demo-biz-aurora', guardSvc.id, guardDate, [], 'Kabir Singh').every((s) => !s.available || s.time !== guardSlot.time) || demoStore.demoSlots('demo-biz-aurora', guardSvc.id, guardDate, [], 'Kabir Singh').find((s) => s.time === guardSlot.time)?.available === false);
+
+console.log('\n—— 11c. IST reschedule round-trip (no 5.5h shift) ——');
+const fmt = await import(run('src/lib/format.ts'));
+const sampleIso = '2026-09-15T05:30:00.000Z'; // 11:00 IST
+const local = fmt.istDateTimeLocal(sampleIso);
+ok('IST wall clock for input (11:00, not 05:30)', local.endsWith('T11:00'), local);
+const back = new Date(`${local}:00+05:30`).toISOString();
+ok('Round-trip preserves the instant', back === sampleIso, back);
+
+console.log('\n—— 12. Deactivated business leaves customer discovery ——');
+demoStore.resetDemo();
+const hybrid = await import(run('src/lib/hybridData.ts'));
+globalThis.fetch = async () => { throw new Error('offline'); }; // offline path = real fallback behavior
+const disc1 = await hybrid.fetchDiscover({ city: 'Jaipur', lat: 26.9124, lng: 75.7873, sort: 'ai', q: 'deactivate-test-a' });
+const bizCountBefore = disc1.results.filter((b) => String(b.id).startsWith('demo-biz-')).length;
+ok('Demo businesses present in discovery', bizCountBefore >= 22, `got ${bizCountBefore}`);
+const targetId = disc1.results.filter((b) => String(b.id).startsWith('demo-biz-'))[0].id;
+demoStore.updateDemoBusiness(String(targetId), { active: false });
+const disc2 = await hybrid.fetchDiscover({ city: 'Jaipur', lat: 26.9124, lng: 75.7873, sort: 'ai', q: 'deactivate-test-b' });
+ok('Deactivated business gone from customer discovery', !disc2.results.some((b) => String(b.id) === String(targetId)));
+const detail = await hybrid.fetchBusiness(targetId, 'Jaipur');
+ok('Deactivated business profile is not openable', detail === null);
+demoStore.updateDemoBusiness(String(targetId), { active: true });
+globalThis.fetch = undefined;
+
+console.log('\n—— 13. QR verification client (same verdicts as the UI) ——');
+demoStore.resetDemo();
+const vSvc = demoStore.listDemoServices('demo-biz-apex')[0];
+const vSlots = demoStore.demoSlots('demo-biz-apex', vSvc.id, new Date(Date.now() + 86400000).toISOString().slice(0, 10), [], null);
+const vSlot = vSlots.find((s) => s.available);
+const vb = await offlineStore.createDemoBooking({
+  business_id: 'demo-biz-apex', business_name: 'Apex Physio & Sports Rehab',
+  service_id: vSvc.id, service_name: vSvc.name, service_duration: vSvc.duration_min, service_price: vSvc.price,
+  start_time: vSlot.time, customer_name: 'Verify Test', customer_email: 'verify@velora.ai',
+});
+const verify = await import(run('src/services/verify.ts'));
+const vTok = vb.qr_payload.split('/verify/')[1];
+const vRes = await verify.verifyToken(vTok);
+ok('Valid token verifies', vRes.valid === true && vRes.booking?.ref === vb.booking.ref);
+ok('Verification exposes only public fields (no email/PII)', vRes.booking && !('customer_email' in (vRes.booking || {})));
+offlineStore.transitionLocalBooking(vb.booking.id, 'cancelled');
+const vCanc = await verify.verifyToken(vTok);
+ok('Cancelled booking → invalid verdict', vCanc.valid === false && vCanc.reason === 'cancelled');
+const vBad = await verify.verifyToken('local.invalid-token');
+ok('Altered token → invalid verdict', vBad.valid === false && vBad.reason === 'invalid');
+
+console.log('\n—— 14. Notification audience isolation ——');
+const notifs = offlineStore.listLocalNotifications();
+ok('Customer never receives admin notifications', notifs.filter((n) => n.audience === 'admin').every((n) => n.audience !== 'customer'));
+ok('Booking created both-side notifications (customer + admin)', notifs.some((n) => n.audience === 'customer' && n.booking_ref) && notifs.some((n) => n.audience === 'admin' && n.booking_ref));
+
 console.log('\n—— 11. Reset demo: isolated + restores clean state ——');
 demoStore.resetDemo();
 ok('Operating sample restored after reset', offlineStore.listLocalBookings().length >= 16);

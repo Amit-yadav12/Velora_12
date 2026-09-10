@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowRight, Loader2, Mail, Lock, User, ShieldCheck, CalendarCheck, Sparkles, MapPin, ChevronLeft, Store, UserRound, Building2, KeyRound } from 'lucide-react';
@@ -10,6 +10,8 @@ import { saveDemoBusiness } from '../../lib/demoStore';
 import { apiSend } from '../../lib/api';
 import { toast } from '../../services/events';
 import { inputCls } from '../../components/ui';
+import { signInWithGoogleNative } from '../../lib/googleAuth';
+import { useAuth } from '../../contexts/AuthContext';
 import type { LucideIcon } from 'lucide-react';
 import { errMsg } from '../../lib/types';
 
@@ -29,6 +31,16 @@ export default function Welcome() {
   const nav = useNavigate();
   const [params] = useSearchParams();
   const next = params.get('next') || '/';
+  const { user, profile, loading: authLoading } = useAuth();
+
+  // Landing back here after an OAuth redirect (Google) means a session already
+  // exists — continue to the right home instead of showing the role picker.
+  useEffect(() => {
+    if (!authLoading && user) {
+      nav((profile?.role === 'admin' ? '/admin' : next), { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user, profile?.role]);
 
   const [role, setRole] = useState<Role | null>(null);
   const [mode, setMode] = useState<Mode>('signin');
@@ -87,9 +99,34 @@ export default function Welcome() {
     if (!email) { setErr('Enter your email above first, then tap reset.'); return; }
     resetMsgs(); setLoading(true);
     try {
+      // Demo mode has no mail infrastructure — never claim a link was sent.
+      if (isDemoMode) {
+        setInfo('Demo mode: no real email is sent. The demo password is velora123 — sign in with it directly.');
+        setLoading(false);
+        return;
+      }
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/welcome` });
       if (error) throw error;
       setInfo(`Reset link sent to ${email}. Check your inbox (and spam).`);
+    } catch (e: unknown) {
+      setErr(friendly(errMsg(e)));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ---------------- Google sign-in (primary) ---------------- */
+  const google = async () => {
+    resetMsgs(); setLoading(true);
+    try {
+      const res = await signInWithGoogleNative(next, role || 'customer');
+      if (!res.ok) {
+        setErr(friendly(res.error || 'Google sign-in could not start.'));
+        return;
+      }
+      // Native OAuth redirects the browser itself; demo mode lands back here
+      // with a live session, so navigate immediately.
+      nav(homeFor(role || 'customer'), { replace: true });
     } catch (e: unknown) {
       setErr(friendly(errMsg(e)));
     } finally {
@@ -358,12 +395,15 @@ export default function Welcome() {
                 {mode === 'register' ? 'Join Velora in seconds.' : `Sign in to your ${isAdmin ? 'business console' : 'account'}.`}
               </p>
 
-              {/* Visual Google CTA — hover only, no sign-in */}
+              {/* Google — primary action, outlined treatment (wire it to the real
+                  OAuth flow; in demo mode it signs into the demo account). */}
               <button
                 type="button"
-                className="mt-6 w-full rounded-xl grad-btn text-white py-3 text-sm font-semibold flex items-center justify-center gap-2.5 shadow-lg shadow-[var(--color-brand-indigo)]/20 transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+                onClick={google}
+                disabled={loading}
+                className="mt-6 w-full rounded-xl border border-app bg-[var(--surface)] py-3 text-sm font-semibold flex items-center justify-center gap-2.5 transition-all duration-200 hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[var(--color-brand-indigo)]/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)] disabled:opacity-60 disabled:hover:translate-y-0"
               >
-                <GoogleLogo /> Continue with Google
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleLogo />} Continue with Google
               </button>
 
               <div className="my-4 flex items-center gap-3 text-xs text-dim">
