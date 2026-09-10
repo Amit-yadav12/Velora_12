@@ -54,10 +54,17 @@ function counts(b: BookingLike): boolean {
 
 const num = (v: unknown) => Number(v) || 0;
 
-function startOfDay(d: Date): number {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x.getTime();
+const IST_OFFSET_MS = 330 * 60000;
+
+/** UTC instant for midnight in Asia/Kolkata containing the supplied instant. */
+function startOfIstDay(d: Date): number {
+  const shifted = new Date(d.getTime() + IST_OFFSET_MS);
+  return Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - IST_OFFSET_MS;
+}
+
+function startOfIstMonth(d: Date): number {
+  const shifted = new Date(d.getTime() + IST_OFFSET_MS);
+  return Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), 1) - IST_OFFSET_MS;
 }
 
 export function revenueMetrics(bookings: BookingLike[], now = new Date()): RevenueMetrics {
@@ -69,9 +76,9 @@ export function revenueMetrics(bookings: BookingLike[], now = new Date()): Reven
 
   const sum = (list: BookingLike[]) => list.reduce((s, b) => s + num(b.price), 0);
   const nowMs = now.getTime();
-  const todayStart = startOfDay(now);
+  const todayStart = startOfIstDay(now);
   const weekStart = nowMs - 7 * 86400000;
-  const monthStart = startOfDay(new Date(now.getFullYear(), now.getMonth(), 1));
+  const monthStart = startOfIstMonth(now);
 
   const today = active.filter((b) => {
     const t = new Date(b.start_time).getTime();

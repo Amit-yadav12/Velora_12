@@ -20,6 +20,12 @@ const { createServer } = await import('vite');
 const server = await createServer({
   root: ROOT,
   logLevel: 'silent',
+  // This suite verifies the zero-backend demo resolver even when CI exposes
+  // production Supabase variables to the process.
+  define: {
+    'import.meta.env.VITE_SUPABASE_URL': 'undefined',
+    'import.meta.env.VITE_SUPABASE_ANON_KEY': 'undefined',
+  },
   server: { middlewareMode: true, hmr: false },
   appType: 'custom',
 });
