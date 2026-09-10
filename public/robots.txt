@@ -1,10 +1,11 @@
 User-agent: *
 Allow: /$
 Allow: /welcome
+Allow: /explore
 Disallow: /admin
 Disallow: /appointments
 Disallow: /profile
 Disallow: /settings
 Disallow: /notifications
 
-Sitemap: https://velora.app/sitemap.xml
+Sitemap: https://velora-ai-in.netlify.app/sitemap.xml

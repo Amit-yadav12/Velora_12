@@ -102,6 +102,8 @@ export async function fetchLivePlaces(opts: {
 
 /** Normalize a live Google place into a Velora business shape (booking-ready). */
 export function liveToBusiness(p: LivePlace, cityName: string, categoryFallback = 'Clinics'): any {
+  // Production fallback uses local /biz/ images, zero placeholder-image.
+  const fallbackImg = `/biz/clinic.jpg`;
   return {
     id: `live-${p.place_id}`,
     live: true,
@@ -117,9 +119,9 @@ export function liveToBusiness(p: LivePlace, cityName: string, categoryFallback 
     phone: p.phone,
     rating: p.rating ?? 4.2,
     review_count: p.review_count ?? 50,
-    image_url: p.photos?.[0] || `https://picsum.photos/seed/live-${p.place_id}/640/420`,
-    cover_url: p.photos?.[1] || p.photos?.[0] || `https://picsum.photos/seed/live-${p.place_id}-c/1200/500`,
-    photos: p.photos?.length ? p.photos : undefined,
+    image_url: p.photos?.[0] || fallbackImg,
+    cover_url: p.photos?.[1] || p.photos?.[0] || fallbackImg,
+    photos: p.photos?.length ? p.photos : [fallbackImg],
     open_now: p.open_now ?? undefined,
     hours_text: p.hours,
     website: p.website,
