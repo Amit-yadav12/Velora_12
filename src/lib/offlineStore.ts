@@ -3,14 +3,17 @@
 // Supabase is unreachable. Merged with server data wherever it exists.
 
 import { emitBookingsChanged, emitNotifsChanged } from '../services/events';
+import { canTransition } from './bookingStatus';
 
 export interface LocalBooking {
   id: number | string;
   ref: string;
   business_id: number | string;
   business_name: string;
+  service_id?: number | string | null;
   service_name: string;
   staff_name?: string | null;
+  staff_id?: number | string | null;
   start_time: string;
   end_time: string;
   status: string;
@@ -19,6 +22,8 @@ export interface LocalBooking {
   location?: string;
   customer_name?: string;
   customer_email?: string;
+  customer_phone?: string;
+  qr_salt?: string;
   created_at: string;
   local: true;
 }
@@ -92,6 +97,21 @@ export function updateLocalBooking(id: number | string, patch: Partial<LocalBook
   write(B_KEY, cur);
 }
 
+/**
+ * Status change for a local booking, validated against the shared state
+ * machine (see bookingStatus.ts). Nonsensical transitions are rejected —
+ * returns the applied status, or null when the transition is not allowed.
+ */
+export function transitionLocalBooking(id: number | string, to: string): string | null {
+  const cur = read<LocalBooking>(B_KEY);
+  const target = cur.find((b) => String(b.id) === String(id));
+  if (!target) return null;
+  if (!canTransition(target.status, to)) return null;
+  const next = cur.map((b) => (String(b.id) === String(id) ? { ...b, status: to } : b));
+  write(B_KEY, next);
+  return to;
+}
+
 export function listLocalInvoices(): LocalInvoice[] {
   return read<LocalInvoice>(I_KEY);
 }
@@ -126,6 +146,18 @@ export function markLocalNotificationRead(id: string): void {
   write(N_KEY, cur);
 }
 
+/** Mark every local notification as read (used by the business console). */
+export function markAllLocalNotificationsRead(audience?: string): void {
+  const cur = read<LocalNotification>(N_KEY).map((n) =>
+    !n.read && (!audience || n.audience === audience) ? { ...n, read: true } : n,
+  );
+  write(N_KEY, cur);
+}
+
+export function listLocalNotificationsFor(audience: string): LocalNotification[] {
+  return read<LocalNotification>(N_KEY).filter((n) => n.audience === audience);
+}
+
 /** Seed a couple of demo notifications per city so Alerts never feels empty. */
 export function seedCityNotifications(city: string): LocalNotification[] {
   const existing = listLocalNotifications();
@@ -144,4 +176,92 @@ export function genLocalRef(): string {
   let r = '';
   for (let i = 0; i < 6; i++) r += s[Math.floor(Math.random() * s.length)];
   return `VL-${r}`;
+}
+
+/**
+ * Creates a booking inside the DEMO TENANT — the one code path the demo
+ * customer flow uses. Persists the booking + invoice, registers the customer
+ * in the demo customer book, and emits notifications for BOTH sides
+ * (customer confirmation + admin "new booking"). Emits the real-time events
+ * that instantly refresh the business dashboard.
+ */
+export async function createDemoBooking(input: {
+  business_id: string;
+  business_name: string;
+  service_id?: string | null;
+  service_name: string;
+  service_duration: number;
+  service_price: number;
+  staff_id?: string | null;
+  staff_name?: string | null;
+  start_time: string;
+  city?: string;
+  location?: string;
+  customer_name: string;
+  customer_email: string;
+  customer_phone?: string;
+  status?: string; // default: pending (business confirms)
+}): Promise<{ booking: LocalBooking; invoice: LocalInvoice; qr_payload: string }> {
+  const { saveDemoCustomer, genQrSalt, localVerifyUrl } = await import('./demoStore');
+  const start = new Date(input.start_time);
+  const end = new Date(start.getTime() + (input.service_duration || 30) * 60000);
+  const ref = genLocalRef();
+  const salt = genQrSalt();
+  const price = Number(input.service_price) || 0;
+
+  const booking = saveLocalBooking({
+    id: `local-${Date.now()}`,
+    ref,
+    business_id: input.business_id,
+    business_name: input.business_name,
+    service_id: input.service_id ?? null,
+    service_name: input.service_name,
+    staff_id: input.staff_id ?? null,
+    staff_name: input.staff_name || null,
+    start_time: start.toISOString(),
+    end_time: end.toISOString(),
+    status: input.status || 'pending',
+    price,
+    city: input.city,
+    location: input.location,
+    customer_name: input.customer_name,
+    customer_email: input.customer_email,
+    customer_phone: input.customer_phone,
+    qr_salt: salt,
+  });
+
+  const tax = Math.round(price * 0.18 * 100) / 100;
+  const invoice = saveLocalInvoice({
+    id: ref, number: `INV-${ref.slice(3)}`, booking_ref: ref,
+    customer_name: input.customer_name,
+    amount: price, tax, total: Math.round((price + tax) * 100) / 100, status: 'issued',
+  });
+
+  // Customer book entry (single source: demo customers + derived from bookings).
+  try { saveDemoCustomer({ name: input.customer_name, email: input.customer_email, phone: input.customer_phone }); } catch { /* non-fatal */ }
+
+  const whenLabel = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).format(start) + ' IST';
+  pushLocalNotification({
+    audience: 'customer', title: input.status === 'confirmed' ? 'Booking confirmed' : 'Booking received',
+    body: `${input.service_name} at ${input.business_name} — ${ref} · ${whenLabel}`,
+    type: input.status === 'confirmed' ? 'success' : 'info', read: false, booking_ref: ref,
+  });
+  pushLocalNotification({
+    audience: 'admin', title: 'New booking',
+    body: `${ref} · ${input.business_name} · ${input.service_name} · ${input.customer_name}`,
+    type: 'info', read: false, booking_ref: ref,
+  });
+
+  // Full verification URL — scanning the QR opens the verify page directly.
+  return { booking, invoice, qr_payload: localVerifyUrl(ref, salt) };
+}
+
+/** Verification URL for a local (demo tenant) booking. */
+export function localBookingVerifyUrl(b: LocalBooking): string | null {
+  if (!b.qr_salt) return null;
+  try {
+    return `${window.location.origin}/verify/${encodeURIComponent(`local.${btoa(JSON.stringify({ ref: b.ref, s: b.qr_salt })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`)}`;
+  } catch {
+    return null;
+  }
 }

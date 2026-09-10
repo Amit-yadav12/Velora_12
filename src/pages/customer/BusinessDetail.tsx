@@ -8,16 +8,18 @@ import { useAuth } from '../../contexts/AuthContext';
 import { apiSend } from '../../lib/api';
 import { submitBooking, newIdempotencyKey } from '../../services/booking';
 import { toast } from '../../services/events';
-import { inr } from '../../lib/format';
+import { inr, istDate, istTime } from '../../lib/format';
 import { useLocation } from '../../contexts/LocationContext';
 import BookingTimeline, { Slot } from '../../components/premium/BookingTimeline';
 import Heatmap from '../../components/premium/Heatmap';
 import SuccessExperience from '../../components/premium/SuccessExperience';
 import { SlotSkeleton } from '../../components/premium/Skeleton';
+import { Modal, Field, inputCls, btnPrimary, btnGhost } from '../../components/ui';
 import { fetchBusiness, fetchSlots, fetchReviews } from '../../lib/hybridData';
 import { googleEmbedUrl, googleSearchUrl } from '../../lib/googleMaps';
 import { pushRecentView } from '../../lib/smartSearch';
-import { saveLocalBooking, saveLocalInvoice, pushLocalNotification, genLocalRef } from '../../lib/offlineStore';
+import { saveLocalBooking, saveLocalInvoice, pushLocalNotification, genLocalRef, createDemoBooking, listLocalBookings } from '../../lib/offlineStore';
+import { isDemoBusinessId, genQrSalt, localVerifyUrl } from '../../lib/demoStore';
 import { cacheGet } from '../../lib/smartCache';
 
 export default function BusinessDetail() {
@@ -39,8 +41,20 @@ export default function BusinessDetail() {
   const [result, setResult] = useState<any>(null);
   const [err, setErr] = useState('');
   const [reviews, setReviews] = useState<any[]>([]);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [custName, setCustName] = useState('');
+  const [custEmail, setCustEmail] = useState('');
+  const [custPhone, setCustPhone] = useState('');
   const { mapCenter, city } = useLocation();
   const coords = mapCenter; // city center or live GPS — never re-prompts
+
+  // Pre-fill the contact form from the signed-in profile (editable in review).
+  useEffect(() => {
+    if (profile) {
+      setCustName((n) => n || profile.full_name || '');
+      setCustEmail((e) => e || profile.email || '');
+    }
+  }, [profile?.full_name, profile?.email]);
 
   useEffect(() => {
     let alive = true;
@@ -72,26 +86,77 @@ export default function BusinessDetail() {
     if (!biz || !service) return;
     let alive = true;
     setLoadingSlots(true); setSlot('');
-    fetchSlots(biz.id, service.id, date, coords ? { lat: coords.lat, lng: coords.lng } : undefined).then(d => {
+    fetchSlots(biz.id, service.id, date, coords ? { lat: coords.lat, lng: coords.lng } : undefined, staff?.name || null).then(d => {
       if (!alive) return;
       setSlots(d.slots || []); setRecommended(d.recommended || []); setTravel(d.travel_min || 0);
       // auto-select AI top pick
       if (d.recommended?.[0]) setSlot(d.recommended[0].time);
     }).finally(() => alive && setLoadingSlots(false));
     return () => { alive = false; };
-  }, [biz, service, date, coords.lat, coords.lng]);
+  }, [biz, service, date, staff?.id, coords.lat, coords.lng]);
 
   // Stable per slot+service so retries replay the same booking, never a duplicate.
   const idemKey = useMemo(() => newIdempotencyKey(), [service?.id, slot]);
 
-  const confirm = async () => {
-    // Natural in-experience login gate: only prompt sign-in at booking time.
+  // Booking flow: review the details (editable contact info), then confirm.
+  const openReview = () => {
     if (!user) { nav(`/welcome?next=${encodeURIComponent(`/business/${id}`)}`); return; }
+    setErr('');
+    setReviewOpen(true);
+  };
+
+  const confirm = async () => {
+    if (!custName.trim() || !custEmail.trim()) { setErr('Name and email are required.'); return; }
     setErr(''); setSubmitting(true);
     try {
+      // Duplicate-slot guard: local mirrors of every booking in this environment
+      // (server bookings are mirrored too), so a taken slot can never be
+      // re-booked — even offline. Capacity-aware: with "any staff" the slot
+      // only closes when every specialist is busy. The API re-checks server-side.
+      const start = new Date(slot);
+      const end = new Date(start.getTime() + (service!.duration_min || 30) * 60000);
+      const overlaps = listLocalBookings().filter(
+        (b) => String(b.business_id) === String(biz!.id)
+          && b.status !== 'cancelled' && b.status !== 'no_show'
+          && new Date(b.start_time) < end && new Date(b.end_time) > start,
+      );
+      const activeStaffCount = ((biz as any).staff || []).filter((s: any) => s.active !== false).length;
+      const capacity = staff ? 1 : Math.max(1, activeStaffCount);
+      const blocking = staff
+        ? overlaps.filter((b) => (b.staff_name || '').toLowerCase() === staff.name.toLowerCase())
+        : overlaps;
+      if (blocking.length >= capacity) {
+        setErr('That slot was just taken. Please pick another time.');
+        setSubmitting(false);
+        return;
+      }
+
+      // Demo tenant business → book directly against the shared demo dataset
+      // (pending until the business confirms — the end-to-end demo path).
+      if (isDemoBusinessId(biz!.id)) {
+        const { booking, invoice, qr_payload } = await createDemoBooking({
+          business_id: String(biz!.id), business_name: biz!.name,
+          service_id: service!.id != null ? String(service!.id) : null, service_name: service!.name,
+          service_duration: service!.duration_min || 30, service_price: Number(service!.price) || 0,
+          staff_id: staff?.id != null ? String(staff.id) : null, staff_name: staff?.name || null,
+          start_time: slot,
+          city: (biz as any).city || city.name, location: biz!.address,
+          customer_name: custName.trim(), customer_email: custEmail.trim(), customer_phone: custPhone.trim(),
+          status: 'pending',
+        });
+        setResult({
+          booking: { ...booking, employee_name: booking.staff_name }, invoice, business: biz,
+          maps_link: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz!.address || biz!.name)}`,
+          qr_payload, local: true,
+          pipeline: { email: 'log-fallback' },
+        });
+        toast('Booking request sent', 'success');
+        return;
+      }
+
       const payload: any = {
         business_id: biz!.id, service_id: service!.id, staff_id: staff?.id || null,
-        start_time: slot, customer_name: profile?.full_name, customer_email: profile?.email,
+        start_time: slot, customer_name: custName.trim(), customer_email: custEmail.trim(),
         idempotency_key: idemKey,
       };
       // Live Google businesses travel with their hydrated snapshot.
@@ -112,12 +177,12 @@ export default function BusinessDetail() {
             service_name: service!.name, staff_name: staff?.name || null,
             start_time: bk.start_time, end_time: bk.end_time, status: bk.status,
             price: Number(service!.price) || 0, city: (biz as any).city || city.name,
-            location: biz!.address, customer_name: profile?.full_name, customer_email: profile?.email,
+            location: biz!.address, customer_name: custName.trim(), customer_email: custEmail.trim(),
           });
           if (res.invoice) {
             saveLocalInvoice({
               id: String(res.invoice.id || res.invoice.number), number: res.invoice.number,
-              booking_ref: bk.ref, customer_name: profile?.full_name || '', amount: Number(res.invoice.amount) || 0,
+              booking_ref: bk.ref, customer_name: custName.trim() || '', amount: Number(res.invoice.amount) || 0,
               tax: Number(res.invoice.tax) || 0, total: Number(res.invoice.total) || 0, status: res.invoice.status || 'issued',
             });
           }
@@ -129,21 +194,22 @@ export default function BusinessDetail() {
       } catch { /* non-fatal */ }
       setResult(res);
       toast(res?.deduplicated ? 'Booking already confirmed' : 'Booking confirmed', 'success');
-    } catch (e: any) {
+      } catch (e: any) {
       // Ultimate fallback: confirm locally so the demo flow never dead-ends.
       try {
         const ref = genLocalRef();
+        const salt = genQrSalt();
         const start = new Date(slot);
         const end = new Date(start.getTime() + (service!.duration_min || 30) * 60000);
         const bk = {
-          id: `local-${Date.now()}`, ref, customer_name: profile?.full_name, customer_email: profile?.email,
+          id: `local-${Date.now()}`, ref, customer_name: custName.trim(), customer_email: custEmail.trim(),
           service_name: service!.name, employee_name: staff?.name || null, resource_name: biz!.name,
           start_time: start.toISOString(), end_time: end.toISOString(), status: 'confirmed',
           price: service!.price, location: biz!.address,
         };
         const tax = Math.round(Number(service!.price) * 0.18);
         const invoice = {
-          id: ref, number: `INV-${ref.slice(3)}`, booking_ref: ref, customer_name: profile?.full_name,
+          id: ref, number: `INV-${ref.slice(3)}`, booking_ref: ref, customer_name: custName.trim(),
           amount: service!.price, tax, total: Number(service!.price) + tax, status: 'issued',
           line_items: [{ desc: service!.name, qty: 1, price: Number(service!.price) }],
         };
@@ -151,20 +217,21 @@ export default function BusinessDetail() {
           id: bk.id, ref, business_id: biz!.id, business_name: biz!.name, service_name: service!.name,
           staff_name: staff?.name || null, start_time: bk.start_time, end_time: bk.end_time,
           status: 'confirmed', price: Number(service!.price) || 0, city: (biz as any).city || city.name,
-          location: biz!.address, customer_name: profile?.full_name, customer_email: profile?.email,
+          location: biz!.address, customer_name: custName.trim(), customer_email: custEmail.trim(), customer_phone: custPhone.trim(),
+          qr_salt: salt,
         });
-        saveLocalInvoice({ id: ref, number: invoice.number, booking_ref: ref, customer_name: profile?.full_name || '', amount: Number(service!.price) || 0, tax, total: invoice.total, status: 'issued' });
+        saveLocalInvoice({ id: ref, number: invoice.number, booking_ref: ref, customer_name: custName.trim() || '', amount: Number(service!.price) || 0, tax, total: invoice.total, status: 'issued' });
         pushLocalNotification({ audience: 'customer', title: 'Booking confirmed', body: `${service!.name} at ${biz!.name} — ${ref}`, type: 'success', read: false, booking_ref: ref });
         setResult({
           booking: bk, invoice, business: biz,
           maps_link: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz!.address || biz!.name)}`,
-          qr_payload: JSON.stringify({ ref, biz: biz!.name, svc: service!.name, at: start.toISOString(), v: 1 }),
+          qr_payload: localVerifyUrl(ref, salt),
           pipeline: { email: 'log-fallback' },
         });
       } catch {
         setErr(e.message);
       }
-    } finally { setSubmitting(false); }
+    } finally { setSubmitting(false); setReviewOpen(false); }
   };
 
   const mapSrc = useMemo(() => {
@@ -184,6 +251,45 @@ export default function BusinessDetail() {
   const isLive = !!(biz as any).live;
 
   if (result) return <SuccessExperience booking={result.booking} invoice={result.invoice} business={biz} mapsLink={result.maps_link} qrPayload={result.qr_payload} gmailComposeUrl={result.gmail_compose_url} emailStatus={result.pipeline?.email} onClose={() => nav('/appointments')} />;
+
+  // Review + confirm — the final step of the booking engine
+  const reviewModal = (
+    <Modal open={reviewOpen} onClose={() => !submitting && setReviewOpen(false)} title="Review your booking">
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-app bg-surface p-4 space-y-2 text-sm">
+          <div className="flex justify-between gap-4"><span className="text-dim">Business</span><span className="font-medium text-right">{biz.name}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-dim">Service</span><span className="font-medium text-right">{service?.name}</span></div>
+          {staff && <div className="flex justify-between gap-4"><span className="text-dim">Specialist</span><span className="font-medium text-right">{staff.name}</span></div>}
+          <div className="flex justify-between gap-4"><span className="text-dim">When</span><span className="font-medium text-right">{istDate(slot)}, {istTime(slot)}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-dim">Duration</span><span className="font-medium text-right">{service?.duration_min} min</span></div>
+          <div className="flex justify-between gap-4 pt-2 border-t border-app"><span className="text-dim">Total</span><span className="font-semibold">{service?.price === 0 ? 'Free' : inr(Number(service?.price) || 0)}</span></div>
+        </div>
+        <div className="grid gap-3">
+          <Field label="Your name">
+            <input className={inputCls} value={custName} onChange={(e) => setCustName(e.target.value)} placeholder="Full name" autoComplete="name" />
+          </Field>
+          <Field label="Email (booking confirmation goes here)">
+            <input className={inputCls} value={custEmail} onChange={(e) => setCustEmail(e.target.value)} placeholder="you@email.com" type="email" autoComplete="email" />
+          </Field>
+          <Field label="Phone (optional — for booking updates)">
+            <input className={inputCls} value={custPhone} onChange={(e) => setCustPhone(e.target.value)} placeholder="+91 …" type="tel" autoComplete="tel" />
+          </Field>
+        </div>
+        {isDemoBusinessId(biz.id) && (
+          <p className="text-xs text-dim rounded-xl border border-dashed border-app p-3">
+            This is a demo business — your booking is stored in the live demo dataset and appears on the business dashboard instantly. The business confirms it from their console.
+          </p>
+        )}
+        {err && <p className="text-sm text-red-400">{err}</p>}
+        <div className="flex gap-2.5">
+          <button onClick={() => setReviewOpen(false)} disabled={submitting} className={btnGhost + ' flex-1'}>Back</button>
+          <button onClick={confirm} disabled={submitting} className={btnPrimary + ' flex-[2]'}>
+            {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Booking…</> : <>Confirm booking <ChevronRight className="h-4 w-4" /></>}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
 
   return (
     <div>
@@ -355,7 +461,7 @@ export default function BusinessDetail() {
               <input type="date" value={date} min={new Date().toISOString().slice(0, 10)} onChange={e => setDate(e.target.value)} className="mt-1 w-full rounded-xl bg-elev border border-app px-3 py-2.5 text-sm outline-none focus:border-[var(--color-brand-indigo)]" />
             </div>
             <div className="mt-4">
-              <div className="flex items-center justify-between mb-2"><label className="text-xs text-dim\">Pick a time</label>{recommended[0] && <span className="text-[10px] text-[var(--color-brand-indigo)] inline-flex items-center gap-1"><Zap className="h-3 w-3" /> AI picked {recommended[0].label}</span>}</div>
+              <div className="flex items-center justify-between mb-2"><label className="text-xs text-dim">Pick a time</label>{recommended[0] && <span className="text-[10px] text-[var(--color-brand-indigo)] inline-flex items-center gap-1"><Zap className="h-3 w-3" /> AI picked {recommended[0].label}</span>}</div>
               {loadingSlots ? <SlotSkeleton /> : slots.filter(s => s.available).length === 0 ? <p className="text-sm text-dim py-4 text-center">No open slots. Try another date.</p> : (
                 <BookingTimeline slots={slots} selected={slot} onSelect={setSlot} recommended={recommended} />
               )}
@@ -365,14 +471,15 @@ export default function BusinessDetail() {
                 <span className="text-dim">{service.name}</span><span className="font-semibold">{service.price === 0 ? 'Free' : inr(service.price)}</span>
               </div>
             )}
-            {err && <p className="text-sm text-red-400 mt-3">{err}</p>}
-            <motion.button whileTap={{ scale: 0.98 }} onClick={confirm} disabled={!slot || !service || submitting} className="mt-4 w-full grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2 disabled:opacity-50">
-              {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Booking…</> : !user ? <>Sign in to book <ChevronRight className="h-4 w-4" /></> : <>Confirm booking <ChevronRight className="h-4 w-4" /></>}
+            {err && !reviewOpen && <p className="text-sm text-red-400 mt-3">{err}</p>}
+            <motion.button whileTap={{ scale: 0.98 }} onClick={openReview} disabled={!slot || !service || submitting} className="mt-4 w-full grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2 disabled:opacity-50">
+              {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Booking…</> : !user ? <>Sign in to book <ChevronRight className="h-4 w-4" /></> : <>Review &amp; book <ChevronRight className="h-4 w-4" /></>}
             </motion.button>
-            <p className="mt-2 text-center text-[11px] text-dim\">Free cancellation · Instant confirmation · Calendar sync</p>
+            <p className="mt-2 text-center text-[11px] text-dim">{isDemoBusinessId(biz.id) ? 'Business confirms your slot · Free cancellation · Calendar sync' : 'Free cancellation · Instant confirmation · Calendar sync'}</p>
           </div>
         </div>
       </div>
+      {reviewModal}
     </div>
   );
 }

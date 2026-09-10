@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Clock, AlertTriangle, Mail } from 'lucide-react';
 import { PageHeader, Spinner, EmptyState } from '../../components/ui';
 import { apiGet } from '../../lib/api';
 import supabase from '../../lib/supabase';
@@ -27,6 +27,16 @@ export default function AdminEmails() {
   return (
     <div>
       <PageHeader title="Email delivery" subtitle="Every booking confirmation is recorded here — verifiable and reliable." />
+      <div className="mb-4 rounded-2xl border border-app bg-surface p-4 flex items-start gap-3">
+        <Mail className="h-5 w-5 text-[var(--color-brand-indigo)] mt-0.5 shrink-0" />
+        <div>
+          <p className="text-sm font-medium">How email works here</p>
+          <p className="text-xs text-muted mt-0.5">
+            Server bookings trigger real emails when <code className="text-[var(--text)]">RESEND_API_KEY</code> or <code className="text-[var(--text)]">SENDGRID_API_KEY</code> is configured — otherwise they queue (below) and the customer gets a one-tap Gmail compose fallback.
+            Demo-tenant bookings never send real email; they notify in-app instead. Reminders run on the 15-minute scheduler.
+          </p>
+        </div>
+      </div>
       {queuedCount > 0 && (
         <div className="mb-4 rounded-2xl border border-amber-500/25 bg-amber-500/10 p-4 flex items-start gap-3">
           <Clock className="h-5 w-5 text-amber-400 mt-0.5 shrink-0" />

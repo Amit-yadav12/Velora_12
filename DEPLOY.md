@@ -227,9 +227,43 @@ VITE_GOOGLE_AUTH_PROXY=https://your-proxy.workers.dev/auth/google
 ## 10. Final Checklist for Owner
 
 - [ ] Paste `supabase/migrations/0001_velora_core.sql` into Supabase SQL Editor + Run
+- [ ] Paste `supabase/migrations/0002_business_registration_role_lock.sql` into Supabase SQL Editor + Run (business ownership + role lock — REQUIRED for secure business registration)
 - [ ] Turn OFF confirm-email (Auth → Configuration → Email Auth)
 - [ ] Google OAuth setup per §7-A (native)
 - [ ] Set all env vars in Netlify dashboard
 - [ ] Trigger deploy → Clear cache and deploy site
 - [ ] Test booking on phone: search → business → slot → confirm → verify QR
 - [ ] Check email_log table for confirmation emails
+
+---
+
+## 11. Demo Tenant & Business Registration (New)
+
+### 11-A. Demo tenant isolation
+
+All demo entities live in the browser under `velora-demo-*` / `velora-local-*` localStorage keys, tagged `tenant_id = demo-tenant-velora`:
+`velora-demo-businesses`, `velora-demo-services`, `velora-demo-staff`, `velora-demo-customers`, `velora-local-bookings`, `velora-local-invoices`, `velora-local-notifs`.
+
+- The **Demo Customer** and **Demo Business** consoles read/write the SAME demo dataset (bookings made by the demo customer appear on the dashboard instantly, and business actions reflect back to the customer in real time — same tab via CustomEvent, cross-tab via the storage event).
+- **Reset demo** (Admin sidebar / Dashboard) clears ONLY the keys above and re-seeds the showcase businesses. Production Supabase data is never touched.
+- Demo bookings are created as `pending` and confirmed by the business — the full PENDING → CONFIRMED → COMPLETED / CANCELLED state machine.
+
+### 11-B. Business account registration
+
+`/welcome` → Business → **Create Business Account** (2 steps: owner account → business profile).
+
+- With Supabase configured: the owner signs up, then `POST /api/register-business` (auth token required) grants the `admin` role SERVER-SIDE and creates the `businesses` row (with `owner_user_id`) + starter services.
+- Migration `0002` locks roles: profiles can only be inserted as `customer` by clients, and a trigger blocks any role change that isn't from the service role. `admin` can ONLY be granted via `/api/register-business` or `/api/provision-demo` (allowlisted demo emails).
+- Demo accounts (`admin@velora.ai` / `customer@velora.ai`, password `velora123`) provision through `/api/provision-demo`.
+
+### 11-C. New API endpoints
+
+| Endpoint | Auth | Purpose |
+| --- | --- | --- |
+| `POST /api/register-business` | session | Business registration; grants console role server-side, creates business + services |
+| `POST /api/provision-demo` | public, allowlisted | Provisions the two fixed demo accounts' roles server-side |
+
+### 11-D. Demo verification limits (honest behavior)
+
+- Demo-tenant QR tickets (`local.*` tokens) verify in the browser session where they were booked (the token carries no PII; the booking record is checked for live status). Server bookings use HMAC-signed `v1.*` tokens that verify anywhere.
+- Demo-tenant bookings do not send real email (in-app notifications instead). Server bookings queue real email when `RESEND_API_KEY`/`SENDGRID_API_KEY` is set, with a Gmail-compose fallback always available.

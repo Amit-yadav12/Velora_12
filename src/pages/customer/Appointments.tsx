@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar, MapPin, Clock, Navigation, X, CalendarClock, Loader2, Star, ChevronDown, Car } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
+import { Calendar, MapPin, Clock, Navigation, X, CalendarClock, Loader2, Star, ChevronDown, Car, QrCode, CalendarPlus, Download, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLocation } from '../../contexts/LocationContext';
 import { mapsDirections } from '../../lib/product';
@@ -9,9 +10,24 @@ import { apiGet, apiSend } from '../../lib/api';
 import supabase from '../../lib/supabase';
 import { onBookingsChanged, toast } from '../../services/events';
 import ProgressTracker from '../../components/premium/ProgressTracker';
-import { inr, istTime, ist } from '../../lib/format';
+import { inr, istTime, ist, istDate } from '../../lib/format';
 import QueueTracker from '../../components/premium/QueueTracker';
-import { listLocalBookings, updateLocalBooking } from '../../lib/offlineStore';
+import { listLocalBookings, transitionLocalBooking, updateLocalBooking } from '../../lib/offlineStore';
+import { localVerifyUrl } from '../../lib/demoStore';
+import { isCancellable } from '../../lib/bookingStatus';
+import { Modal } from '../../components/ui';
+
+function gcalLink(b: any) {
+  const fmt = (d: string) => new Date(d).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: `${b.service_name} — ${b.resource_name}`,
+    dates: `${fmt(b.start_time)}/${fmt(b.end_time)}`,
+    details: `Velora booking ${b.ref}${b.employee_name ? ` with ${b.employee_name}` : ''}.`,
+    location: b.location || b.resource_name,
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
 
 function LeaveNow({ ref: bref, origin }: { ref: string; origin?: { lat: number; lng: number } | null }) {
   const [plan, setPlan] = useState<any>(null);
@@ -53,6 +69,7 @@ export default function Appointments() {
       id: b.id, ref: b.ref, service_name: b.service_name, employee_name: b.staff_name,
       resource_name: b.business_name, start_time: b.start_time, end_time: b.end_time,
       status: b.status, price: b.price, location: b.location, local: true,
+      qr_payload: b.qr_salt ? localVerifyUrl(b.ref, b.qr_salt) : null,
     }));
     const refs = new Set(server.map((b: any) => b.ref));
     const merged = [...server, ...local.filter((b) => !refs.has(b.ref))]
@@ -64,13 +81,56 @@ export default function Appointments() {
 
   const cancel = async (id: number | string) => {
     const target = bookings.find((b) => String(b.id) === String(id));
-    if (target?.local) updateLocalBooking(id, { status: 'cancelled' });
-    else {
+    if (!target || !isCancellable(target.status)) { toast('This booking can no longer be cancelled.', 'warning'); return; }
+    let ok = true;
+    if (target.local) {
+      // Validated state-machine transition (pending|confirmed → cancelled).
+      ok = transitionLocalBooking(id, 'cancelled') !== null;
+    } else {
       try { await apiSend('/api/bookings', 'PUT', { id, action: 'cancel' }); }
-      catch { updateLocalBooking(id, { status: 'cancelled' }); }
+      catch { ok = false; }
     }
-    load();
-    toast('Booking cancelled', 'info');
+    if (ok) { toast('Booking cancelled', 'info'); load(); }
+    else { toast('Could not cancel — it may have just changed. Refreshing…', 'error'); load(); }
+  };
+
+  /** QR ticket modal — regenerate the payload for local bookings on demand. */
+  const [ticket, setTicket] = useState<any>(null);
+  const ticketQr = useMemo(() => {
+    if (!ticket) return '';
+    if (ticket.qr_payload) return ticket.qr_payload;
+    if (ticket.local) {
+      const lb = listLocalBookings(profile?.email).find((b) => b.ref === ticket.ref);
+      const url = lb?.qr_salt ? localVerifyUrl(lb.ref, lb.qr_salt) : null;
+      if (url) return url;
+    }
+    return `${window.location.origin}/appointments`;
+  }, [ticket, profile?.email]);
+
+  const downloadTicketQr = async () => {
+    try {
+      const svg = document.querySelector('[data-ticket-qr] svg');
+      if (!svg) return;
+      const xml = new XMLSerializer().serializeToString(svg);
+      const svgUrl = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml;charset=utf-8' }));
+      const img = new Image();
+      await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error('load')); img.src = svgUrl; });
+      const px = 1024;
+      const canvas = document.createElement('canvas');
+      canvas.width = px; canvas.height = px;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, px, px);
+      const pad = Math.round(px * 0.08);
+      ctx.drawImage(img, pad, pad, px - pad * 2, px - pad * 2);
+      URL.revokeObjectURL(svgUrl);
+      const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+      if (!blob) throw new Error('blob');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `Velora-${ticket.ref}-ticket.png`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch { toast('Could not export the QR — try again.', 'error'); }
   };
   const doResched = async () => {
     setErr(''); setBusy(true);
@@ -132,8 +192,8 @@ export default function Appointments() {
             return (
               <motion.div key={b.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="card p-4">
                 <div className="flex items-start gap-4">
-                  <div className={`h-14 w-14 rounded-2xl grid place-items-center text-center shrink-0 ${b.status === 'cancelled' ? 'bg-red-500/10' : 'grad-btn'}`}>
-                    <div className={b.status === 'cancelled' ? 'text-red-400' : 'text-white'}>
+                  <div className={`h-14 w-14 rounded-2xl grid place-items-center text-center shrink-0 ${b.status === 'cancelled' ? 'bg-red-500/10' : b.status === 'pending' ? 'bg-amber-500/10' : 'grad-btn'}`}>
+                    <div className={b.status === 'cancelled' ? 'text-red-400' : b.status === 'pending' ? 'text-amber-400' : 'text-white'}>
                       <p className="text-[10px] uppercase leading-none">{ist(b.start_time, { month: 'short' })}</p>
                       <p className="text-xl font-semibold leading-tight">{ist(b.start_time, { day: 'numeric' })}</p>
                     </div>
@@ -141,7 +201,7 @@ export default function Appointments() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-medium">{b.service_name}</h3>
-                      <span className={`text-[11px] px-2 py-0.5 rounded-lg capitalize ${b.status === 'cancelled' ? 'bg-red-500/15 text-red-400' : b.status === 'completed' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-blue-500/15 text-blue-400'}`}>{b.status.replace('_', ' ')}</span>
+                      <span className={`text-[11px] px-2 py-0.5 rounded-lg capitalize ${b.status === 'cancelled' ? 'bg-red-500/15 text-red-400' : b.status === 'completed' ? 'bg-emerald-500/15 text-emerald-400' : b.status === 'pending' ? 'bg-amber-500/15 text-amber-400' : 'bg-blue-500/15 text-blue-400'}`}>{b.status.replace('_', ' ')}</span>
                     </div>
                     <p className="text-sm text-dim">{b.resource_name}{b.employee_name ? ` · ${b.employee_name}` : ''}</p>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-dim">
@@ -152,13 +212,18 @@ export default function Appointments() {
                   </div>
                   <span className="font-semibold text-sm shrink-0">{inr(b.price)}</span>
                 </div>
-                {!past && b.status === 'confirmed' && (
+                {!past && isCancellable(b.status) && (
                   <div className="mt-3 pt-3 border-t border-app flex flex-wrap gap-2 items-center">
+                    <button onClick={() => setTicket(b)} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><QrCode className="h-3.5 w-3.5" /> Ticket</button>
                     {b.location && <a href={mapsDirections(b.location)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><Navigation className="h-3.5 w-3.5" /> Directions</a>}
+                    <a href={gcalLink(b)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><CalendarPlus className="h-3.5 w-3.5" /> Calendar</a>
                     <button onClick={() => { setResched(b); setNewTime(new Date(b.start_time).toISOString().slice(0, 16)); }} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><CalendarClock className="h-3.5 w-3.5" /> Reschedule</button>
                     <button onClick={() => cancel(b.id)} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-red-400/50 hover:text-red-400"><X className="h-3.5 w-3.5" /> Cancel</button>
                     <button onClick={() => setExpanded(e => e === b.id ? null : b.id)} className="ml-auto inline-flex items-center gap-1 text-xs text-[var(--color-brand-indigo)] font-medium">Track {expanded === b.id ? <ChevronDown className="h-3.5 w-3.5 rotate-180 transition-transform" /> : <ChevronDown className="h-3.5 w-3.5 transition-transform" />}</button>
                   </div>
+                )}
+                {!past && b.status === 'pending' && (
+                  <p className="mt-2 text-[11px] text-amber-400/90">Awaiting confirmation from {b.resource_name} — you'll see the update here instantly.</p>
                 )}
                 <AnimatePresence>
                   {!past && expanded === b.id && (
@@ -190,6 +255,30 @@ export default function Appointments() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* QR ticket — secure verification token, no personal data inside */}
+      <Modal open={!!ticket} onClose={() => setTicket(null)} title="Your booking ticket">
+        {ticket && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <div className="p-2.5 rounded-2xl bg-white shrink-0" data-ticket-qr>
+                <QRCodeSVG value={ticketQr} size={110} level="M" />
+              </div>
+              <div className="min-w-0 text-sm space-y-1">
+                <p className="font-semibold text-base">{ticket.service_name}</p>
+                <p className="text-dim">{ticket.resource_name}{ticket.employee_name ? ` · ${ticket.employee_name}` : ''}</p>
+                <p className="text-muted">{istDate(ticket.start_time)}, {istTime(ticket.start_time)}</p>
+                <p className="font-mono text-xs text-dim">{ticket.ref}</p>
+              </div>
+            </div>
+            <p className="text-xs text-dim">Show this QR at check-in. It contains a secure verification token — never your personal details.</p>
+            <div className="flex gap-2.5">
+              <button onClick={downloadTicketQr} className="flex-1 rounded-xl border border-app py-2.5 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><Download className="h-4 w-4" /> Download PNG</button>
+              {ticketQr.includes('/verify/') && <a href={ticketQr} target="_blank" rel="noreferrer" className="flex-1 rounded-xl border border-app py-2.5 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><ExternalLink className="h-4 w-4" /> Verify</a>}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

@@ -23,7 +23,7 @@ function gcalLink(b: any, biz: any) {
     action: 'TEMPLATE',
     text: `${b.service_name} — ${biz.name}`,
     dates: `${fmt(b.start_time)}/${fmt(b.end_time)}`,
-    details: `Velora booking ${b.ref}`,
+    details: `Velora booking ${b.ref}${b.employee_name ? ` with ${b.employee_name}` : ''}. Manage: ${window.location.origin}/appointments`,
     location: biz.address || biz.name,
   });
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
@@ -74,21 +74,61 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
     try { if (navigator.share) await navigator.share(data); else { await navigator.clipboard.writeText(`${data.text} ${data.url}`); } } catch { /* cancelled */ }
   };
 
-  const downloadQr = () => {
+  const downloadQr = async () => {
+    // High-resolution PNG (1024×1024, white quiet zone) — stays scannable when
+    // printed or zoomed. Falls back to SVG if canvas export is unavailable.
     try {
       const svg = document.querySelector('[data-qr] svg');
       if (!svg) return;
-      const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' });
+      const xml = new XMLSerializer().serializeToString(svg);
+      const svgUrl = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml;charset=utf-8' }));
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('svg load failed'));
+        img.src = svgUrl;
+      });
+      const px = 1024;
+      const canvas = document.createElement('canvas');
+      canvas.width = px; canvas.height = px;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('no canvas ctx');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, px, px);
+      const pad = Math.round(px * 0.08); // quiet zone keeps it scannable
+      const size = px - pad * 2;
+      const vb = (svg as any).viewBox?.baseVal;
+      const ratio = vb && vb.width ? vb.width / vb.height : 1;
+      let w = size, h = size;
+      if (ratio > 1) h = Math.round(size / ratio); else w = Math.round(size * ratio);
+      ctx.drawImage(img, pad, pad + (size - h) / 2, w, h);
+      URL.revokeObjectURL(svgUrl);
+      const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, 'image/png'));
+      if (!blob) throw new Error('toBlob failed');
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `Velora-${booking.ref}-ticket.svg`;
+      a.download = `Velora-${booking.ref}-ticket.png`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    } catch { /* non-fatal */ }
+    } catch {
+      // SVG fallback — still a crisp, scannable vector ticket.
+      try {
+        const svg = document.querySelector('[data-qr] svg');
+        if (!svg) return;
+        const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `Velora-${booking.ref}-ticket.svg`;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      } catch { /* non-fatal */ }
+    }
   };
 
   // Prefer the server-stored QR payload so the ticket matches DB records.
   const qrData = qrPayload || JSON.stringify({ ref: booking.ref, biz: business.name, at: booking.start_time });
+  const isPending = booking?.status === 'pending';
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[95] overflow-y-auto bg-[var(--bg)]">
@@ -106,12 +146,18 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
       </div>
 
       <div className="relative min-h-screen flex flex-col items-center justify-center px-4 py-12">
-        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', damping: 12, delay: 0.1 }} className="relative h-20 w-20 rounded-full grad-btn grid place-items-center mb-6">
-          <div className="absolute inset-0 rounded-full grad-btn blur-xl opacity-60" />
-          <Check className="relative h-10 w-10 text-white" strokeWidth={3} />
+        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', damping: 12, delay: 0.1 }} className={`relative h-20 w-20 rounded-full grid place-items-center mb-6 ${isPending ? 'bg-amber-500' : 'grad-btn'}`}>
+          <div className={`absolute inset-0 rounded-full blur-xl opacity-60 ${isPending ? 'bg-amber-500' : 'grad-btn'}`} />
+          {isPending ? <Clock className="relative h-10 w-10 text-white" strokeWidth={2.5} /> : <Check className="relative h-10 w-10 text-white" strokeWidth={3} />}
         </motion.div>
-        <motion.h1 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="text-3xl sm:text-4xl font-semibold tracking-tight text-center">You're all set! 🎉</motion.h1>
-        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }} className="text-muted mt-2 text-center">Your appointment is confirmed and synced to your calendar.</motion.p>
+        <motion.h1 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="text-3xl sm:text-4xl font-semibold tracking-tight text-center">
+          {isPending ? 'Booking received! 🎉' : "You're all set! 🎉"}
+        </motion.h1>
+        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }} className="text-muted mt-2 text-center">
+          {isPending
+            ? `${business.name} has your request — they'll confirm shortly. You'll see the update here and in your bookings.`
+            : 'Your appointment is confirmed. Add it to your calendar below.'}
+        </motion.p>
 
         {/* Ticket card */}
         <motion.div initial={{ opacity: 0, y: 24, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: 0.4, type: 'spring', damping: 20 }}
@@ -140,10 +186,14 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
               </div>
             </div>
             <div className="mt-4 pt-4 border-t border-app flex items-center justify-between">
-              <span className="text-sm text-dim">Total paid</span><span className="font-semibold">{inr(invoice.total)}</span>
+              <span className="text-sm text-dim">Total{isPending ? "" : ""}</span><span className="font-semibold">{inr(invoice.total)}</span>
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
-              <span className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full ${emailSent ? 'bg-emerald-500/15 text-emerald-400' : 'bg-blue-500/15 text-blue-400'}`}>{emailSent ? <><Check className="h-3 w-3" /> Confirmation email sent</> : <><Mail className="h-3 w-3" /> Emailing your confirmation</>}</span>
+              {isPending ? (
+                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400"><Clock className="h-3 w-3" /> Awaiting business confirmation</span>
+              ) : (
+                <span className={`inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full ${emailSent ? 'bg-emerald-500/15 text-emerald-400' : 'bg-blue-500/15 text-blue-400'}`}>{emailSent ? <><Check className="h-3 w-3" /> Confirmation email sent</> : <><Mail className="h-3 w-3" /> Emailing your confirmation</>}</span>
+              )}
               <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400"><Check className="h-3 w-3" /> Reminders scheduled</span>
             </div>
           </div>
@@ -151,11 +201,11 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
 
         {/* Actions */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="mt-6 w-full max-w-md grid grid-cols-2 gap-2.5">
-          <a href={gcalLink(booking, business)} target="_blank" rel="noreferrer" className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><CalendarPlus className="h-4 w-4" /> Add to Calendar</a>
+          <a href={gcalLink(booking, business)} target="_blank" rel="noreferrer" className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><CalendarPlus className="h-4 w-4" /> Add to Google Calendar</a>
           <a href={mapsLink} target="_blank" rel="noreferrer" className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><Navigation className="h-4 w-4" /> Directions</a>
           <button onClick={share} className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><Share2 className="h-4 w-4" /> Share</button>
           <button onClick={downloadPdf} disabled={pdfLoading} className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)] disabled:opacity-60">{pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} PDF</button>
-          <button onClick={downloadQr} className="col-span-2 rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><QrCode className="h-4 w-4" /> Download QR ticket</button>
+          <button onClick={downloadQr} className="col-span-2 rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><QrCode className="h-4 w-4" /> Download QR ticket (PNG)</button>
         </motion.div>
         {gmailComposeUrl && (
           <motion.a initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }} href={gmailComposeUrl} target="_blank" rel="noreferrer"

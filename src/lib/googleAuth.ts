@@ -16,8 +16,17 @@ function buildCustomGoogleUrl(appName: string) {
  * Native Google OAuth via Supabase — primary method.
  * Uses Supabase Auth's built-in OAuth flow. Requires Google provider enabled in Supabase dashboard.
  * Falls back to custom proxy if native fails or is not configured.
+ * Returns a structured result so the UI can show a precise, friendly message
+ * (e.g. when the Google provider is disabled in the Supabase dashboard).
  */
-export async function signInWithGoogleNative(nextPath = '/') {
+export interface GoogleAuthResult {
+  ok: boolean;
+  method?: 'native' | 'custom-proxy' | 'demo';
+  reason?: 'provider_disabled' | 'not_configured' | 'network' | 'unknown';
+  error?: string;
+}
+
+export async function signInWithGoogleNative(nextPath = '/'): Promise<GoogleAuthResult> {
   // Demo mode: simulate Google login instantly
   if (isDemoMode) {
     const email = 'customer@velora.ai';
@@ -41,13 +50,28 @@ export async function signInWithGoogleNative(nextPath = '/') {
     if (error) throw error;
     return { ok: true, method: 'native' };
   } catch (err: any) {
-    console.warn('[google-auth] native OAuth failed, trying custom proxy fallback:', err.message);
-    // Fallback to custom proxy if configured
+    const msg = String(err?.message || err || '');
+    console.warn('[google-auth] native OAuth failed:', msg);
+    // Google provider disabled in Supabase → precise, actionable error.
+    if (/provider.*(not.*enabled|is not enabled)|unsupported.*provider|provider.*not.*found|401|403/i.test(msg)) {
+      const customUrl = buildCustomGoogleUrl('Velora');
+      if (customUrl) return signInWithGoogleCustom('Velora');
+      return {
+        ok: false,
+        reason: 'provider_disabled',
+        error: 'Google sign-in is not enabled yet. Enable it in Supabase → Authentication → Providers → Google (see DEPLOY.md §7-A), or continue with email / the demo below.',
+      };
+    }
+    // Custom proxy fallback when configured.
     const customUrl = buildCustomGoogleUrl('Velora');
     if (customUrl) {
       return signInWithGoogleCustom('Velora');
     }
-    throw err;
+    return {
+      ok: false,
+      reason: /fetch|network|timeout/i.test(msg) ? 'network' : 'unknown',
+      error: 'Google sign-in could not start. Check your connection and try again, or continue with email.',
+    };
   }
 }
 
@@ -55,11 +79,11 @@ export async function signInWithGoogleNative(nextPath = '/') {
  * Custom proxy OAuth — fallback method.
  * Opens popup to Google OAuth via custom proxy that exchanges code for Supabase session.
  */
-export function signInWithGoogleCustom(appName = 'Velora') {
+export function signInWithGoogleCustom(appName = 'Velora'): GoogleAuthResult {
   const url = buildCustomGoogleUrl(appName);
   if (!url) {
     console.warn('[google-auth] Missing VITE_GOOGLE_CLIENT_ID or VITE_GOOGLE_AUTH_PROXY');
-    return { ok: false, error: 'Google OAuth not configured' };
+    return { ok: false, reason: 'not_configured', error: 'Google OAuth is not configured on this deployment.' };
   }
   window.open(url, 'google-auth', isMobile() ? '' : 'width=500,height=600');
   const handler = async (event: MessageEvent) => {
@@ -87,12 +111,12 @@ export function signInWithGoogleCustom(appName = 'Velora') {
 }
 
 // Legacy export for backward compatibility — tries native first, then custom
-export function signInWithGoogle(appName = 'Velora') {
-  // Try native OAuth first (non-blocking, redirects)
-  signInWithGoogleNative('/').catch(() => {
-    // If native fails, try custom proxy
-    signInWithGoogleCustom(appName);
-  });
+export async function signInWithGoogle(appName = 'Velora'): Promise<GoogleAuthResult> {
+  const res = await signInWithGoogleNative('/');
+  if (!res.ok && res.reason !== 'provider_disabled') {
+    return signInWithGoogleCustom(appName);
+  }
+  return res;
 }
 
 export async function handleGoogleRedirect() {

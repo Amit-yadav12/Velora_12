@@ -12,6 +12,8 @@ import {
 import { cachedFetch, cacheGet, cacheSet, timedJson } from './smartCache';
 import { fetchLivePlaces, liveToBusiness, type LivePlace } from './googleMaps';
 import { searchBusinesses, applyFilters, personalizedBoost } from './smartSearch';
+import { getDemoBusiness, isDemoBusinessId, listDemoBusinesses, demoSlots } from './demoStore';
+import { listLocalBookings } from './offlineStore';
 
 export interface DiscoverParams {
   city?: string;
@@ -42,6 +44,34 @@ function haversineKm(aLat: number, aLng: number, bLat?: number, bLng?: number): 
   const dLng = ((bLng - aLng) * Math.PI) / 180;
   const s = Math.sin(dLat / 2) ** 2 + Math.cos((aLat * Math.PI) / 180) * Math.cos((bLat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+}
+
+/**
+ * Demo-tenant businesses as discovery-ready profiles. They are pinned near
+ * the active city centre (deterministic offset per id) so distance, "open
+ * now" and AI scoring all work exactly like every other business.
+ */
+function demoBusinessesForCity(cityName: string): any[] {
+  const city = getCity(cityName);
+  const list = listDemoBusinesses(cityName, true);
+  return list.map((b: any) => {
+    const h = hashStr(String(b.id));
+    const lat = (city?.lat ?? 0) + ((h % 40) - 20) / 500;
+    const lng = (city?.lng ?? 0) + (((h >> 6) % 40) - 20) / 500;
+    const activeServices = (b.services || []).filter((s: any) => s.active !== false);
+    return {
+      ...b,
+      address: `${b.area}, ${cityName}`,
+      lat, lng,
+      rating: Number(b.rating) || 4.5,
+      review_count: b.review_count || 0,
+      // Only ACTIVE services are bookable — deactivating a service in the
+      // console hides it from customers instantly.
+      services: activeServices,
+      staff: (b.staff || []).filter((s: any) => s.active !== false),
+      price_from: activeServices.length ? Math.min(...activeServices.map((s: any) => Number(s.price) || 0)) : null,
+    };
+  });
 }
 
 function enrich(b: any, lat: number, lng: number): any {
@@ -107,17 +137,15 @@ export async function fetchDiscover(p: DiscoverParams): Promise<DiscoverResult> 
   const cacheKey = `discover:${effCity}:${p.lat.toFixed(3)},${p.lng.toFixed(3)}:${category}:${p.q || ''}:${p.sort || 'ai'}:${p.openNow ? 1 : 0}:${p.minRating || 0}:${p.maxKm || 0}:${p.priceMax || 0}`;
   const hit = cacheGet<DiscoverResult>(cacheKey);
   if (hit) {
-    // Live places are fetched fresh (short TTL) and merged opportunistically.
-    if (p.includeLive) {
-      fetchLivePlaces({ lat: p.lat, lng: p.lng, query: p.q, category: category || undefined, city: effCity })
-        .then(({ live, results }) => {
-          if (live) {
-            const liveBiz = results.map((r) => enrich(liveToBusiness(r, effCity, category || undefined), p.lat, p.lng));
-            cacheSet(cacheKey, { ...hit, results: mergeDedup(liveBiz, hit.results), live_count: liveBiz.length }, 60000);
-          }
-        }).catch(() => {});
-    }
-    return hit;
+    // Demo businesses are local & instant — always swap in the fresh set so
+    // console changes (add/edit/deactivate) show up immediately.
+    const freshDemo = demoBusinessesForCity(effCity)
+      .filter((b) => !category || b.category === category || (CATEGORY_ALIASES[category] && b.category === CATEGORY_ALIASES[category]))
+      .filter((b) => !p.q || `${b.name} ${b.category} ${b.description || ''}`.toLowerCase().includes(p.q.toLowerCase()))
+      .map((b) => enrich(b, p.lat, p.lng));
+    const rest = hit.results.filter((b: any) => !isDemoBusinessId(b.id));
+    const results = [...freshDemo, ...rest];
+    return { ...hit, results, count: results.length };
   }
 
   // 1) Server (DB + synthetic merged, city-scoped)
@@ -152,6 +180,15 @@ export async function fetchDiscover(p: DiscoverParams): Promise<DiscoverResult> 
   } else {
     merged = [...synthetic];
     source = 'synthetic';
+  }
+
+  // 3b) Demo tenant businesses — the working demo environment. They share the
+  //     same dataset as the business console and always surface first so the
+  //     end-to-end demo (customer books → business sees it) is discoverable.
+  const demoBiz = demoBusinessesForCity(effCity);
+  if (demoBiz.length) {
+    const demoIds = new Set(demoBiz.map((b) => String(b.id)));
+    merged = [...demoBiz, ...merged.filter((b) => !demoIds.has(String(b.id)) && !isDemoBusinessId(b.id))];
   }
 
   // 4) Enrich + filter + sort (city-pinned)
@@ -201,6 +238,29 @@ function mergeDedup(primary: any[], secondary: any[]): any[] {
 
 /** Single business — synthetic ids resolve instantly locally; DB ids via API. */
 export async function fetchBusiness(id: number | string, city?: string): Promise<any | null> {
+  // Demo tenant business — instant local resolution, services + staff attached.
+  if (isDemoBusinessId(id)) {
+    const raw = getDemoBusiness(id);
+    if (raw) {
+      const cityName = city || raw.city || DEFAULT_CITY_NAME;
+      const cityMeta = getCity(cityName);
+      const h = hashStr(String(raw.id));
+      const full = {
+        ...raw,
+        city: cityName,
+        address: raw.area ? `${raw.area}, ${cityName}` : `${cityName}`,
+        lat: (cityMeta?.lat ?? 0) + ((h % 40) - 20) / 500,
+        lng: (cityMeta?.lng ?? 0) + (((h >> 6) % 40) - 20) / 500,
+        rating: Number(raw.rating) || 4.5,
+        open_now: true,
+        services: (raw.services || []).filter((s: any) => s.active !== false),
+        staff: (raw.staff || []).filter((s: any) => s.active !== false),
+      };
+      return full;
+    }
+    return null;
+  }
+
   const key = `business:${id}`;
   const hit = cacheGet<any>(key);
   if (hit) return hit;
@@ -264,7 +324,14 @@ export function hydrateLiveBusiness(place: LivePlace, cityName: string, category
   return { ...shell, services, staff, synthetic: false, live_bookable: true };
 }
 
-export async function fetchSlots(businessId: number | string, serviceId: number | string | null, date: string, origin?: { lat: number; lng: number }): Promise<{ slots: any[]; recommended: any[]; travel_min: number }> {
+export async function fetchSlots(businessId: number | string, serviceId: number | string | null, date: string, origin?: { lat: number; lng: number }, staffName?: string | null): Promise<{ slots: any[]; recommended: any[]; travel_min: number }> {
+  // Demo tenant: real availability from opening hours, service duration,
+  // staff rosters and existing (non-cancelled) local bookings.
+  if (isDemoBusinessId(businessId)) {
+    const biz = getDemoBusiness(businessId);
+    if (!biz) return { slots: [], recommended: [], travel_min: 0 };
+    return buildDemoSlots(biz, serviceId, date, staffName);
+  }
   const loc = origin ? `&origin_lat=${origin.lat}&origin_lng=${origin.lng}` : '';
   try {
     const d = await timedJson(`/api/smart-slots?business_id=${encodeURIComponent(String(businessId))}${serviceId ? `&service_id=${encodeURIComponent(String(serviceId))}` : ''}&date=${date}${loc}`, 5000);
@@ -287,11 +354,26 @@ export async function fetchHeatmap(businessId?: number | string): Promise<any> {
 }
 
 export async function fetchReviews(businessId: number | string): Promise<any[]> {
-  if (isSyntheticId(businessId) || String(businessId).startsWith('live-')) {
+  if (isSyntheticId(businessId) || String(businessId).startsWith('live-') || isDemoBusinessId(businessId)) {
     return getSyntheticReviews(businessId, 8);
   }
   // DB businesses: deterministic reviews seeded by id (stable demo data)
   return getSyntheticReviews(businessId, 8);
+}
+
+/**
+ * Demo-tenant slots — availability computed live from the shared demo
+ * dataset: existing local bookings for this business block their slots, so a
+ * slot booked by the demo customer disappears for everyone until cancelled.
+ */
+function buildDemoSlots(biz: any, serviceId: number | string | null, date: string, staffName?: string | null): { slots: any[]; recommended: any[]; travel_min: number } {
+  const existing = listLocalBookings().map((b) => ({
+    business_id: b.business_id, staff_name: b.staff_name,
+    start_time: b.start_time, end_time: b.end_time, status: b.status,
+  }));
+  const slots = demoSlots(String(biz.id), serviceId ? String(serviceId) : null, date, existing, staffName || null);
+  const recommended = [...slots].filter((s) => s.available).sort((a, b) => (b.score || 0) - (a.score || 0)).slice(0, 3);
+  return { slots, recommended, travel_min: 0 };
 }
 
 /** Nearest-per-category for the city, centered on the given point. */
