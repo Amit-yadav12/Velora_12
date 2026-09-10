@@ -13,6 +13,13 @@ export default defineConfig(async ({ mode }) => {
   } catch {
     // optional plugin absent — safe to ignore
   }
+  try {
+    // @ts-ignore - dev-only API middleware (plain JS, serve only)
+    const api = await import('./dev-api.js');
+    if (typeof api.devApi === 'function') plugins.push(api.devApi());
+  } catch {
+    // dev api middleware absent — /api calls fall back gracefully
+  }
 
   const env = loadEnv(mode, process.cwd(), ['VITE_', 'NEXT_PUBLIC_']);
   const processEnvDefines: Record<string, string> = {};

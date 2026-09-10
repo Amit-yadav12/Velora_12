@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './lib/theme';
 import { AuthProvider } from './contexts/AuthContext';
 import { LocationProvider } from './contexts/LocationContext';
@@ -36,6 +36,13 @@ const S = (el: React.ReactNode) => <Suspense fallback={<Fallback />}>{el}</Suspe
 const C = (el: React.ReactNode) => <CustomerGate>{S(el)}</CustomerGate>;
 const A = (el: React.ReactNode) => <AdminGate>{S(el)}</AdminGate>;
 
+// Reset scroll on every route change so navigations always start at the top.
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  return null;
+}
+
 export default function App() {
   return (
     <ThemeProvider>
@@ -43,6 +50,7 @@ export default function App() {
       <AuthProvider>
         <LocationProvider>
         <BrowserRouter>
+          <ScrollToTop />
           <Routes>
             <Route path="/welcome" element={<Welcome />} />
 
