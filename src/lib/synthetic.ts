@@ -129,7 +129,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Digital X-Ray', 'Painless Anaesthesia', 'Sterilized Kits', 'UPI Payments', 'AC Lounge', 'Kids Friendly'],
   },
   {
-    name: 'Diagnostic Centers', singular: 'Diagnostics', img: IMG('clinic.jpg'), open: '07:00', close: '21:00',
+    name: 'Diagnostic Centers', singular: 'Diagnostics', img: IMG('diagnostic.jpg'), open: '07:00', close: '21:00',
     brands: ['Thyrocare-style', 'Dr Lal-style', 'Metropolis-style', 'Orange-style', 'Lucid-style', 'Vijaya-style'].map((s) => s.replace('-style', ' Labs')),
     suffixes: ['Diagnostics', 'Pathology Labs', 'Diagnostic Centre', 'Lab & Imaging'],
     taglines: ['Same-day digital reports', 'NABL accredited labs', 'Home sample collection'],
@@ -145,7 +145,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Home Collection', 'Digital Reports', 'NABL Certified', 'UPI Payments', 'Waiting Lounge', 'Parking'],
   },
   {
-    name: 'Pharmacies', singular: 'Pharmacy', img: IMG('clinic.jpg'), open: '08:00', close: '23:00',
+    name: 'Pharmacies', singular: 'Pharmacy', img: IMG('pharmacy.jpg'), open: '08:00', close: '23:00',
     brands: ['MedPlus-style', 'Apollo-style', 'PharmEasy-style', 'Netmeds-style', 'Wellness-style', 'Care-style'].map((s) => s.replace('-style', '')),
     suffixes: ['Pharmacy', 'Medical Store', 'Medicines & More', 'Health Pharmacy'],
     taglines: ['Genuine medicines', 'Up to 25% off', 'Home delivery in 60 min'],
@@ -205,7 +205,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Private Suites', 'Steam Room', 'Herbal Teas', 'Couples Room', 'UPI Payments', 'Valet Parking'],
   },
   {
-    name: 'Beauty Clinics', singular: 'Beauty Clinic', img: IMG('salon.jpg'), open: '10:00', close: '20:00',
+    name: 'Beauty Clinics', singular: 'Beauty Clinic', img: IMG('beauty.jpg'), open: '10:00', close: '20:00',
     brands: ['Kaya-style', 'VLCC-style', 'RichFeel-style', 'DermaGlow', 'SkinQ', 'GlowLab', 'Dermique', 'Aesthetica'].map((s) => s.replace('-style', '')),
     suffixes: ['Skin Clinic', 'Aesthetic Centre', 'Derma Clinic', 'Skin & Hair Clinic'],
     taglines: ['US-FDA approved tech', 'Dermat-supervised care', 'Visible results'],
@@ -249,7 +249,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Group Studio', 'Changing Rooms', 'Diet Plans', 'UPI Payments', 'Parking'],
   },
   {
-    name: 'Yoga Studios', singular: 'Yoga Studio', img: IMG('gym.jpg'), open: '05:00', close: '21:00',
+    name: 'Yoga Studios', singular: 'Yoga Studio', img: IMG('yoga.jpg'), open: '05:00', close: '21:00',
     brands: ['Isha-style', 'Art of Living-style', 'YogaMantra', 'Pranayama', 'Asana House', 'OmShala', 'Yogalaya', 'Sattva'].map((s) => s.replace('-style', '')),
     suffixes: ['Yoga Studio', 'Yoga Shala', 'Yoga & Meditation', 'Wellness Yoga'],
     taglines: ['Certified yogacharyas', 'Morning & evening batches', 'Prenatal yoga'],
@@ -293,7 +293,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Doctor Supervised', 'Herbal Pharmacy', 'Sattvik Cafe', 'Garden Lounge', 'Private Rooms'],
   },
   {
-    name: 'Restaurants', singular: 'Restaurant', img: IMG('indianhotel.jpg'), open: '11:00', close: '23:00',
+    name: 'Restaurants', singular: 'Restaurant', img: IMG('restaurant.jpg'), open: '11:00', close: '23:00',
     brands: ['Biryani Blues-style', 'Paradise-style', 'Ohri’s-style', 'Barbeque Nation-style', 'SpiceSymphony', 'Tandoori Nights', 'Dakshin Feast', 'Royal Dine'].map((s) => s.replace('-style', '')),
     suffixes: ['Restaurant', 'Fine Dine', 'Family Restaurant', 'Multi-Cuisine', 'Dining Hall'],
     taglines: ['North + South + Chinese', 'Live counters', 'Family friendly'],
@@ -308,7 +308,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['AC Hall', 'Family Seating', 'Valet Parking', 'UPI Payments', 'Veg Options', 'Kids Menu'],
   },
   {
-    name: 'Cafés', singular: 'Café', img: IMG('indianhotel.jpg'), open: '09:00', close: '23:00',
+    name: 'Cafés', singular: 'Café', img: IMG('cafe.jpg'), open: '09:00', close: '23:00',
     brands: ['Third Wave-style', 'Blue Tokai-style', 'Starbucks-style', 'Cafe Aaranya', 'BrewRoom', 'Filter Kaapi House', 'Mocha Tales', 'BeanBarn'].map((s) => s.replace('-style', ' Coffee')),
     suffixes: ['Café', 'Coffee House', 'Espresso Bar', 'Cafe & Bakery'],
     taglines: ['Single-origin brews', 'Work-friendly wifi', 'Fresh bakes daily'],
@@ -337,7 +337,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['24×7 Front Desk', 'Free WiFi', 'Restaurant', 'Room Service', 'Parking', 'Power Backup', 'Gym & Pool'],
   },
   {
-    name: 'Coworking Spaces', singular: 'Coworking', img: IMG('coaching.jpg'), open: '08:00', close: '22:00',
+    name: 'Coworking Spaces', singular: 'Coworking', img: IMG('coworking.jpg'), open: '08:00', close: '22:00',
     brands: ['WeWork-style', 'Awfis-style', '91Springboard-style', 'BHive-style', 'IndiQube-style', 'WorkNest', 'HustleHub', 'DeskDweller'].map((s) => s.replace('-style', '')),
     suffixes: ['Coworking', 'Workspaces', 'Business Centre', 'Shared Offices'],
     taglines: ['High-speed fibre', 'Meeting rooms', 'Startup community'],
@@ -366,7 +366,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Floodlights', 'Changing Rooms', 'Equipment Rental', 'Cafeteria', 'Parking', 'First Aid'],
   },
   {
-    name: 'Cricket Turfs', singular: 'Cricket Turf', img: IMG('sports.jpg'), open: '06:00', close: '23:00',
+    name: 'Cricket Turfs', singular: 'Cricket Turf', img: IMG('cricket.jpg'), open: '06:00', close: '23:00',
     brands: ['BoxCricket Pro', 'TurfTown', 'CricArena', 'SixerPark', 'Googly Grounds', 'WicketWorld', 'PowerPlay Turf', 'NightCric'],
     suffixes: ['Cricket Turf', 'Box Cricket', 'Turf Arena', 'Cricket Ground'],
     taglines: ['FIFA-grade turf', 'Night slots till 11pm', 'Balls + kits included'],
@@ -380,7 +380,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Floodlights', 'Equipment Included', 'Changing Rooms', 'Drinking Water', 'Parking'],
   },
   {
-    name: 'Football Grounds', singular: 'Football Ground', img: IMG('sports.jpg'), open: '06:00', close: '22:00',
+    name: 'Football Grounds', singular: 'Football Ground', img: IMG('football.jpg'), open: '06:00', close: '22:00',
     brands: ['GoalArena', 'KickOff', 'StrikerPark', 'SoccerNest', 'Football Factory', 'GoalLine', 'TikiTaka Turf', 'HatTrick'],
     suffixes: ['Football Ground', 'Soccer Turf', 'Football Arena', 'Mini Stadium'],
     taglines: ['5v5 / 7v7 formats', 'Pro-grade turf', 'Bibs + balls included'],
@@ -406,7 +406,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Wooden Courts', 'Shower Rooms', 'Pro Shop', 'Parking', 'Cafeteria'],
   },
   {
-    name: 'Swimming Pools', singular: 'Swimming Pool', img: IMG('sports.jpg'), open: '06:00', close: '21:00',
+    name: 'Swimming Pools', singular: 'Swimming Pool', img: IMG('swimming.jpg'), open: '06:00', close: '21:00',
     brands: ['AquaSplash', 'BlueWave', 'DiveDeep', 'SwimFit', 'CrystalPool', 'NeptuneSwim', 'AquaLife', 'SplashPoint'],
     suffixes: ['Swimming Pool', 'Swim Academy', 'Aquatic Centre', 'Swim Club'],
     taglines: ['Temperature controlled', 'Certified lifeguards', 'Kids batches'],
@@ -448,7 +448,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Verified Tutors', 'Progress Reports', 'Online Option', 'Small Batches'],
   },
   {
-    name: 'Driving Schools', singular: 'Driving School', img: IMG('car.jpg'), open: '07:00', close: '20:00',
+    name: 'Driving Schools', singular: 'Driving School', img: IMG('driving.jpg'), open: '07:00', close: '20:00',
     brands: ['Maruti-style', 'SafeDrive', 'WheelGuru', 'DriveMate', 'RoadReady', 'SwiftWheels', 'ConfidentDrive', 'PerfectGear'].map((s) => s.replace('-style', ' Driving')),
     suffixes: ['Driving School', 'Motor Training', 'Driving Academy'],
     taglines: ['Dual-control cars', 'RTO licence help', 'Lady instructors'],
@@ -490,7 +490,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Printing & Scan', 'Photo Booth', 'UPI Payments', 'Token System'],
   },
   {
-    name: 'Banks', singular: 'Bank Branch', img: IMG('law.jpg'), open: '10:00', close: '16:00',
+    name: 'Banks', singular: 'Bank Branch', img: IMG('bank.jpg'), open: '10:00', close: '16:00',
     brands: ['HDFC-style', 'ICICI-style', 'SBI-style', 'Axis-style', 'Kotak-style', 'PNB-style'].map((s) => s.replace('-style', ' Bank Branch')),
     suffixes: ['Branch', 'Bank & Locker Desk', 'Financial Centre'],
     taglines: ['Priority counters', 'Locker facility', 'Loan desk'],
@@ -504,7 +504,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['ATM Attached', 'Priority Counter', 'Parking', 'Wheelchair Access'],
   },
   {
-    name: 'Insurance Offices', singular: 'Insurance', img: IMG('law.jpg'), open: '10:00', close: '18:00',
+    name: 'Insurance Offices', singular: 'Insurance', img: IMG('insurance.jpg'), open: '10:00', close: '18:00',
     brands: ['LIC-style', 'Star Health-style', 'HDFC Ergo-style', 'ICICI Lombard-style', 'PolicyDesk', 'CoverSure', 'InsureFirst', 'SafeGuard Advisors'].map((s) => s.replace('-style', '')),
     suffixes: ['Insurance', 'Insurance Advisors', 'Policy Centre'],
     taglines: ['Health + motor + life', 'Claim assistance', 'Zero-dep experts'],
@@ -561,7 +561,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['1-on-1 Sessions', 'Online Option', 'Resource Library', 'UPI Payments'],
   },
   {
-    name: 'Pet Clinics', singular: 'Pet Clinic', img: IMG('clinic.jpg'), open: '09:00', close: '21:00',
+    name: 'Pet Clinics', singular: 'Pet Clinic', img: IMG('pet.jpg'), open: '09:00', close: '21:00',
     brands: ['CrownVet-style', 'Paws & Claws', 'HappyTails', 'VetCare Plus', 'FurryFriends', 'PetPals Clinic', 'WagWell', 'Pawfect Care'].map((s) => s.replace('-style', '')),
     suffixes: ['Pet Clinic', 'Veterinary Clinic', 'Pet Care Centre'],
     taglines: ['Dogs + cats + exotics', 'Vaccinations', 'Grooming + boarding'],
@@ -604,7 +604,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Doorstep Delivery', '24×7 Support', 'Full Insurance', 'UPI Payments', 'GPS Tracked'],
   },
   {
-    name: 'Bike Rentals', singular: 'Bike Rental', img: IMG('car.jpg'), open: '08:00', close: '22:00',
+    name: 'Bike Rentals', singular: 'Bike Rental', img: IMG('bike.jpg'), open: '08:00', close: '22:00',
     brands: ['Royal Brothers-style', 'WickedRide-style', 'BikeBlitz', 'ThrottleRent', 'RoadRider Rentals', 'GearUp Bikes', 'MotoMela', 'RideReady'].map((s) => s.replace('-style', '')),
     suffixes: ['Bike Rentals', 'Motorcycle Rentals', 'Scooter Rentals'],
     taglines: ['RE + KTM + Activa', 'Helmets included', 'One-way options'],
@@ -618,7 +618,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Helmets Included', 'Roadside Assist', 'UPI Payments', 'Luggage Rack'],
   },
   {
-    name: 'Car Service Centers', singular: 'Car Service', img: IMG('car.jpg'), open: '09:00', close: '20:00',
+    name: 'Car Service Centers', singular: 'Car Service', img: IMG('car-service.jpg'), open: '09:00', close: '20:00',
     brands: ['GoMechanic-style', 'Pitstop-style', 'Mahindra First-style', 'CarClinic', 'AutoMend', 'MotorWorks', 'FixMyCar', 'ServiceLane'].map((s) => s.replace('-style', '')),
     suffixes: ['Car Service', 'Auto Garage', 'Car Care Studio', 'Multi-brand Service'],
     taglines: ['All brands serviced', 'Free pickup & drop', 'Upfront pricing'],
@@ -646,7 +646,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['DC Fast Chargers', 'Cafe Lounge', 'Restrooms', 'UPI Payments', 'CCTV'],
   },
   {
-    name: 'Home Services', singular: 'Home Service', img: IMG('education.jpg'), open: '08:00', close: '21:00',
+    name: 'Home Services', singular: 'Home Service', img: IMG('home-services.jpg'), open: '08:00', close: '21:00',
     brands: ['Urban Company-style', 'HouseJoy-style', 'Broomees-style', 'GharSeva', 'HomeMate', 'FixKar', 'SevaHome', 'Doorstep Pro'].map((s) => s.replace('-style', '')),
     suffixes: ['Home Services', 'Doorstep Services', 'Home Care'],
     taglines: ['Verified pros', 'Upfront pricing', 'Service warranty'],
@@ -703,7 +703,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Eco Chemicals', 'Own Equipment', 'Re-clean Promise', 'UPI Payments'],
   },
   {
-    name: 'Event Venues', singular: 'Event Venue', img: IMG('hotel.jpg'), open: '09:00', close: '22:00',
+    name: 'Event Venues', singular: 'Event Venue', img: IMG('event.jpg'), open: '09:00', close: '22:00',
     brands: ['GrandCelebrations', 'VenueVault', 'PartyPalace', 'ShaadiScape', 'CelebrateHub', 'Milestone Manor', 'FestiveLawns', 'BanquetBliss'],
     suffixes: ['Banquets', 'Convention Centre', 'Party Lawns', 'Event Venue'],
     taglines: ['Weddings + corporate', 'In-house catering', 'Decor partners'],
@@ -717,7 +717,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['In-house Catering', 'Bridal Rooms', 'Parking', 'Power Backup', 'Decor Panel'],
   },
   {
-    name: 'Photography Studios', singular: 'Photo Studio', img: IMG('coaching.jpg'), open: '09:00', close: '21:00',
+    name: 'Photography Studios', singular: 'Photo Studio', img: IMG('photography.jpg'), open: '09:00', close: '21:00',
     brands: ['LensKart-style', 'PixelPerfect', 'CandidTales', 'ShutterSoul', 'FrameCraft', 'MomentsMaker', 'LightLeak Studio', 'Aperture Art'].map((s) => s.replace('-style', '')),
     suffixes: ['Photography', 'Photo Studio', 'Films & Photos', 'Candid Studio'],
     taglines: ['Wedding + pre-wedding', 'Candid + traditional', 'Same-day teaser'],
@@ -731,7 +731,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Studio Floor', 'Drone + Gimbal', 'Same-day Teaser', 'UPI Payments'],
   },
   {
-    name: 'Travel Agencies', singular: 'Travel Agency', img: IMG('hotel.jpg'), open: '10:00', close: '20:00',
+    name: 'Travel Agencies', singular: 'Travel Agency', img: IMG('travel.jpg'), open: '10:00', close: '20:00',
     brands: ['MakeMyTrip-style', 'Yatra-style', 'Thomas Cook-style', 'WanderLust Trips', 'YatraMitra', 'GlobeTrek', 'HolidayHopper', 'SafarSathi'].map((s) => s.replace('-style', '')),
     suffixes: ['Travels', 'Holidays', 'Tours & Travels', 'Travel Agency'],
     taglines: ['Domestic + international', 'Visa + forex', 'Group departures'],
@@ -887,7 +887,10 @@ export function getCityBusinesses(cityName: string, opts?: { category?: string; 
           const valid = new Date(Date.now() + (7 + Math.floor(rnd() * 45)) * 86400000);
           offers.push({ title: t.t, desc: t.d, code: t.code, pct: t.pct, valid_till: valid.toISOString().slice(0, 10) });
         }
-        const seed = `velora-${id}`;
+        // Use real category photo from /biz/ — zero placeholder-image for production.
+        const mainImg = def.img;
+        // Deterministic photo gallery: main + 2 related from same category family.
+        const gallery = [mainImg, mainImg, mainImg];
         all.push({
           id,
           slug: `${city.slug}-${def.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${idx}`,
@@ -906,9 +909,9 @@ export function getCityBusinesses(cityName: string, opts?: { category?: string; 
           email: `care@${name.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 14) || 'velora'}.in`,
           rating,
           review_count: reviewCount,
-          image_url: `https://picsum.photos/seed/${seed}/640/420`,
-          cover_url: `https://picsum.photos/seed/${seed}-cover/1200/500`,
-          photos: [0, 1, 2].map((p) => `https://picsum.photos/seed/${seed}-p${p}/640/420`),
+          image_url: mainImg,
+          cover_url: mainImg,
+          photos: gallery,
           featured,
           open_time: def.open,
           close_time: def.close,
