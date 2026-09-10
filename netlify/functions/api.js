@@ -1,72 +1,48 @@
 // Netlify Functions adapter for Velora's Vercel-style /api/*.js handlers.
-// Routes /api/discover, /api/businesses, etc. to the corresponding file in ../../api/
-// Supports both Netlify's event/context and Vercel's req/res handler signatures.
-// ESM + CJS compatible — handles import.meta.url undefined in some bundlers.
+// Statically imports all handlers so esbuild bundles them (no filesystem needed).
+// Routes /api/discover, /api/businesses, etc. to the corresponding handler.
 
-import { pathToFileURL } from 'node:url';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import fs from 'node:fs';
-import { createRequire } from 'node:module';
+import admin from '../../api/admin.js';
+import audit from '../../api/audit.js';
+import book from '../../api/book.js';
+import bookings from '../../api/bookings.js';
+import businessSlots from '../../api/business-slots.js';
+import businesses from '../../api/businesses.js';
+import concierge from '../../api/concierge.js';
+import discover from '../../api/discover.js';
+import geocode from '../../api/geocode.js';
+import heatmap from '../../api/heatmap.js';
+import myBookings from '../../api/my-bookings.js';
+import nearest from '../../api/nearest.js';
+import notifications from '../../api/notifications.js';
+import places from '../../api/places.js';
+import processReminders from '../../api/process-reminders.js';
+import smartSlots from '../../api/smart-slots.js';
+import trackView from '../../api/track-view.js';
+import travelPlanner from '../../api/travel-planner.js';
+import verifyBooking from '../../api/verify-booking.js';
 
-let API_ROOT;
-try {
-  // ESM: use import.meta.url
-  if (typeof import.meta !== 'undefined' && import.meta.url) {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    API_ROOT = path.resolve(__dirname, '..', '..', 'api');
-  } else {
-    throw new Error('no import.meta.url');
-  }
-} catch {
-  try {
-    // CJS fallback: __dirname is available
-    // @ts-ignore
-    const cjsDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
-    API_ROOT = path.resolve(cjsDir, '..', '..', 'api');
-  } catch {
-    // Final fallback: assume process.cwd() is repo root or /var/task
-    const cwd = process.cwd();
-    // Try common locations
-    const candidates = [
-      path.resolve(cwd, 'api'),
-      path.resolve(cwd, '..', 'api'),
-      path.resolve(cwd, '..', '..', 'api'),
-      '/var/task/api',
-      path.resolve('/var/task', 'api'),
-    ];
-    for (const cand of candidates) {
-      if (fs.existsSync(cand)) {
-        API_ROOT = cand;
-        break;
-      }
-    }
-    if (!API_ROOT) API_ROOT = candidates[0];
-  }
-}
-
-const handlerCache = new Map();
-
-async function loadHandler(name) {
-  if (handlerCache.has(name)) return handlerCache.get(name);
-  const file = path.join(API_ROOT, `${name}.js`);
-  if (!fs.existsSync(file)) {
-    // Try alternative path: maybe bundled in /var/task/api
-    const alt = path.join('/var/task', 'api', `${name}.js`);
-    if (fs.existsSync(alt)) {
-      const mod = await import(pathToFileURL(alt).href);
-      const fn = mod.default;
-      if (typeof fn === 'function') handlerCache.set(name, fn);
-      return fn;
-    }
-    return null;
-  }
-  const mod = await import(pathToFileURL(file).href);
-  const fn = mod.default;
-  if (typeof fn === 'function') handlerCache.set(name, fn);
-  return fn;
-}
+const handlers = {
+  admin,
+  audit,
+  book,
+  bookings,
+  'business-slots': businessSlots,
+  businesses,
+  concierge,
+  discover,
+  geocode,
+  heatmap,
+  'my-bookings': myBookings,
+  nearest,
+  notifications,
+  places,
+  'process-reminders': processReminders,
+  'smart-slots': smartSlots,
+  'track-view': trackView,
+  'travel-planner': travelPlanner,
+  'verify-booking': verifyBooking,
+};
 
 function parseBody(event) {
   if (!event.body) return undefined;
@@ -80,11 +56,9 @@ function parseBody(event) {
 
 export const handler = async (event, context) => {
   try {
-    // Extract API name from path: /api/discover or /.netlify/functions/api/discover
     const rawPath = event.path || event.rawUrl || '';
     let apiName = '';
 
-    // First check if Netlify passed the splat via params? No, we parse path.
     const apiMatch = rawPath.match(/\/api\/([a-z0-9_-]+)/i);
     if (apiMatch) {
       apiName = apiMatch[1];
@@ -102,7 +76,7 @@ export const handler = async (event, context) => {
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: 'API endpoint not specified', path: rawPath, apiRoot: API_ROOT }),
+        body: JSON.stringify({ error: 'API endpoint not specified', path: rawPath }),
       };
     }
 
@@ -114,12 +88,12 @@ export const handler = async (event, context) => {
       };
     }
 
-    const handlerFn = await loadHandler(apiName);
+    const handlerFn = handlers[apiName];
     if (!handlerFn) {
       return {
         statusCode: 404,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ error: `API ${apiName} not found`, apiRoot: API_ROOT }),
+        body: JSON.stringify({ error: `API ${apiName} not found`, available: Object.keys(handlers) }),
       };
     }
 

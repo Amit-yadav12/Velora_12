@@ -1,51 +1,8 @@
 // Netlify Scheduled Function: processes due reminders every 15 minutes
 // Schedule is defined in netlify.toml: "*/15 * * * *"
 // Also callable as HTTP endpoint for manual triggering (with CRON_SECRET)
-// ESM + CJS compatible
 
-import { pathToFileURL } from 'node:url';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import fs from 'node:fs';
-
-let API_ROOT;
-try {
-  if (typeof import.meta !== 'undefined' && import.meta.url) {
-    const __filename = fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    API_ROOT = path.resolve(__dirname, '..', '..', 'api');
-  } else {
-    throw new Error('no import.meta.url');
-  }
-} catch {
-  try {
-    // @ts-ignore
-    const cjsDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
-    API_ROOT = path.resolve(cjsDir, '..', '..', 'api');
-  } catch {
-    const cwd = process.cwd();
-    const candidates = [path.resolve(cwd, 'api'), '/var/task/api', path.resolve('/var/task', 'api')];
-    for (const cand of candidates) {
-      if (fs.existsSync(cand)) {
-        API_ROOT = cand;
-        break;
-      }
-    }
-    if (!API_ROOT) API_ROOT = candidates[0];
-  }
-}
-
-async function loadHandler() {
-  const file = path.join(API_ROOT, 'process-reminders.js');
-  if (!fs.existsSync(file)) {
-    const alt = path.join('/var/task', 'api', 'process-reminders.js');
-    if (!fs.existsSync(alt)) throw new Error('process-reminders API not found at ' + file);
-    const mod = await import(pathToFileURL(alt).href);
-    return mod.default;
-  }
-  const mod = await import(pathToFileURL(file).href);
-  return mod.default;
-}
+import processReminders from '../../api/process-reminders.js';
 
 function parseBody(event) {
   if (!event?.body) return undefined;
@@ -59,7 +16,6 @@ function parseBody(event) {
 
 export const handler = async (event, context) => {
   try {
-    const handlerFn = await loadHandler();
     const query = event?.queryStringParameters || {};
     const body = parseBody(event);
     const headers = event?.headers || {};
@@ -108,7 +64,7 @@ export const handler = async (event, context) => {
       },
     };
 
-    await handlerFn(req, res);
+    await processReminders(req, res);
 
     if (!ended) {
       responseBody = responseBody || JSON.stringify({ ok: true });
