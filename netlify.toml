@@ -5,14 +5,12 @@
 
 [functions]
   node_bundler = "esbuild"
-  # Keep supabase external to avoid bundling issues
   external_node_modules = ["@supabase/supabase-js"]
-  included_files = ["api/**", "api/_lib/**"]
 
 # API adapter — all /api/* requests go to the single Netlify function
 [[redirects]]
   from = "/api/*"
-  to = "/.netlify/functions/api/:splat"
+  to = "/.netlify/functions/api-adapter/:splat"
   status = 200
   force = false
 
