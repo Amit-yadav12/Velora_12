@@ -1,4 +1,4 @@
-import { cors, sanitizeText } from './_lib/security.js';
+import { cors, sanitizeText , enforceRateLimit} from './_lib/security.js';
 
 // Place autocomplete / geocoding. Uses Google Places/Geocoding when a key is
 // configured, else OpenStreetMap Nominatim (no key required). Returns a list
@@ -9,6 +9,7 @@ export default async function handler(req, res) {
   try {
     const q = sanitizeText(req.query.q, 120);
     if (!q || q.length < 2) return res.status(200).json({ predictions: [] });
+    if (!enforceRateLimit(req, res, 'geocode', { limit: 120, windowMs: 60_000 })) return;
 
     // Instant local matches for Velora's supported cities (no network needed).
     try {

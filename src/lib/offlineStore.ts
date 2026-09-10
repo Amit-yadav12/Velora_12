@@ -2,6 +2,8 @@
 // locally so the synthetic demo experience never breaks, even when the API or
 // Supabase is unreachable. Merged with server data wherever it exists.
 
+import { emitBookingsChanged, emitNotifsChanged } from '../services/events';
+
 export interface LocalBooking {
   id: number | string;
   ref: string;
@@ -63,6 +65,11 @@ function write(key: string, arr: any[]): void {
   try {
     localStorage.setItem(key, JSON.stringify(arr.slice(0, 100)));
   } catch { /* non-fatal */ }
+  // Instant same-browser sync (tabs, dashboards, badges, toasts).
+  try {
+    if (key === N_KEY) emitNotifsChanged();
+    else emitBookingsChanged();
+  } catch { /* non-DOM env */ }
 }
 
 export function listLocalBookings(email?: string | null): LocalBooking[] {

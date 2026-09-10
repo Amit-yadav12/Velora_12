@@ -10,6 +10,8 @@ import Spotlight from '../components/premium/Spotlight';
 import { LogoMark } from '../components/Logo';
 import AIConcierge from '../components/premium/AIConcierge';
 import InstallPrompt from '../components/premium/InstallPrompt';
+import ToastHost from '../components/premium/ToastHost';
+import { onNotifsChanged } from '../services/events';
 
 const tabs = [
   { to: '/', label: 'Home', icon: Home },
@@ -43,7 +45,8 @@ export default function CustomerShell({ children }: { children: React.ReactNode 
   useEffect(() => { loadUnread(); }, [loc.pathname]);
   useEffect(() => {
     const ch = supabase.channel('cust-notif').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, loadUnread).subscribe();
-    return () => { supabase.removeChannel(ch); };
+    const offLocal = onNotifsChanged(loadUnread);
+    return () => { supabase.removeChannel(ch); offLocal(); };
   }, []);
 
   useEffect(() => {
@@ -141,6 +144,7 @@ export default function CustomerShell({ children }: { children: React.ReactNode 
       <Spotlight open={spotlight} onClose={() => setSpotlight(false)} />
       <AIConcierge />
       <InstallPrompt />
+      <ToastHost />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { LogoMark } from '../Logo';
 
 export default function InstallPrompt() {

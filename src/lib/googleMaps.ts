@@ -68,7 +68,7 @@ export interface LivePlace {
   price_level?: number;
 }
 
-let placesCache = new Map<string, { at: number; data: LivePlace[] }>();
+const placesCache = new Map<string, { at: number; data: LivePlace[] }>();
 const PLACES_TTL = 120000;
 
 export async function fetchLivePlaces(opts: {

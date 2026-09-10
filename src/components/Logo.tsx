@@ -6,8 +6,10 @@
  * location pin. Intentionally asymmetric so it doesn't look like a generic
  * auto-generated diamond/rhombus.
  */
+import { useId } from 'react';
+
 export function LogoMark({ size = 32, className = '' }: { size?: number; className?: string }) {
-  const id = 'velora-g-' + Math.random().toString(36).slice(2, 7);
+  const id = 'velora-g-' + useId().replace(/[^a-zA-Z0-9]/g, '');
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" fill="none" className={className} aria-hidden>
       <defs>

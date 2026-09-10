@@ -6,6 +6,8 @@ import { Business, BusinessService, BusinessStaff, categoryColor, imgOnError } f
 import { CategoryIcon } from '../../components/product';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiSend } from '../../lib/api';
+import { submitBooking, newIdempotencyKey } from '../../services/booking';
+import { toast } from '../../services/events';
 import { inr } from '../../lib/format';
 import { useLocation } from '../../contexts/LocationContext';
 import BookingTimeline, { Slot } from '../../components/premium/BookingTimeline';
@@ -79,6 +81,9 @@ export default function BusinessDetail() {
     return () => { alive = false; };
   }, [biz, service, date, coords.lat, coords.lng]);
 
+  // Stable per slot+service so retries replay the same booking, never a duplicate.
+  const idemKey = useMemo(() => newIdempotencyKey(), [service?.id, slot]);
+
   const confirm = async () => {
     // Natural in-experience login gate: only prompt sign-in at booking time.
     if (!user) { nav(`/welcome?next=${encodeURIComponent(`/business/${id}`)}`); return; }
@@ -87,6 +92,7 @@ export default function BusinessDetail() {
       const payload: any = {
         business_id: biz!.id, service_id: service!.id, staff_id: staff?.id || null,
         start_time: slot, customer_name: profile?.full_name, customer_email: profile?.email,
+        idempotency_key: idemKey,
       };
       // Live Google businesses travel with their hydrated snapshot.
       if (typeof biz!.id === 'string' && String(biz!.id).startsWith('live-')) {
@@ -96,7 +102,7 @@ export default function BusinessDetail() {
           staff: ((biz as any).staff || []).map((s: any) => ({ id: s.id, name: s.name })),
         };
       }
-      const res = await apiSend('/api/book', 'POST', payload);
+      const res = await submitBooking(payload);
       // Demo continuity: mirror the booking locally so history/invoices work offline.
       try {
         const bk = res.booking;
@@ -122,6 +128,7 @@ export default function BusinessDetail() {
         }
       } catch { /* non-fatal */ }
       setResult(res);
+      toast(res?.deduplicated ? 'Booking already confirmed' : 'Booking confirmed', 'success');
     } catch (e: any) {
       // Ultimate fallback: confirm locally so the demo flow never dead-ends.
       try {

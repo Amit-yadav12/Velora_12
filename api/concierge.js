@@ -1,5 +1,5 @@
 import supabase from './db-client.js';
-import { cors, sanitizeText, isEmail } from './_lib/security.js';
+import { cors, sanitizeText, isEmail , enforceRateLimit} from './_lib/security.js';
 import { getAuth } from './_lib/auth.js';
 import { cityBusinesses } from './_lib/synthetic.js';
 
@@ -34,6 +34,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   try {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+    if (!enforceRateLimit(req, res, 'concierge', { limit: 30, windowMs: 60_000 })) return;
     const auth = await getAuth(req);
     const message = sanitizeText(req.body?.message, 400) || '';
     const lower = message.toLowerCase();

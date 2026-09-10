@@ -963,7 +963,7 @@ export function attachDetails(b: SyntheticBusiness, def?: CategoryDef): Syntheti
   const rnd = mulberry32(hashStr(`details|${b.id}`));
   const svcCount = Math.min(d.services.length, 4 + Math.floor(rnd() * 3));
   const svcIdxs = [...d.services.keys()].sort(() => rnd() - 0.5).slice(0, svcCount);
-  const services: BusinessService[] = svcIdxs.map((si, k) => {
+  const services: BusinessService[] = svcIdxs.map((si) => {
     const t = d.services[si];
     const price = t.lo === 0 && t.hi === 0 ? 0 : round5(t.lo + rnd() * (t.hi - t.lo));
     return { id: Number(b.id) * 100 + si, business_id: b.id as number, name: t.n, description: t.d, duration_min: t.dur, price };

@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Bell, Check, Info, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import supabase from '../../lib/supabase';
 import { useLocation } from '../../contexts/LocationContext';
-import { listLocalNotifications, markLocalNotificationRead, seedCityNotifications } from '../../lib/offlineStore';
+import { markLocalNotificationRead, seedCityNotifications } from '../../lib/offlineStore';
 
 const iconFor = (t: string) => t === 'success' ? CheckCircle2 : t === 'warning' ? AlertTriangle : Info;
 const colorFor = (t: string) => t === 'success' ? '#34d399' : t === 'warning' ? '#f59e0b' : '#60a5fa';

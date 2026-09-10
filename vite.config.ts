@@ -7,14 +7,14 @@ import path from 'node:path'
 export default defineConfig(async ({ mode }) => {
   const plugins = [react(), tailwindcss()];
   try {
-    // @ts-ignore - optional local dev plugin, not present in all envs
+    // @ts-expect-error - optional local dev plugin, not present in all envs
     const m = await import('./.vite-source-tags.js');
     plugins.push(m.sourceTags());
   } catch {
     // optional plugin absent — safe to ignore
   }
   try {
-    // @ts-ignore - dev-only API middleware (plain JS, serve only)
+    // @ts-expect-error - dev-only API middleware (plain JS, serve only)
     const api = await import('./dev-api.js');
     if (typeof api.devApi === 'function') plugins.push(api.devApi());
   } catch {

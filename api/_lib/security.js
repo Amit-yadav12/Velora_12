@@ -40,8 +40,56 @@ export function clientIp(req) {
 export function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Idempotency-Key');
   // basic hardening headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+}
+
+// ---------------------------------------------------------------------------
+// In-memory sliding-window rate limiter (per route + client IP).
+// Serverless-safe best effort: each isolate tracks its own counters, which is
+// enough to blunt casual abuse + runaway clients. Returns null when allowed,
+// or { status, error, retryAfter } when the caller should reject with 429.
+// ---------------------------------------------------------------------------
+const buckets = new Map(); // key -> { count, resetAt }
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of buckets) if (v.resetAt <= now) buckets.delete(k);
+}, 60_000).unref?.();
+
+export function rateLimit(req, route, { limit = 60, windowMs = 60_000 } = {}) {
+  const key = `${route}|${clientIp(req)}`;
+  const now = Date.now();
+  let b = buckets.get(key);
+  if (!b || b.resetAt <= now) {
+    b = { count: 0, resetAt: now + windowMs };
+    buckets.set(key, b);
+  }
+  b.count += 1;
+  if (b.count > limit) {
+    return {
+      status: 429,
+      error: 'Too many requests — please slow down and try again shortly.',
+      retryAfter: Math.max(1, Math.ceil((b.resetAt - now) / 1000)),
+    };
+  }
+  return null;
+}
+
+export function enforceRateLimit(req, res, route, opts) {
+  const hit = rateLimit(req, route, opts);
+  if (hit) {
+    res.setHeader('Retry-After', String(hit.retryAfter));
+    res.status(hit.status).json({ error: hit.error });
+    return false;
+  }
+  return true;
+}
+
+// Never leak stack traces / driver errors to clients; log server-side instead.
+export function safeError(err, tag) {
+  console.error(`[${tag}]`, err?.message || err);
+  if (err?.status && err.status < 500) return { status: err.status, error: err.message };
+  return { status: 500, error: 'Something went wrong on our end. Please try again.' };
 }

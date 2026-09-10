@@ -61,12 +61,12 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       (pos) => {
         const c: Coords = { lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'Current location' };
         setLocation(c); setLive(c); saveLocation(c); setStatus('granted');
-        try { localStorage.setItem(ASKED_KEY, 'granted'); } catch {}
+        try { localStorage.setItem(ASKED_KEY, 'granted'); } catch { /* non-fatal */ }
       },
       (err) => {
         const denied = err.code === err.PERMISSION_DENIED;
         setStatus(denied ? 'denied' : 'unavailable');
-        try { localStorage.setItem(ASKED_KEY, denied ? 'denied' : 'unavailable'); } catch {}
+        try { localStorage.setItem(ASKED_KEY, denied ? 'denied' : 'unavailable'); } catch { /* non-fatal */ }
       },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 1000 * 60 * 30 }
     );
@@ -84,7 +84,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     const c = getCity(name);
     if (!c) return;
     setCityState(c);
-    try { localStorage.setItem(CITY_KEY, c.name); } catch {}
+    try { localStorage.setItem(CITY_KEY, c.name); } catch { /* non-fatal */ }
     // Keep the legacy `location` in sync so existing pages keep working.
     const coords: Coords = { lat: c.lat, lng: c.lng, label: c.name };
     setLocation(coords);
@@ -93,12 +93,12 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
 
   const setManual = useCallback((c: Coords) => {
     setLocation(c); saveLocation(c); setStatus('granted');
-    try { localStorage.setItem(ASKED_KEY, 'granted'); } catch {}
+    try { localStorage.setItem(ASKED_KEY, 'granted'); } catch { /* non-fatal */ }
     // If the manual pick matches a known city, pin it as the active city.
     const match = cityFromLabel(c.label);
     if (match && c.label && match.name.toLowerCase() === c.label.split(',')[0].trim().toLowerCase()) {
       setCityState(match);
-      try { localStorage.setItem(CITY_KEY, match.name); } catch {}
+      try { localStorage.setItem(CITY_KEY, match.name); } catch { /* non-fatal */ }
     }
   }, []);
 

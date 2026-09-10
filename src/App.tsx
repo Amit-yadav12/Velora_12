@@ -10,6 +10,7 @@ import AuroraBackground from './components/premium/AuroraBackground';
 // Customer (product-first) pages — Home eager, rest lazy for fast first paint
 import Home from './pages/customer/Home';
 import Welcome from './pages/customer/Welcome';
+import Verify from './pages/Verify';
 const Explore = lazy(() => import('./pages/customer/Explore'));
 const BusinessDetail = lazy(() => import('./pages/customer/BusinessDetail'));
 const Appointments = lazy(() => import('./pages/customer/Appointments'));
@@ -53,6 +54,7 @@ export default function App() {
           <ScrollToTop />
           <Routes>
             <Route path="/welcome" element={<Welcome />} />
+            <Route path="/verify/:token" element={<Verify />} />
 
             {/* Customer product — opens directly into the experience */}
             <Route path="/" element={<CustomerGate><Home /></CustomerGate>} />

@@ -7,6 +7,7 @@ import { useLocation } from '../../contexts/LocationContext';
 import { mapsDirections } from '../../lib/product';
 import { apiGet, apiSend } from '../../lib/api';
 import supabase from '../../lib/supabase';
+import { onBookingsChanged, toast } from '../../services/events';
 import ProgressTracker from '../../components/premium/ProgressTracker';
 import { inr, istTime, ist } from '../../lib/format';
 import QueueTracker from '../../components/premium/QueueTracker';
@@ -59,7 +60,7 @@ export default function Appointments() {
     setBookings(merged); setLoading(false);
   };
   useEffect(() => { if (profile?.email) load(); }, [profile?.email]);
-  useEffect(() => { const ch = supabase.channel('appts').on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => load()).subscribe(); return () => { supabase.removeChannel(ch); }; }, [profile?.email]);
+  useEffect(() => { const ch = supabase.channel('appts').on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => load()).subscribe(); const off = onBookingsChanged(() => load()); return () => { supabase.removeChannel(ch); off(); }; }, [profile?.email]);
 
   const cancel = async (id: number | string) => {
     const target = bookings.find((b) => String(b.id) === String(id));
@@ -69,6 +70,7 @@ export default function Appointments() {
       catch { updateLocalBooking(id, { status: 'cancelled' }); }
     }
     load();
+    toast('Booking cancelled', 'info');
   };
   const doResched = async () => {
     setErr(''); setBusy(true);
@@ -80,7 +82,7 @@ export default function Appointments() {
       } else {
         await apiSend('/api/bookings', 'PUT', { id: resched.id, action: 'reschedule', start_time: iso });
       }
-      setResched(null); load();
+      setResched(null); load(); toast('Booking rescheduled', 'success');
     }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };

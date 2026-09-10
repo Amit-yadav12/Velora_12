@@ -1,5 +1,6 @@
 import supabase from './db-client.js';
-import { cors, sanitizeText, isEmail, isISODate, assert, clientIp } from './_lib/security.js';
+import { cors, sanitizeText, isEmail, isISODate, assert, clientIp, enforceRateLimit, safeError } from './_lib/security.js';
+import { signBookingToken, verifyUrl } from './_lib/qr.js';
 import { getAuth } from './_lib/auth.js';
 import { sendEmail } from './_lib/email.js';
 import { createCalendarEvent } from './_lib/calendar.js';
@@ -26,6 +27,24 @@ function genRef() {
   return `VL-${r}`;
 }
 
+// Idempotency store: same key => same response, never a duplicate booking.
+// Persistent when the `idempotency_keys` table exists, in-memory otherwise.
+const idemMemory = new Map();
+async function findReplay(key) {
+  if (idemMemory.has(key)) return idemMemory.get(key);
+  try {
+    const { data } = await supabase.from('idempotency_keys').select('response').eq('key', key).single();
+    if (data?.response) { idemMemory.set(key, data.response); return data.response; }
+  } catch { /* table optional */ }
+  return null;
+}
+async function saveReplay(key, response) {
+  idemMemory.set(key, response);
+  if (idemMemory.size > 500) idemMemory.delete(idemMemory.keys().next().value);
+  try { await supabase.from('idempotency_keys').upsert({ key, response, created_at: new Date().toISOString() }); }
+  catch { /* table optional */ }
+}
+
 async function audit(actor, action, entityId, metadata, ip) {
   try { await supabase.from('audit_logs').insert({ actor, action, entity: 'booking', entity_id: String(entityId), metadata, ip }); }
   catch (e) { console.error('[audit]', e.message); }
@@ -38,6 +57,7 @@ export default async function handler(req, res) {
   const ip = clientIp(req);
   try {
     assert(req.method === 'POST', 'Method not allowed', 405);
+    if (!enforceRateLimit(req, res, 'book', { limit: 20, windowMs: 60_000 })) return;
     const auth = await getAuth(req);
     const b = req.body || {};
 
@@ -51,6 +71,13 @@ export default async function handler(req, res) {
     assert(isISODate(b.start_time), 'A valid time slot is required.');
     const start = new Date(b.start_time);
     assert(start.getTime() > Date.now() - 60000, 'That slot is in the past.');
+
+    // 1b. Idempotency: retries/double-clicks replay the original response.
+    const idempotencyKey = sanitizeText(b.idempotency_key || req.headers['x-idempotency-key'], 80);
+    if (idempotencyKey) {
+      const replay = await findReplay(idempotencyKey);
+      if (replay) return res.status(200).json({ ...replay, deduplicated: true });
+    }
 
     // 2. Load business + service (DB rows, synthetic ecosystem, or live Google places)
     let biz = null;
@@ -179,7 +206,8 @@ export default async function handler(req, res) {
 
     // 7. Store QR payload + schedule reminders (fast DB writes)
     const mapsLink = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz.address || biz.name)}`;
-    const qrPayload = JSON.stringify({ ref, id: booking.id, biz: biz.name, svc: svc.name, at: start.toISOString(), v: 1 });
+    const qrToken = signBookingToken({ ref, id: booking.id, biz: biz.name, svc: svc.name, at: start.toISOString() });
+    const qrPayload = verifyUrl(req, qrToken);
     if (!demoMode) {
       try {
         await Promise.all([
@@ -196,17 +224,19 @@ export default async function handler(req, res) {
     const gmailBody = [
       `Booking confirmed — ${ref}`, ``, `Business: ${biz.name}`, `Service: ${svc.name}`,
       ...(staffName ? [`With: ${staffName}`] : []), `When: ${istWhen}`, `Where: ${biz.address || '—'}`,
-      `Total: ₹${(Number(svc.price) + tax).toLocaleString('en-IN')} (incl. 18% GST)`, ``, `Directions: ${mapsLink}`,
+      `Total: ₹${(Number(svc.price) + tax).toLocaleString('en-IN')} (incl. 18% GST)`, ``, `Directions: ${mapsLink}`, `Verify ticket: ${qrPayload}`,
     ].join('\n');
     const gmailComposeUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(customer_email)}&su=${encodeURIComponent(`Your booking is confirmed — ${ref}`)}&body=${encodeURIComponent(gmailBody)}`;
 
     // 8. Respond INSTANTLY (< 2s). Email + calendar run in the background so the
     //    confirmation screen appears immediately with every detail.
-    res.status(201).json({
+    const response = {
       booking, invoice, maps_link: mapsLink, business: biz,
       qr_payload: qrPayload, gmail_compose_url: gmailComposeUrl, demo_mode: demoMode,
       pipeline: { saved: !demoMode, demo_mode: demoMode, email: process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY ? 'sending' : 'log-fallback', notified: !demoMode, reminders_scheduled: demoMode ? 0 : reminders.length },
-    });
+    };
+    if (idempotencyKey) await saveReplay(idempotencyKey, response);
+    res.status(201).json(response);
 
     // ---- Background work (does not block the response) ----
     (async () => {
@@ -235,6 +265,7 @@ export default async function handler(req, res) {
             ...(staffName ? [{ k: 'With', v: staffName }] : []),
             { k: 'When', v: istWhen }, { k: 'Where', v: biz.address || '—' },
             { k: 'Total (incl. 18% GST)', v: `₹${(Number(svc.price) + tax).toLocaleString('en-IN')}` },
+            { k: 'Verify ticket', v: qrPayload },
           ],
           cta: { label: 'Get directions', href: mapsLink },
         });
@@ -257,7 +288,7 @@ export default async function handler(req, res) {
       }
     })();
   } catch (err) {
-    console.error('[book:error]', err.message);
-    if (!res.headersSent) res.status(err.status || 500).json({ error: err.message });
+    const s = safeError(err, 'book:error');
+    if (!res.headersSent) res.status(s.status).json({ error: s.error });
   }
 }

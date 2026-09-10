@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
-import { Check, Navigation, CalendarPlus, Share2, Download, CalendarCheck, MapPin, Clock, User, Sparkles, Loader2, Mail } from 'lucide-react';
+import { Check, Navigation, CalendarPlus, Share2, Download, QrCode, CalendarCheck, MapPin, Clock, User, Sparkles, Loader2, Mail } from 'lucide-react';
 import { inr } from '../../lib/format';
 
 interface Props {
@@ -62,6 +62,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
     ];
     let y = 72;
     rows.forEach(([k, v]) => { doc.setTextColor(140); doc.text(k, 20, y); doc.setTextColor(30); doc.text(String(v), 80, y); y += 10; });
+    if (qrPayload && qrPayload.startsWith('http')) { doc.setTextColor(100); doc.setFontSize(9); doc.text('Verify ticket: ' + qrPayload, 20, y + 2, { maxWidth: 170 }); y += 8; }
     doc.setDrawColor(220); doc.line(20, y, 190, y);
     doc.setTextColor(150); doc.setFontSize(9); doc.text('Present this confirmation or your QR ticket at check-in. Thank you for booking with Velora.', 20, y + 12, { maxWidth: 170 });
     doc.save(`Velora-${booking.ref}.pdf`);
@@ -71,6 +72,19 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
   const share = async () => {
     const data = { title: 'My Velora booking', text: `${booking.service_name} at ${business.name} on ${new Date(booking.start_time).toLocaleString()} — ${booking.ref}`, url: window.location.origin };
     try { if (navigator.share) await navigator.share(data); else { await navigator.clipboard.writeText(`${data.text} ${data.url}`); } } catch { /* cancelled */ }
+  };
+
+  const downloadQr = () => {
+    try {
+      const svg = document.querySelector('[data-qr] svg');
+      if (!svg) return;
+      const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `Velora-${booking.ref}-ticket.svg`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    } catch { /* non-fatal */ }
   };
 
   // Prefer the server-stored QR payload so the ticket matches DB records.
@@ -120,8 +134,9 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
                 <p className="flex items-center gap-2 text-muted"><MapPin className="h-4 w-4" /><span className="truncate">{business.address}</span></p>
               </div>
               <div className="shrink-0 text-center">
-                <div className="p-2 rounded-xl bg-white"><QRCodeSVG value={qrData} size={92} level="M" /></div>
+                <div className="p-2 rounded-xl bg-white" data-qr><QRCodeSVG value={qrData} size={92} level="M" /></div>
                 <p className="text-[10px] text-dim mt-1.5">Scan at check-in</p>
+                {qrData.startsWith('http') && <a href={qrData} target="_blank" rel="noreferrer" className="text-[10px] text-[var(--color-brand-indigo)] underline underline-offset-2">Verify ticket</a>}
               </div>
             </div>
             <div className="mt-4 pt-4 border-t border-app flex items-center justify-between">
@@ -140,6 +155,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
           <a href={mapsLink} target="_blank" rel="noreferrer" className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><Navigation className="h-4 w-4" /> Directions</a>
           <button onClick={share} className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><Share2 className="h-4 w-4" /> Share</button>
           <button onClick={downloadPdf} disabled={pdfLoading} className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)] disabled:opacity-60">{pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} PDF</button>
+          <button onClick={downloadQr} className="col-span-2 rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><QrCode className="h-4 w-4" /> Download QR ticket</button>
         </motion.div>
         {gmailComposeUrl && (
           <motion.a initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }} href={gmailComposeUrl} target="_blank" rel="noreferrer"

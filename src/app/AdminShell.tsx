@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../lib/theme';
 import { LogoMark } from '../components/Logo';
 import PageTransition from '../components/premium/PageTransition';
+import ToastHost from '../components/premium/ToastHost';
 
 const items = [
   { to: '/admin', label: 'Dashboard', icon: LayoutGrid },
@@ -55,6 +56,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           </div>
         </header>
         <main className="flex-1 p-5 lg:p-8 max-w-7xl w-full mx-auto"><PageTransition>{children}</PageTransition></main>
+        <ToastHost />
       </div>
     </div>
   );

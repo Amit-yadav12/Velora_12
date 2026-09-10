@@ -1,5 +1,5 @@
 import supabase from './db-client.js';
-import { cors } from './_lib/security.js';
+import { cors , enforceRateLimit} from './_lib/security.js';
 import { syntheticBusiness, syntheticSlots, isSyntheticId } from './_lib/synthetic.js';
 
 // Available time slots for a business service on a date, checking real
@@ -8,6 +8,7 @@ import { syntheticBusiness, syntheticSlots, isSyntheticId } from './_lib/synthet
 export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
+  if (!enforceRateLimit(req, res, 'business-slots', { limit: 180, windowMs: 60_000 })) return;
   try {
     const { business_id, service_id, date } = req.query;
     if (!business_id || !date) return res.status(400).json({ error: 'business_id and date required' });

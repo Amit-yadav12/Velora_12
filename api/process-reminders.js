@@ -1,5 +1,6 @@
 import supabase from './db-client.js';
-import { cors } from './_lib/security.js';
+import { cors , safeError} from './_lib/security.js';
+import { getAuth } from './_lib/auth.js';
 import { sendEmail } from './_lib/email.js';
 import { travelTimeMin } from './_lib/maps.js';
 
@@ -12,6 +13,14 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   try {
     const now = new Date().toISOString();
+    // Cron (shared secret) processes everything; signed-in users may only
+    // trigger their OWN due reminders.
+    const cronSecret = process.env.CRON_SECRET;
+    const bearer = req.headers.authorization?.replace('Bearer ', '');
+    const isCron = Boolean(cronSecret && bearer === cronSecret);
+    const auth = isCron ? null : await getAuth(req);
+    if (!isCron && !auth?.user?.email) return res.status(401).json({ error: 'Authentication required' });
+    const scopeEmail = isCron ? null : auth.user.email.toLowerCase();
     const { data: due } = await supabase.from('reminders').select('*').eq('sent', false).lte('fire_at', now).limit(50);
     if (!due || !due.length) return res.status(200).json({ processed: 0 });
 
@@ -19,6 +28,7 @@ export default async function handler(req, res) {
     for (const r of due) {
       const { data: bk } = await supabase.from('bookings').select('*').eq('id', r.booking_id).single();
       if (!bk || bk.status === 'cancelled') { await supabase.from('reminders').update({ sent: true }).eq('id', r.id); continue; }
+      if (scopeEmail && (bk.customer_email || '').toLowerCase() !== scopeEmail) continue;
       const whenIST = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(bk.start_time)) + ' IST';
 
       const titles = { '24h': 'Appointment tomorrow', '6h': 'Appointment in 6 hours', '1h': 'Appointment in 1 hour', '15min': 'Appointment in 15 minutes', 'leave_now': 'Time to leave' };
@@ -45,7 +55,7 @@ export default async function handler(req, res) {
     }
     return res.status(200).json({ processed });
   } catch (err) {
-    console.error('[process-reminders:error]', err.message);
-    res.status(500).json({ error: err.message });
+    const se = safeError(err, 'process-reminders:error');
+    res.status(se.status).json({ error: se.error });
   }
 }
