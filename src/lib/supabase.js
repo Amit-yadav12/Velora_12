@@ -31,6 +31,9 @@ function createDemoClient() {
   };
   const roleFor = (email) =>
     String(email || '').toLowerCase().trim().startsWith('admin') ? 'admin' : 'customer';
+  // Canonical demo identities ALWAYS keep their canonical role — a stale stored
+  // profile row can never demote the demo admin (or upgrade the demo customer).
+  const DEMO_ROLE_BY_EMAIL = { 'admin@velora.ai': 'admin', 'customer@velora.ai': 'customer' };
   const nameFor = (email) => {
     const n = String(email || 'guest')
       .split('@')[0]
@@ -107,9 +110,14 @@ function createDemoClient() {
         const stored = readProfiles();
         const mine = stored.find((p) => p.id === defaults.id || p.email === em);
         const row = { ...defaults, ...(mine || {}) };
+        // Canonical demo identities are authoritative — never read a stale role.
+        if (DEMO_ROLE_BY_EMAIL[em]) row.role = DEMO_ROLE_BY_EMAIL[em];
         if (state.op === 'insert' || state.op === 'upsert' || state.op === 'update') {
           const payload = Array.isArray(state.payload) ? state.payload[0] : state.payload;
           const merged = { ...row, ...(payload || {}) };
+          // Client writes can never change a canonical demo role either.
+          const mergedEmail = String(merged.email || '').toLowerCase();
+          if (DEMO_ROLE_BY_EMAIL[mergedEmail]) merged.role = DEMO_ROLE_BY_EMAIL[mergedEmail];
           writeProfiles([...stored.filter((p) => p.id !== merged.id && p.email !== merged.email), merged]);
           return { data: merged, error: null };
         }

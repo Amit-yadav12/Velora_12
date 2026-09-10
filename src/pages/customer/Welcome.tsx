@@ -11,6 +11,7 @@ import { apiSend } from '../../lib/api';
 import { toast } from '../../services/events';
 import { inputCls } from '../../components/ui';
 import { signInWithGoogleNative } from '../../lib/googleAuth';
+import { signInDemo } from '../../lib/demoAuth';
 import { useAuth } from '../../contexts/AuthContext';
 import type { LucideIcon } from 'lucide-react';
 import { errMsg } from '../../lib/types';
@@ -31,18 +32,14 @@ export default function Welcome() {
   const nav = useNavigate();
   const [params] = useSearchParams();
   const next = params.get('next') || '/';
-  const { user, profile, loading: authLoading } = useAuth();
+  const { user, profile, loading: authLoading, refresh } = useAuth();
 
-  // Landing back here after an OAuth redirect (Google) means a session already
-  // exists — continue to the right home instead of showing the role picker.
-  useEffect(() => {
-    if (!authLoading && user) {
-      nav((profile?.role === 'admin' ? '/admin' : next), { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user, profile?.role]);
+  // ?role=business preselects the business console path (?role=customer the
+  // customer path) — used by the one-click business demo fallback.
+  const preselected: Role | null =
+    params.get('role') === 'business' ? 'admin' : params.get('role') === 'customer' ? 'customer' : null;
 
-  const [role, setRole] = useState<Role | null>(null);
+  const [role, setRole] = useState<Role | null>(preselected);
   const [mode, setMode] = useState<Mode>('signin');
   const [emailOpen, setEmailOpen] = useState(false);
   const [name, setName] = useState('');
@@ -56,6 +53,17 @@ export default function Welcome() {
   const [bizStep, setBizStep] = useState<1 | 2>(1);
   const [biz, setBiz] = useState({ name: '', category: 'Salons', description: '', area: '', city: 'Jaipur', phone: '', open_time: '09:00', close_time: '20:00' });
   const [svc, setSvc] = useState({ name: '', duration_min: 45, price: 500 });
+
+  // Landing back here with a live session (e.g. an OAuth redirect) means we
+  // should continue to the right home instead of showing the role picker.
+  // Runs only on a fully settled state — never mid-load, never while an auth
+  // action is in flight — so it can't race the demo sign-in or double-fire.
+  useEffect(() => {
+    if (!authLoading && user && profile && !loading) {
+      nav(profile.role === 'admin' ? '/admin' : next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authLoading, user, profile, loading, next]);
 
   const homeFor = (r: Role) => (r === 'admin' ? '/admin' : next);
   const resetMsgs = () => { setErr(''); setInfo(''); };
@@ -124,8 +132,10 @@ export default function Welcome() {
         setErr(friendly(res.error || 'Google sign-in could not start.'));
         return;
       }
-      // Native OAuth redirects the browser itself; demo mode lands back here
-      // with a live session, so navigate immediately.
+      // Demo mode signs in in-process; native OAuth redirects the browser
+      // itself. Either way, sync auth state from the live session first so the
+      // destination gate sees a settled user + role.
+      await refresh();
       nav(homeFor(role || 'customer'), { replace: true });
     } catch (e: unknown) {
       setErr(friendly(errMsg(e)));
@@ -137,36 +147,14 @@ export default function Welcome() {
   /* ---------------- Demo accounts ---------------- */
   const demo = async () => {
     setLoading(true); resetMsgs();
-    const isAdmin = role === 'admin';
-    const em = isAdmin ? 'admin@velora.ai' : 'customer@velora.ai';
-    const fullName = isAdmin ? 'Demo Admin' : 'Demo Customer';
+    const target = role || 'customer';
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email: em, password: 'velora123' });
-      if (error && /invalid login|user not found|invalid.*credentials/i.test(error.message)) {
-        setInfo('Provisioning demo account…');
-        const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-          email: em, password: 'velora123',
-          options: { data: { full_name: fullName } },
-        });
-        if (signUpErr) throw signUpErr;
-        // Server-side role grant for the demo business account (production DBs
-        // lock roles — client upserts can't escalate). Best-effort: demo mode
-        // resolves roles locally.
-        if (!isDemoMode) {
-          try { await apiSend('/api/provision-demo', 'POST', { email: em }); } catch { /* role stays customer; console unavailable */ }
-        }
-        if (!signUpData.session) {
-          const { error: secondErr } = await supabase.auth.signInWithPassword({ email: em, password: 'velora123' });
-          if (secondErr && !signUpData.session) throw secondErr;
-        }
-        // Ensure the profile row exists with the right display name.
-        supabase.from('profiles').upsert({
-          id: signUpData.user?.id, email: em, full_name: fullName, role: isAdmin ? 'admin' : 'customer',
-        }).then(() => {}, () => {});
-      } else if (error) {
-        throw error;
-      }
-      nav(homeFor(role || 'customer'), { replace: true });
+      await signInDemo(target, (p) => setInfo(p.message));
+      // Re-read session + profile from the live session BEFORE navigating so
+      // the target gate (AdminGate) already sees user + role=admin — this is
+      // what makes the business demo land directly on the console.
+      await refresh();
+      nav(homeFor(target), { replace: true });
     } catch (e: unknown) {
       setErr(friendly(errMsg(e)));
       setLoading(false);

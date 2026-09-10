@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Clock, Star, Compass, ShieldCheck } from 'lucide-react';
+import { Search, Clock, Star, Compass, ShieldCheck, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { toast } from '../../services/events';
+import { signInDemo } from '../../lib/demoAuth';
 import { useLocation } from '../../contexts/LocationContext';
 import { Business, CATEGORIES, imgOnError } from '../../lib/product';
 import { BusinessCard, SectionTitle, Rating, Grid } from '../../components/product';
@@ -21,7 +23,7 @@ const recentToCard = (r: RecentView): Business => ({
 });
 
 export default function Home() {
-  const { profile, user } = useAuth();
+  const { profile, user, refresh } = useAuth();
   const { city, mapCenter } = useLocation();
   const origin = mapCenter;
   const nav = useNavigate();
@@ -29,6 +31,7 @@ export default function Home() {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [recent, setRecent] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
+  const [demoBusy, setDemoBusy] = useState(false);
 
   // ONE fast hybrid call powers the whole page — city-scoped, cached, with a
   // synthetic ecosystem fallback so the page is never empty. Recently-viewed
@@ -78,6 +81,24 @@ export default function Home() {
 
   const submitSearch = (e: React.FormEvent) => { e.preventDefault(); if (q.trim()) pushSearchHistory(q.trim()); nav(`/explore?q=${encodeURIComponent(q)}`); };
 
+  // One click → the business console. Signs into the shared demo tenant as the
+  // demo admin, re-reads session + profile, then opens /admin directly — the
+  // user never lands in the customer app first.
+  const openBusinessDemo = async () => {
+    if (demoBusy) return;
+    setDemoBusy(true);
+    try {
+      await signInDemo('admin');
+      await refresh();
+      nav('/admin', { replace: true });
+    } catch {
+      toast('The business demo could not start — continue from the sign-in screen.', 'warning');
+      nav('/welcome?role=business');
+    } finally {
+      setDemoBusy(false);
+    }
+  };
+
   const featured = businesses.filter(b => b.featured).slice(0, 3);
   const nearby = businesses.slice(0, 8);
   const openNow = businesses.filter((b) => b.open_now && b.next_available).slice(0, 4);
@@ -99,17 +120,24 @@ export default function Home() {
         </motion.form>
       </section>
 
-      {/* Guest demo entry — the same working demo dataset as the business console */}
+      {/* Guest demo entry — one click straight into the business console */}
       {!user && (
         <section>
-          <Link to="/welcome?next=/" className="card p-4 flex items-center gap-3 group hover:border-[var(--border-strong)] transition-colors">
+          <button
+            type="button"
+            onClick={openBusinessDemo}
+            disabled={demoBusy}
+            className="card p-4 w-full flex items-center gap-3 group hover:border-[var(--border-strong)] transition-colors text-left disabled:opacity-70 disabled:cursor-wait cursor-pointer"
+          >
             <div className="h-10 w-10 rounded-xl grad-btn grid place-items-center shrink-0"><ShieldCheck className="h-5 w-5 text-white" /></div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium">Try the live demo</p>
-              <p className="text-xs text-dim">Book real demo businesses in Jaipur and watch the business console update instantly — no account needed.</p>
+              <p className="text-sm font-medium">Try the business demo</p>
+              <p className="text-xs text-dim">One click into the live business console — bookings, staff and revenue update in real time. No account needed.</p>
             </div>
-            <span className="text-xs text-[var(--color-brand-indigo)] font-medium shrink-0">Open demo →</span>
-          </Link>
+            <span className="text-xs text-[var(--color-brand-indigo)] font-medium shrink-0 inline-flex items-center gap-1.5">
+              {demoBusy && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Open console →
+            </span>
+          </button>
         </section>
       )}
 
