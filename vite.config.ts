@@ -21,7 +21,11 @@ export default defineConfig(async ({ mode }) => {
     // dev api middleware absent — /api calls fall back gracefully
   }
 
-  const env = loadEnv(mode, process.cwd(), ['VITE_', 'NEXT_PUBLIC_']);
+  const env = loadEnv(mode, process.cwd(), ['VITE_', 'NEXT_PUBLIC_', 'GOOGLE_']);
+  if (env.GOOGLE_MAPS_API_KEY) process.env.GOOGLE_MAPS_API_KEY = env.GOOGLE_MAPS_API_KEY;
+  if (!process.env.GOOGLE_MAPS_API_KEY && env.VITE_GOOGLE_MAPS_API_KEY) {
+    process.env.GOOGLE_MAPS_API_KEY = env.VITE_GOOGLE_MAPS_API_KEY;
+  }
   const processEnvDefines: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
     processEnvDefines[`process.env.${key}`] = JSON.stringify(value);

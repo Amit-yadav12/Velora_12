@@ -18,10 +18,21 @@ export function inrNumber(amount: number | string | null | undefined): string {
 
 const IST = 'Asia/Kolkata';
 
-/** Format a date/time in IST. */
-export function ist(date: string | Date, opts: Intl.DateTimeFormatOptions = {}): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return new Intl.DateTimeFormat('en-IN', { timeZone: IST, ...opts }).format(d);
+function asDate(date: string | Date | null | undefined): Date | null {
+  if (date == null || date === '') return null;
+  const d = date instanceof Date ? date : new Date(date);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Format a date/time in IST. Never throws on invalid input. */
+export function ist(date: string | Date | null | undefined, opts: Intl.DateTimeFormatOptions = {}): string {
+  const d = asDate(date);
+  if (!d) return '—';
+  try {
+    return new Intl.DateTimeFormat('en-IN', { timeZone: IST, ...opts }).format(d);
+  } catch {
+    return '—';
+  }
 }
 
 export const istTime = (d: string | Date) => ist(d, { hour: 'numeric', minute: '2-digit', hour12: true });

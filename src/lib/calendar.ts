@@ -5,7 +5,9 @@
 
 function fmt(dtISO: string) {
   // Google Calendar / ICS expect UTC basic format: YYYYMMDDTHHMMSSZ
-  return new Date(dtISO).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const d = new Date(dtISO);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 }
 
 export interface CalEvent {

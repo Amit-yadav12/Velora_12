@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ArrowRight, Loader2, Mail, Lock, User, ShieldCheck, CalendarCheck, Sparkles, MapPin, ChevronLeft, Store, UserRound, Building2, KeyRound } from 'lucide-react';
 import supabase, { isDemoMode } from '../../lib/supabase';
-import { signInWithGoogleNative } from '../../lib/googleAuth';
 import { LogoMark } from '../../components/Logo';
 import { CATEGORIES } from '../../lib/product';
 import { CITIES } from '../../lib/cities';
@@ -92,29 +91,6 @@ export default function Welcome() {
     } catch (e: any) {
       setErr(friendly(e.message));
     } finally {
-      setLoading(false);
-    }
-  };
-
-  /* ---------------- Google (primary) ---------------- */
-  const handleGoogle = async () => {
-    resetMsgs();
-    setLoading(true);
-    try {
-      const res = await signInWithGoogleNative(next);
-      if (res.ok && res.method === 'demo') {
-        nav(homeFor(role || 'customer'), { replace: true });
-        return;
-      }
-      if (!res.ok) {
-        setErr(res.error || 'Google sign-in failed. Try email or the demo below.');
-        setLoading(false);
-        return;
-      }
-      // Native OAuth redirects; popup flow resolves via onAuthStateChange.
-      setTimeout(() => setLoading(false), 2500);
-    } catch (e: any) {
-      setErr(friendly(e?.message) || 'Google sign-in failed. Try email or demo.');
       setLoading(false);
     }
   };
@@ -377,11 +353,10 @@ export default function Welcome() {
                 {mode === 'register' ? 'Join Velora in seconds.' : `Sign in to your ${isAdmin ? 'business console' : 'account'}.`}
               </p>
 
-              {/* Primary: Google */}
+              {/* Visual Google CTA — hover only, no sign-in */}
               <button
-                onClick={handleGoogle}
-                disabled={loading}
-                className="mt-6 w-full rounded-xl grad-btn text-white py-3 text-sm font-semibold flex items-center justify-center gap-2.5 shadow-lg shadow-[var(--color-brand-indigo)]/20 disabled:opacity-60"
+                type="button"
+                className="mt-6 w-full rounded-xl grad-btn text-white py-3 text-sm font-semibold flex items-center justify-center gap-2.5 shadow-lg shadow-[var(--color-brand-indigo)]/20 transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-xl"
               >
                 <GoogleLogo /> Continue with Google
               </button>

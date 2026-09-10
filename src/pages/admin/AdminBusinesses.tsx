@@ -7,17 +7,22 @@ import { imgOnError } from '../../lib/product';
 import { CATEGORIES } from '../../lib/product';
 import { CITIES } from '../../lib/cities';
 import { saveDemoBusiness, updateDemoBusiness, deleteDemoBusiness, isDemoBusinessId } from '../../lib/demoStore';
+import { isValidIndianPin, isValidIndianPhone } from '../../lib/india';
+import { getCity } from '../../lib/cities';
 import { toast } from '../../services/events';
 import { useNavigate } from 'react-router-dom';
 
 interface BizForm {
-  name: string; category: string; description: string; area: string; city: string;
+  name: string; category: string; description: string;
+  line1: string; street: string; area: string; city: string; state: string; pin: string;
   phone: string; email: string; open_time: string; close_time: string;
   svcName: string; svcDuration: number; svcPrice: number;
 }
 
 const emptyForm = (city: string): BizForm => ({
-  name: '', category: 'Salons', description: '', area: '', city, phone: '', email: '',
+  name: '', category: 'Salons', description: '',
+  line1: '', street: '', area: '', city, state: getCity(city)?.state || '', pin: '',
+  phone: '', email: '',
   open_time: '09:00', close_time: '20:00', svcName: '', svcDuration: 45, svcPrice: 500,
 });
 
@@ -42,8 +47,10 @@ export default function AdminBusinesses() {
   const openEdit = (b: any) => {
     setEditing(b);
     setForm({
-      name: b.name, category: b.category, description: b.description || '', area: (b.area || '').replace(/, .*$/, ''),
-      city: b.city || city.name, phone: b.phone || '', email: b.email || '',
+      name: b.name, category: b.category, description: b.description || '',
+      line1: b.line1 || '', street: b.street || '', area: (b.area || '').replace(/, .*$/, ''),
+      city: b.city || city.name, state: b.state || getCity(b.city || city.name)?.state || '', pin: b.pin || '',
+      phone: b.phone || '', email: b.email || '',
       open_time: b.open_time || '09:00', close_time: b.close_time || '20:00',
       svcName: '', svcDuration: 45, svcPrice: 500,
     });
@@ -53,20 +60,26 @@ export default function AdminBusinesses() {
   const save = async () => {
     setErr('');
     if (!form.name.trim() || !form.category) { setErr('Business name and category are required.'); return; }
+    if (form.pin.trim() && !isValidIndianPin(form.pin)) { setErr('Enter a valid 6-digit Indian PIN code.'); return; }
+    if (form.phone.trim() && !isValidIndianPhone(form.phone)) { setErr('Enter a valid 10-digit Indian mobile number.'); return; }
     setBusy(true);
     try {
       if (editing) {
         updateDemoBusiness(String(editing.id), {
           name: form.name.trim(), category: form.category, description: form.description.trim(),
+          line1: form.line1.trim(), street: form.street.trim(),
           area: form.area.trim() || 'City Center', phone: form.phone.trim(), email: form.email.trim(),
           open_time: form.open_time, close_time: form.close_time, city: form.city,
+          state: form.state.trim() || getCity(form.city)?.state || '', pin: form.pin.trim(), country: 'India',
         });
         toast('Business updated — customer profile reflects it immediately', 'success');
       } else {
         const biz = saveDemoBusiness({
           name: form.name.trim(), category: form.category, description: form.description.trim(),
+          line1: form.line1.trim(), street: form.street.trim(),
           area: form.area.trim() || 'City Center', phone: form.phone.trim(), email: form.email.trim(),
           open_time: form.open_time, close_time: form.close_time, city: form.city,
+          state: form.state.trim() || getCity(form.city)?.state || '', pin: form.pin.trim(), country: 'India',
         });
         // Optional starter service — bookable the moment it's saved.
         if (form.svcName.trim()) {
@@ -76,7 +89,7 @@ export default function AdminBusinesses() {
             description: 'Added with the business', duration_min: form.svcDuration, price: form.svcPrice,
           });
         }
-        toast('Business created — live in discovery, search & booking', 'success');
+        toast('Business created — live for customers with a full service menu', 'success');
       }
       setOpen(false);
       reload();

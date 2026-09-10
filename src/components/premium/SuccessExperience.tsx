@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import { Check, Navigation, CalendarPlus, Share2, Download, QrCode, CalendarCheck, MapPin, Clock, User, Sparkles, Loader2, Mail } from 'lucide-react';
 import { inr } from '../../lib/format';
+import { googleCalendarUrl } from '../../lib/calendar';
 
 interface Props {
   booking: any;
@@ -18,15 +19,13 @@ interface Props {
 }
 
 function gcalLink(b: any, biz: any) {
-  const fmt = (d: string) => new Date(d).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-  const params = new URLSearchParams({
-    action: 'TEMPLATE',
-    text: `${b.service_name} — ${biz.name}`,
-    dates: `${fmt(b.start_time)}/${fmt(b.end_time)}`,
-    details: `Velora booking ${b.ref}${b.employee_name ? ` with ${b.employee_name}` : ''}. Manage: ${window.location.origin}/appointments`,
-    location: biz.address || biz.name,
+  return googleCalendarUrl({
+    title: `${b?.service_name || 'Appointment'} — ${biz?.name || 'Velora'}`,
+    start: b?.start_time,
+    end: b?.end_time || b?.start_time,
+    location: biz?.address || biz?.name || '',
+    details: `Velora booking ${b?.ref || ''}${b?.employee_name ? ` with ${b.employee_name}` : ''}. Manage: ${typeof window !== 'undefined' ? window.location.origin : ''}/appointments`,
   });
-  return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
 export default function SuccessExperience({ booking, business, invoice, mapsLink, qrPayload, gmailComposeUrl, emailStatus, onDone, onClose }: Props) {
@@ -127,8 +126,9 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
   };
 
   // Prefer the server-stored QR payload so the ticket matches DB records.
-  const qrData = qrPayload || JSON.stringify({ ref: booking.ref, biz: business.name, at: booking.start_time });
+  const qrData = String(qrPayload || (booking?.ref ? `${typeof window !== 'undefined' ? window.location.origin : ''}/appointments` : 'velora-ticket')).slice(0, 800);
   const isPending = booking?.status === 'pending';
+  const total = Number(invoice?.total ?? invoice?.amount ?? booking?.price ?? 0);
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="fixed inset-0 z-[95] overflow-y-auto bg-[var(--bg)]">
@@ -155,7 +155,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
         </motion.h1>
         <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }} className="text-muted mt-2 text-center">
           {isPending
-            ? `${business.name} has your request — they'll confirm shortly. You'll see the update here and in your bookings.`
+            ? `${business?.name || 'The business'} has your request — they'll confirm shortly. You'll see the update here and in your bookings.`
             : 'Your appointment is confirmed. Add it to your calendar below.'}
         </motion.p>
 
@@ -180,13 +180,13 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
                 <p className="flex items-center gap-2 text-muted"><MapPin className="h-4 w-4" /><span className="truncate">{business.address}</span></p>
               </div>
               <div className="shrink-0 text-center">
-                <div className="p-2 rounded-xl bg-white" data-qr><QRCodeSVG value={qrData} size={92} level="M" /></div>
+                <div className="p-2 rounded-xl bg-white" data-qr>{qrData ? <QRCodeSVG value={qrData} size={92} level="M" /> : <QrCode className="h-16 w-16 text-dim" />}</div>
                 <p className="text-[10px] text-dim mt-1.5">Scan at check-in</p>
                 {qrData.startsWith('http') && <a href={qrData} target="_blank" rel="noreferrer" className="text-[10px] text-[var(--color-brand-indigo)] underline underline-offset-2">Verify ticket</a>}
               </div>
             </div>
             <div className="mt-4 pt-4 border-t border-app flex items-center justify-between">
-              <span className="text-sm text-dim">Total{isPending ? "" : ""}</span><span className="font-semibold">{inr(invoice.total)}</span>
+              <span className="text-sm text-dim">Total</span><span className="font-semibold">{inr(total)}</span>
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {isPending ? (

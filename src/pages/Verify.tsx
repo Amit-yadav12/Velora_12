@@ -10,7 +10,7 @@ import { verifyToken, type VerifyResult } from '../services/verify';
 function fmtWhen(iso?: string | null) {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(iso)) + ' IST';
   } catch {
     return '—';
   }

@@ -15,26 +15,26 @@ import QueueTracker from '../../components/premium/QueueTracker';
 import { listLocalBookings, transitionLocalBooking, updateLocalBooking } from '../../lib/offlineStore';
 import { localVerifyUrl } from '../../lib/demoStore';
 import { isCancellable } from '../../lib/bookingStatus';
+import { googleCalendarUrl } from '../../lib/calendar';
 import { Modal } from '../../components/ui';
 
 function gcalLink(b: any) {
-  const fmt = (d: string) => new Date(d).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-  const params = new URLSearchParams({
-    action: 'TEMPLATE',
-    text: `${b.service_name} — ${b.resource_name}`,
-    dates: `${fmt(b.start_time)}/${fmt(b.end_time)}`,
-    details: `Velora booking ${b.ref}${b.employee_name ? ` with ${b.employee_name}` : ''}.`,
+  return googleCalendarUrl({
+    title: `${b.service_name} — ${b.resource_name}`,
+    start: b.start_time,
+    end: b.end_time || b.start_time,
     location: b.location || b.resource_name,
+    details: `Velora booking ${b.ref}${b.employee_name ? ` with ${b.employee_name}` : ''}.`,
   });
-  return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
-function LeaveNow({ ref: bref, origin }: { ref: string; origin?: { lat: number; lng: number } | null }) {
+function LeaveNow({ bookingRef, origin }: { bookingRef: string; origin?: { lat: number; lng: number } | null }) {
   const [plan, setPlan] = useState<any>(null);
   useEffect(() => {
     const geo = origin ? `&origin_lat=${origin.lat}&origin_lng=${origin.lng}` : '';
-    fetch(`/api/travel-planner?booking_ref=${bref}${geo}`).then(r => r.json()).then(setPlan).catch(() => {});
-  }, [bref, origin?.lat, origin?.lng]);
+    if (!bookingRef) return;
+    fetch(`/api/travel-planner?booking_ref=${encodeURIComponent(bookingRef)}${geo}`).then(r => r.json()).then(setPlan).catch(() => {});
+  }, [bookingRef, origin?.lat, origin?.lng]);
   if (!plan || plan.error) return null;
   const soon = plan.mins_until_leave <= 60 && plan.mins_until_leave > -30;
   return (
@@ -62,10 +62,11 @@ export default function Appointments() {
   const [expanded, setExpanded] = useState<number | string | null>(null);
 
   const load = async () => {
-    const d = await apiGet(`/api/my-bookings?email=${encodeURIComponent(profile?.email || '')}`).catch(() => []);
+    const email = profile?.email || user?.email || '';
+    const d = await apiGet(`/api/my-bookings?email=${encodeURIComponent(email)}`).catch(() => []);
     const server = Array.isArray(d) ? d : [];
     // Merge local/demo bookings (synthetic + offline continuity), de-duped by ref.
-    const local = listLocalBookings(profile?.email).map((b) => ({
+    const local = listLocalBookings(email).map((b) => ({
       id: b.id, ref: b.ref, service_name: b.service_name, employee_name: b.staff_name,
       resource_name: b.business_name, start_time: b.start_time, end_time: b.end_time,
       status: b.status, price: b.price, location: b.location, local: true,
@@ -76,8 +77,8 @@ export default function Appointments() {
       .sort((a: any, b: any) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
     setBookings(merged); setLoading(false);
   };
-  useEffect(() => { if (profile?.email) load(); }, [profile?.email]);
-  useEffect(() => { const ch = supabase.channel('appts').on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => load()).subscribe(); const off = onBookingsChanged(() => load()); return () => { supabase.removeChannel(ch); off(); }; }, [profile?.email]);
+  useEffect(() => { if (profile?.email || user?.email) load(); else setLoading(false); }, [profile?.email, user?.email]);
+  useEffect(() => { const ch = supabase.channel('appts').on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => load()).subscribe(); const off = onBookingsChanged(() => load()); return () => { supabase.removeChannel(ch); off(); }; }, [profile?.email, user?.email]);
 
   const cancel = async (id: number | string) => {
     const target = bookings.find((b) => String(b.id) === String(id));
@@ -230,7 +231,7 @@ export default function Appointments() {
                     <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25, ease: [0.22,1,0.36,1] }} className="mt-3 space-y-3 overflow-hidden">
                       <ProgressTracker status={b.status} startTime={b.start_time} />
                       <QueueTracker startTime={b.start_time} />
-                      <LeaveNow ref={b.ref} origin={location} />
+                      <LeaveNow bookingRef={String(b.ref || '')} origin={location} />
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -262,7 +263,7 @@ export default function Appointments() {
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               <div className="p-2.5 rounded-2xl bg-white shrink-0" data-ticket-qr>
-                <QRCodeSVG value={ticketQr} size={110} level="M" />
+                {ticketQr ? <QRCodeSVG value={ticketQr} size={110} level="M" /> : <QrCode className="h-16 w-16 text-dim" />}
               </div>
               <div className="min-w-0 text-sm space-y-1">
                 <p className="font-semibold text-base">{ticket.service_name}</p>

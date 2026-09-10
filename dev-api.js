@@ -32,6 +32,26 @@ function readJsonBody(req) {
 }
 
 function ensurePreviewEnv() {
+  // Load local .env so Google Maps / Places work in `vite dev` the same as prod.
+  for (const name of ['.env.local', '.env']) {
+    try {
+      const file = path.join(ROOT, name);
+      if (!fs.existsSync(file)) continue;
+      for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) continue;
+        const eq = trimmed.indexOf('=');
+        if (eq < 1) continue;
+        const k = trimmed.slice(0, eq).trim();
+        let v = trimmed.slice(eq + 1).trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+        if (k && process.env[k] == null) process.env[k] = v;
+      }
+    } catch { /* ignore */ }
+  }
+  if (!process.env.GOOGLE_MAPS_API_KEY && process.env.VITE_GOOGLE_MAPS_API_KEY) {
+    process.env.GOOGLE_MAPS_API_KEY = process.env.VITE_GOOGLE_MAPS_API_KEY;
+  }
   // Dummy backend env so server handlers boot in pure-synthetic preview mode.
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://demo.local';

@@ -13,7 +13,7 @@ function haversineKm(a, b) {
 export async function travelTimeMin(origin, dest) {
   try {
     if (!origin || !dest || origin.lat == null || dest.lat == null) return 0;
-    const key = process.env.GOOGLE_MAPS_API_KEY;
+    const key = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
     if (key) {
       const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin.lat},${origin.lng}&destinations=${dest.lat},${dest.lng}&mode=driving&key=${key}`;
       const r = await fetch(url);

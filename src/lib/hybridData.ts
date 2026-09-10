@@ -12,7 +12,7 @@ import {
 import { cachedFetch, cacheGet, cacheSet, timedJson } from './smartCache';
 import { fetchLivePlaces, liveToBusiness, type LivePlace } from './googleMaps';
 import { searchBusinesses, applyFilters, personalizedBoost } from './smartSearch';
-import { getDemoBusiness, isDemoBusinessId, listDemoBusinesses, demoSlots } from './demoStore';
+import { getDemoBusiness, isDemoBusinessId, listDemoBusinesses, demoSlots, demoFullAddress } from './demoStore';
 import { listLocalBookings } from './offlineStore';
 
 export interface DiscoverParams {
@@ -248,7 +248,10 @@ export async function fetchBusiness(id: number | string, city?: string): Promise
       const full = {
         ...raw,
         city: cityName,
-        address: raw.area ? `${raw.area}, ${cityName}` : `${cityName}`,
+        address: demoFullAddress(raw, cityName),
+        state: raw.state || cityMeta?.state || '',
+        pin: raw.pin || '',
+        country: raw.country || 'India',
         lat: (cityMeta?.lat ?? 0) + ((h % 40) - 20) / 500,
         lng: (cityMeta?.lng ?? 0) + (((h >> 6) % 40) - 20) / 500,
         rating: Number(raw.rating) || 4.5,
@@ -307,7 +310,7 @@ export function hydrateLiveBusiness(place: LivePlace, cityName: string, category
   const seedId = 900000 + (hashStr(place.place_id) % 90000);
   const rnd = mulberry32(hashStr(`livebiz|${place.place_id}`));
   const def = CATEGORY_DEFS.find((c) => c.name === shell.category) || CATEGORY_DEFS[0];
-  const services = def.services.slice(0, 4 + Math.floor(rnd() * 2)).map((t, i) => ({
+  const services = def.services.map((t, i) => ({
     id: seedId * 100 + i,
     business_id: shell.id,
     name: t.n,

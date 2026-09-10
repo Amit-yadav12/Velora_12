@@ -7,8 +7,9 @@ import { CategoryIcon } from '../../components/product';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiSend } from '../../lib/api';
 import { submitBooking, newIdempotencyKey } from '../../services/booking';
-import { toast } from '../../services/events';
-import { inr, istDate, istTime } from '../../lib/format';
+import { onBookingsChanged, onBusinessesChanged, onServicesChanged, onStaffChanged, toast } from '../../services/events';
+import { inr, istDate, istTime, istToday } from '../../lib/format';
+import { isValidIndianPhone } from '../../lib/india';
 import { useLocation } from '../../contexts/LocationContext';
 import BookingTimeline, { Slot } from '../../components/premium/BookingTimeline';
 import Heatmap from '../../components/premium/Heatmap';
@@ -31,7 +32,7 @@ export default function BusinessDetail() {
   const [loading, setLoading] = useState(true);
   const [service, setService] = useState<BusinessService | null>(null);
   const [staff, setStaff] = useState<BusinessStaff | null>(null);
-  const [date, setDate] = useState(params.get('date') || new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(params.get('date') || istToday());
   const [slots, setSlots] = useState<Slot[]>([]);
   const [recommended, setRecommended] = useState<Slot[]>([]);
   const [travel, setTravel] = useState(0);
@@ -79,7 +80,11 @@ export default function BusinessDetail() {
       fetchBusiness(id!, city.name).then((d) => { if (!d && alive) setLoading(false); apply(d); }).catch(() => alive && setLoading(false));
     }
     if (user && id) apiSend('/api/track-view', 'POST', { business_id: id, user_id: user.id }).catch(() => {});
-    return () => { alive = false; };
+    const refresh = () => {
+      fetchBusiness(id!, city.name).then((d) => { if (d && alive) { setBiz(d); setService((s) => d.services?.find((x: any) => String(x.id) === String(s?.id)) || d.services?.[0] || s); } }).catch(() => {});
+    };
+    const offs = [onBusinessesChanged(refresh), onServicesChanged(refresh), onStaffChanged(refresh), onBookingsChanged(refresh)];
+    return () => { alive = false; offs.forEach((off) => off()); };
   }, [id, user, city.name]);
 
   useEffect(() => {
@@ -91,9 +96,12 @@ export default function BusinessDetail() {
       setSlots(d.slots || []); setRecommended(d.recommended || []); setTravel(d.travel_min || 0);
       // auto-select AI top pick
       if (d.recommended?.[0]) setSlot(d.recommended[0].time);
+    }).catch(() => {
+      if (!alive) return;
+      setSlots([]); setRecommended([]);
     }).finally(() => alive && setLoadingSlots(false));
     return () => { alive = false; };
-  }, [biz, service, date, staff?.id, coords.lat, coords.lng]);
+  }, [biz, service, date, staff?.id, coords?.lat, coords?.lng]);
 
   // Stable per slot+service so retries replay the same booking, never a duplicate.
   const idemKey = useMemo(() => newIdempotencyKey(), [service?.id, slot]);
@@ -107,6 +115,7 @@ export default function BusinessDetail() {
 
   const confirm = async () => {
     if (!custName.trim() || !custEmail.trim()) { setErr('Name and email are required.'); return; }
+    if (custPhone.trim() && !isValidIndianPhone(custPhone)) { setErr('Enter a valid 10-digit Indian mobile number.'); return; }
     setErr(''); setSubmitting(true);
     try {
       // Duplicate-slot guard: local mirrors of every booking in this environment
@@ -250,7 +259,7 @@ export default function BusinessDetail() {
   const photos: string[] = (biz as any).photos || [];
   const isLive = !!(biz as any).live;
 
-  if (result) return <SuccessExperience booking={result.booking} invoice={result.invoice} business={biz} mapsLink={result.maps_link} qrPayload={result.qr_payload} gmailComposeUrl={result.gmail_compose_url} emailStatus={result.pipeline?.email} onClose={() => nav('/appointments')} />;
+  if (result?.booking) return <SuccessExperience booking={result.booking} invoice={result.invoice || { total: Number(service?.price) || 0, number: result.booking.ref }} business={biz} mapsLink={result.maps_link || `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz.address || biz.name)}`} qrPayload={result.qr_payload} gmailComposeUrl={result.gmail_compose_url} emailStatus={result.pipeline?.email} onClose={() => nav('/appointments')} />;
 
   // Review + confirm — the final step of the booking engine
   const reviewModal = (
@@ -260,7 +269,7 @@ export default function BusinessDetail() {
           <div className="flex justify-between gap-4"><span className="text-dim">Business</span><span className="font-medium text-right">{biz.name}</span></div>
           <div className="flex justify-between gap-4"><span className="text-dim">Service</span><span className="font-medium text-right">{service?.name}</span></div>
           {staff && <div className="flex justify-between gap-4"><span className="text-dim">Specialist</span><span className="font-medium text-right">{staff.name}</span></div>}
-          <div className="flex justify-between gap-4"><span className="text-dim">When</span><span className="font-medium text-right">{istDate(slot)}, {istTime(slot)}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-dim">When</span><span className="font-medium text-right">{slot ? `${istDate(slot)}, ${istTime(slot)}` : '—'}</span></div>
           <div className="flex justify-between gap-4"><span className="text-dim">Duration</span><span className="font-medium text-right">{service?.duration_min} min</span></div>
           <div className="flex justify-between gap-4 pt-2 border-t border-app"><span className="text-dim">Total</span><span className="font-semibold">{service?.price === 0 ? 'Free' : inr(Number(service?.price) || 0)}</span></div>
         </div>
@@ -312,7 +321,7 @@ export default function BusinessDetail() {
         <div className="lg:col-span-2 space-y-6">
           <div className="flex flex-wrap gap-4 text-sm">
             <span className="inline-flex items-center gap-1.5"><Star className="h-4 w-4 fill-amber-400 text-amber-400" /><span className="font-medium">{Number(biz.rating).toFixed(1)}</span><span className="text-dim">({biz.review_count})</span></span>
-            <span className="inline-flex items-center gap-1.5 text-muted"><MapPin className="h-4 w-4" /> {biz.address}</span>
+            <span className="inline-flex items-center gap-1.5 text-muted"><MapPin className="h-4 w-4" /> {biz.address}{(biz as any).pin && !String(biz.address).includes((biz as any).pin) ? ` ${ (biz as any).pin}` : ''}</span>
             <span className="inline-flex items-center gap-1.5 text-muted"><Clock className="h-4 w-4" /> {biz.open_time}–{biz.close_time}</span>
             {biz.phone && <a href={`tel:${biz.phone}`} className="inline-flex items-center gap-1.5 text-[var(--color-brand-indigo)]"><Phone className="h-4 w-4" /> {biz.phone}</a>}
           </div>
@@ -458,7 +467,7 @@ export default function BusinessDetail() {
             <h2 className="font-semibold">Book your appointment</h2>
             <div className="mt-4">
               <label className="text-xs text-dim">Date</label>
-              <input type="date" value={date} min={new Date().toISOString().slice(0, 10)} onChange={e => setDate(e.target.value)} className="mt-1 w-full rounded-xl bg-elev border border-app px-3 py-2.5 text-sm outline-none focus:border-[var(--color-brand-indigo)]" />
+              <input type="date" value={date} min={istToday()} onChange={e => setDate(e.target.value)} className="mt-1 w-full rounded-xl bg-elev border border-app px-3 py-2.5 text-sm outline-none focus:border-[var(--color-brand-indigo)]" />
             </div>
             <div className="mt-4">
               <div className="flex items-center justify-between mb-2"><label className="text-xs text-dim">Pick a time</label>{recommended[0] && <span className="text-[10px] text-[var(--color-brand-indigo)] inline-flex items-center gap-1"><Zap className="h-3 w-3" /> AI picked {recommended[0].label}</span>}</div>

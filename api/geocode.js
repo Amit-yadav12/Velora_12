@@ -27,7 +27,7 @@ export default async function handler(req, res) {
       }
     } catch { /* non-fatal */ }
 
-    const key = process.env.GOOGLE_MAPS_API_KEY;
+    const key = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
     if (key) {
       try {
         // Google Places Autocomplete gives the best "search a place" results.

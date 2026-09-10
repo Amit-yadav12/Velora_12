@@ -8,7 +8,7 @@ import { Business, CATEGORIES, imgOnError } from '../../lib/product';
 import { BusinessCard, SectionTitle, Rating, Grid } from '../../components/product';
 import { apiGet } from '../../lib/api';
 import { BusinessCardSkeleton } from '../../components/premium/Skeleton';
-import { onBusinessesChanged } from '../../services/events';
+import { onBusinessesChanged, onDemoReset, onServicesChanged } from '../../services/events';
 import DiscoverCard from '../../components/premium/DiscoverCard';
 import LocationBar from '../../components/premium/LocationBar';
 import { fetchDiscover } from '../../lib/hybridData';
@@ -45,12 +45,13 @@ export default function Home() {
 
   // Real-time: new/edited demo businesses appear immediately.
   useEffect(() => {
-    const off = onBusinessesChanged(() => {
+    const refresh = () => {
       fetchDiscover({ city: city.name, lat: origin.lat, lng: origin.lng, sort: 'distance' })
         .then((disc) => setBusinesses(disc.results as Business[]))
         .catch(() => {});
-    });
-    return () => { off(); };
+    };
+    const offs = [onBusinessesChanged(refresh), onServicesChanged(refresh), onDemoReset(refresh)];
+    return () => { offs.forEach((off) => off()); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [city.name, origin.lat, origin.lng]);
 
