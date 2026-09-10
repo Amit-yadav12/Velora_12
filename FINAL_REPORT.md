@@ -51,6 +51,7 @@
 - One shared dataset — customer and business dashboards operate on the same tenant; a booking appears on the business side instantly (no refresh) and vice versa; cross-tab via storage events.
 - Isolation — demo data lives only under `velora-demo-*` / `velora-local-*` keys; Reset Demo clears only those (demo engine §11 asserts production keys untouched).
 - Credentials — `customer@velora.ai` / `admin@velora.ai`, password `velora123`.
+- One-click business demo — the home-page card signs into the demo admin and opens `/admin` directly (race-proof: session refresh before navigation, no client-side role writes, canonical demo roles enforced by the profiles resolver — verified by `scripts/verify-demo-auth.mjs`).
 - Deactivated businesses leave customer discovery instantly and their profile can't be opened (demo engine §12).
 
 ## Integration honesty classification

@@ -3,8 +3,8 @@ import supabase from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 
 interface Profile { id: string; email: string; full_name: string; role: string; }
-interface Ctx { user: User | null; profile: Profile | null; loading: boolean; role: string; signOut: () => Promise<void>; refresh: () => void; }
-const AuthContext = createContext<Ctx>({ user: null, profile: null, loading: true, role: 'customer', signOut: async () => {}, refresh: () => {} });
+interface Ctx { user: User | null; profile: Profile | null; loading: boolean; role: string; signOut: () => Promise<void>; refresh: () => Promise<void>; }
+const AuthContext = createContext<Ctx>({ user: null, profile: null, loading: true, role: 'customer', signOut: async () => {}, refresh: async () => {} });
 
 const CACHE_KEY = 'velora-profile';
 const readCache = (): Profile | null => { try { const s = localStorage.getItem(CACHE_KEY); return s ? JSON.parse(s) : null; } catch { return null; } };
@@ -34,7 +34,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         full_name: u.user_metadata?.full_name || u.email?.split('@')[0] || 'Guest',
         role: 'customer',
       };
-      await supabase.from('profiles').upsert(created);
+      // Auto-create carries NO role — roles are granted server-side (demo
+      // provisioning / business registration). Writing role here would clobber
+      // a server grant on the next upsert and race the demo sign-in flow.
+      await supabase.from('profiles').upsert({ id: created.id, email: created.email, full_name: created.full_name });
       applyProfile(created);
     } catch (e) {
       console.error('[auth] loadProfile failed:', e);
@@ -77,7 +80,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try { await supabase.auth.signOut(); } catch (e) { console.error('[auth] signOut error:', e); }
     try { Object.keys(localStorage).filter((k) => k.startsWith('sb-') || k.includes('supabase')).forEach((k) => localStorage.removeItem(k)); } catch { /* non-fatal */ }
   };
-  const refresh = () => loadProfile(user);
+  // Race-proof refresh: re-read the live session (never the render-scope user,
+  // which can be a stale closure right after sign-in) and sync BOTH user and
+  // profile from it. This is what lets the one-click demo entry land directly
+  // on /admin instead of flashing through the customer app.
+  const refresh = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const u = session?.user ?? null;
+    lastUid.current = u?.id ?? null;
+    setUser(u);
+    await loadProfile(u);
+  }, [loadProfile]);
 
   return <AuthContext.Provider value={{ user, profile, loading, role: profile?.role || 'customer', signOut, refresh }}>{children}</AuthContext.Provider>;
 }

@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "verify:demo": "tsx scripts/test-demo-engine.mjs"
+    "verify:demo": "tsx scripts/test-demo-engine.mjs && tsx scripts/verify-demo-auth.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.1",
