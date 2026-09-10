@@ -13,9 +13,15 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const { business_id } = req.body || {};
       if (!uid || !business_id) return res.status(200).json({ ok: true });
-      // de-dup: remove prior view of same business then insert fresh
-      await supabase.from('recently_viewed').delete().eq('user_id', uid).eq('business_id', business_id);
-      await supabase.from('recently_viewed').insert({ user_id: uid, business_id });
+      // Live Google place ids are strings — tracked client-side only.
+      if (typeof business_id === 'string' && business_id.startsWith('live-')) return res.status(201).json({ ok: true });
+      try {
+        // de-dup: remove prior view of same business then insert fresh
+        await supabase.from('recently_viewed').delete().eq('user_id', uid).eq('business_id', business_id);
+        await supabase.from('recently_viewed').insert({ user_id: uid, business_id });
+      } catch (e) {
+        console.error('[track-view:save]', e.message);
+      }
       return res.status(201).json({ ok: true });
     }
 
@@ -25,7 +31,14 @@ export default async function handler(req, res) {
       const ids = (data || []).map((r) => r.business_id);
       if (!ids.length) return res.status(200).json([]);
       const { data: biz } = await supabase.from('businesses').select('*').in('id', ids);
-      const ordered = ids.map((id) => (biz || []).find((b) => b.id === id)).filter(Boolean);
+      // Synthetic ecosystem ids resolve deterministically (no DB rows needed).
+      const { syntheticBusiness, isSyntheticId } = await import('./_lib/synthetic.js');
+      const ordered = ids.map((id) => {
+        const db = (biz || []).find((b) => String(b.id) === String(id));
+        if (db) return db;
+        if (isSyntheticId(id)) return syntheticBusiness(id);
+        return null;
+      }).filter(Boolean);
       return res.status(200).json(ordered);
     }
     res.status(405).json({ error: 'Method not allowed' });

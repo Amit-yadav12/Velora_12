@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, X } from 'lucide-react';
+import { X } from 'lucide-react';
+import { storageGet, storageSet } from '../../lib/storage';
 import { LogoMark } from '../Logo';
 
 export default function InstallPrompt() {
@@ -11,7 +12,7 @@ export default function InstallPrompt() {
     const handler = (e: any) => {
       e.preventDefault();
       setDeferred(e);
-      if (!localStorage.getItem('velora-install-dismissed')) setShow(true);
+      if (!storageGet('velora-install-dismissed')) setShow(true);
     };
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
@@ -23,7 +24,7 @@ export default function InstallPrompt() {
     await deferred.userChoice;
     setDeferred(null); setShow(false);
   };
-  const dismiss = () => { setShow(false); localStorage.setItem('velora-install-dismissed', '1'); };
+  const dismiss = () => { setShow(false); storageSet('velora-install-dismissed', '1'); };
 
   return (
     <AnimatePresence>

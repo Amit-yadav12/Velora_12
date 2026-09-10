@@ -3,17 +3,50 @@ import { X, CheckCircle2, Loader2, LogIn, Download } from 'lucide-react';
 import { PageHeader, StatusBadge, Spinner, EmptyState } from '../../components/ui';
 import { apiGet, apiSend } from '../../lib/api';
 import supabase from '../../lib/supabase';
+import { onBookingsChanged, toast } from '../../services/events';
 import { ist, istTime } from '../../lib/format';
+import { listLocalBookings, updateLocalBooking } from '../../lib/offlineStore';
 
 export default function AdminAppointments() {
   const [bookings, setBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
-  const [busy, setBusy] = useState<number | null>(null);
-  const load = () => apiGet('/api/bookings').then(d => { setBookings(Array.isArray(d) ? d : []); setLoading(false); }).catch(() => setLoading(false));
+  const [busy, setBusy] = useState<number | string | null>(null);
+  const load = () => apiGet('/api/bookings').then(d => {
+    const server = Array.isArray(d) ? d : [];
+    const local = listLocalBookings().map((b) => ({
+      id: b.id, ref: b.ref, customer_name: b.customer_name, customer_email: b.customer_email,
+      service_name: b.service_name, resource_name: b.business_name, start_time: b.start_time,
+      status: b.status, price: b.price, local: true,
+    }));
+    const refs = new Set(server.map((b: any) => b.ref));
+    setBookings([...server, ...local.filter((b) => !refs.has(b.ref))]);
+    setLoading(false);
+  }).catch(() => {
+    setBookings(listLocalBookings().map((b) => ({
+      id: b.id, ref: b.ref, customer_name: b.customer_name, customer_email: b.customer_email,
+      service_name: b.service_name, resource_name: b.business_name, start_time: b.start_time,
+      status: b.status, price: b.price, local: true,
+    })));
+    setLoading(false);
+  });
   useEffect(() => { load(); }, []);
-  useEffect(() => { const ch = supabase.channel('adm-appt').on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => load()).subscribe(); return () => { supabase.removeChannel(ch); }; }, []);
-  const act = async (id: number, action: string, extra: any = {}) => { setBusy(id); await apiSend('/api/bookings', 'PUT', { id, action, ...extra }); await load(); setBusy(null); };
+  useEffect(() => { const ch = supabase.channel('adm-appt').on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => load()).subscribe(); const off = onBookingsChanged(() => load()); return () => { supabase.removeChannel(ch); off(); }; }, []);
+  const act = async (id: number | string, action: string, extra: any = {}) => {
+    setBusy(id);
+    const target = bookings.find((b) => String(b.id) === String(id));
+    try {
+      if (target?.local) {
+        if (action === 'cancel') updateLocalBooking(id, { status: 'cancelled' });
+        else if (action === 'status' && extra.status) updateLocalBooking(id, { status: extra.status });
+      } else {
+        await apiSend('/api/bookings', 'PUT', { id, action, ...extra });
+      }
+    } catch { /* non-fatal — reload reflects truth */ }
+    await load();
+    toast(action === 'cancel' ? 'Booking cancelled' : 'Booking updated', 'success');
+    setBusy(null);
+  };
   const exportCsv = () => {
     const rows = [['Ref', 'Customer', 'Email', 'Service', 'Business', 'When', 'Status', 'Price']];
     filtered.forEach(b => rows.push([b.ref, b.customer_name, b.customer_email, b.service_name, b.resource_name, ist(b.start_time, { month: 'short', day: 'numeric' }) + ' ' + istTime(b.start_time), b.status, b.price]));

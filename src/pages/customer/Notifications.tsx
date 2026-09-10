@@ -3,17 +3,36 @@ import { istDateTime } from '../../lib/format';
 import { motion } from 'framer-motion';
 import { Bell, Check, Info, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import supabase from '../../lib/supabase';
+import { useLocation } from '../../contexts/LocationContext';
+import { markLocalNotificationRead, seedCityNotifications } from '../../lib/offlineStore';
 
 const iconFor = (t: string) => t === 'success' ? CheckCircle2 : t === 'warning' ? AlertTriangle : Info;
 const colorFor = (t: string) => t === 'success' ? '#34d399' : t === 'warning' ? '#f59e0b' : '#60a5fa';
 
 export default function Notifications() {
+  const { city } = useLocation();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const load = () => fetch('/api/notifications?audience=customer').then(r => r.json()).then(d => { setItems(Array.isArray(d) ? d : []); setLoading(false); });
-  useEffect(() => { load(); }, []);
+  const load = () => {
+    const local = seedCityNotifications(city.name);
+    fetch('/api/notifications?audience=customer').then(r => r.json()).then(d => {
+      const server = Array.isArray(d) ? d : [];
+      const seen = new Set(server.map((n: any) => `${n.title}|${n.body}`));
+      const merged = [...server, ...local.filter((n) => !seen.has(`${n.title}|${n.body}`))]
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      setItems(merged); setLoading(false);
+    }).catch(() => { setItems(local); setLoading(false); });
+  };
+  useEffect(() => { load(); }, [city.name]);
   useEffect(() => { const ch = supabase.channel('n-page').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, load).subscribe(); return () => { supabase.removeChannel(ch); }; }, []);
-  const markRead = async (id: number) => { await fetch('/api/notifications', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); load(); };
+  const markRead = async (id: number | string) => {
+    const target = items.find((n) => String(n.id) === String(id));
+    if (target?.local) markLocalNotificationRead(String(id));
+    else {
+      try { await fetch('/api/notifications', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); } catch { /* non-fatal */ }
+    }
+    load();
+  };
 
   return (
     <div className="max-w-2xl mx-auto">

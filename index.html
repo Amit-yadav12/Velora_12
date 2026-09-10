@@ -43,14 +43,16 @@
             navigator.serviceWorker.getRegistrations().then(function (regs) {
               caches.keys().then(function (keys) {
                 var stale = keys.filter(function (k) { return k !== 'velora-v3'; });
-                if (stale.length && !sessionStorage.getItem(KEY)) {
-                  sessionStorage.setItem(KEY, '1');
+                var recovered = false;
+                try { recovered = !!sessionStorage.getItem(KEY); } catch (e) { recovered = true; }
+                if (stale.length && !recovered) {
+                  try { sessionStorage.setItem(KEY, '1'); } catch (e) {}
                   Promise.all([
                     Promise.all(stale.map(function (k) { return caches.delete(k); })),
                     Promise.all(regs.map(function (r) { return r.unregister(); }))
                   ]).then(function () { window.location.reload(); });
                 }
-              });
+              }).catch(function () {});
             }).catch(function () {});
           }
         } catch (e) {}
@@ -81,7 +83,50 @@ loadRrweb();
   <script data-arena-views="true">(function(){var isTop=false;try{isTop=window.self===window.top;}catch(e){}if(!isTop)return;window.__ARENA_META={generationId:"claude-opus-4-8",tournamentId:"4d7fcb0e-df65-42d6-93de-d06aeb01610e"};var payload={tournamentId:"4d7fcb0e-df65-42d6-93de-d06aeb01610e",modelId:"claude-opus-4-8"};try{var r=document.referrer;if(r){var u=new URL(r);payload.referrerDomain=u.hostname;}}catch(e){}try{var vid=null;try{vid=localStorage.getItem('arena_vid');}catch(e){}if(!vid){vid=typeof crypto!=="undefined"&&crypto.randomUUID?crypto.randomUUID():(Date.now().toString(36)+Math.random().toString(36).slice(2)).slice(0,32);try{localStorage.setItem('arena_vid',vid);}catch(e){}}if(vid)payload.viewerId=vid;}catch(e){}try{fetch("https://www.designarena.ai/api/agon/page-views",{"method":"POST","headers":{"Content-Type":"application/json"},"body":JSON.stringify(payload),"keepalive":true});}catch(e){}})();</script>
 </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="velora-boot" style="min-height:100vh;display:grid;place-items:center;background:#05060a;color:#f5f7fb;font-family:Inter,system-ui,sans-serif">
+        <div style="text-align:center;padding:24px">
+          <div style="width:52px;height:52px;border-radius:16px;margin:0 auto 16px;background:linear-gradient(100deg,#3b82f6,#6366f1,#10b981);display:grid;place-items:center;font-size:24px;font-weight:800">V</div>
+          <div id="velora-boot-msg" style="font-size:14px;color:#9aa3b5">Loading Velora…</div>
+          <div id="velora-boot-err" style="display:none;max-width:420px;margin:14px auto 0;font-size:12px;color:#f87171;background:rgba(248,113,113,0.08);border:1px solid rgba(248,113,113,0.25);padding:10px 12px;border-radius:10px;text-align:left;white-space:pre-wrap;word-break:break-word"></div>
+          <button id="velora-boot-retry" onclick="window.location.reload()" style="display:none;margin:14px auto 0;background:linear-gradient(100deg,#3b82f6,#6366f1);color:#fff;border:0;border-radius:12px;padding:11px 22px;font-size:14px;font-weight:600;cursor:pointer">Reload Velora</button>
+        </div>
+      </div>
+    </div>
+    <script>
+      // Boot watchdog: React clears #velora-boot on first render. If anything
+      // fails before that (blocked resources, cached broken build), show the
+      // real error instead of a black screen.
+      (function () {
+        function show(msg) {
+          try {
+            var m = document.getElementById('velora-boot-msg');
+            var e = document.getElementById('velora-boot-err');
+            var b = document.getElementById('velora-boot-retry');
+            if (m) m.textContent = 'Velora could not start.';
+            if (e) { e.style.display = 'block'; e.textContent = String(msg || 'Unknown boot error'); }
+            if (b) b.style.display = 'block';
+          } catch (_) {}
+        }
+        window.addEventListener('error', function (ev) {
+          if (window.__veloraBooted) return;
+          show((ev && ev.message) || 'A resource failed to load. Check your connection and reload.');
+        }, true);
+        window.addEventListener('unhandledrejection', function (ev) {
+          if (window.__veloraBooted) return;
+          var r = ev && ev.reason;
+          show((r && (r.message || r)) || 'Something failed while starting.');
+        });
+        setTimeout(function () {
+          if (!window.__veloraBooted && document.getElementById('velora-boot')) {
+            var m = document.getElementById('velora-boot-msg');
+            if (m) m.textContent = 'Still loading… if this persists, reload the page.';
+            var b = document.getElementById('velora-boot-retry');
+            if (b) b.style.display = 'block';
+          }
+        }, 15000);
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
       <script data-element-picker>/**
  * Agon Element Picker — injected into the preview iframe.

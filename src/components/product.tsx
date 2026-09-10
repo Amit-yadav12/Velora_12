@@ -2,8 +2,9 @@ import { createElement } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Star, MapPin, Clock } from 'lucide-react';
-import { Business, categoryIcon, categoryColor } from '../lib/product';
+import { Business, categoryIcon, categoryColor, imgOnError } from '../lib/product';
 import { fadeUp } from '../lib/motion';
+import { prefetchOnIntent } from '../lib/smartCache';
 
 /**
  * Renders a category's lucide icon. Encapsulating the icon lookup in a
@@ -38,9 +39,14 @@ export function BusinessCard({ b }: { b: Business; index?: number }) {
   const color = categoryColor(b.category);
   return (
     <motion.div variants={fadeUp} style={{ contentVisibility: 'auto', containIntrinsicSize: '280px' } as React.CSSProperties}>
-      <Link to={`/business/${b.id}`} className="group block card overflow-hidden">
+      <Link
+        to={`/business/${b.id}`}
+        onMouseEnter={() => prefetchOnIntent(`/api/businesses?id=${b.id}`)}
+        onFocus={() => prefetchOnIntent(`/api/businesses?id=${b.id}`)}
+        className="group block card overflow-hidden"
+      >
         <div className="relative h-40 overflow-hidden">
-          <img src={b.image_url} alt={b.name} className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105 will-change-transform" loading="lazy" decoding="async" />
+          <img src={b.image_url} alt={b.name} onError={imgOnError(b.category)} className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105 will-change-transform" loading="lazy" decoding="async" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
           <div className="absolute top-3 left-3 rounded-full px-2.5 py-1 flex items-center gap-1.5 text-xs bg-black/45 text-white backdrop-blur-sm">
             <CategoryIcon category={b.category} className="h-3.5 w-3.5" color={color} /> {b.category}

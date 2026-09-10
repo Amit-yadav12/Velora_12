@@ -4,6 +4,7 @@ import { User, Mail, Phone, Check, Loader2, CalendarCheck, Clock } from 'lucide-
 import { useAuth } from '../../contexts/AuthContext';
 import supabase from '../../lib/supabase';
 import { apiGet } from '../../lib/api';
+import { listLocalBookings } from '../../lib/offlineStore';
 
 export default function Profile() {
   const { profile, user, refresh } = useAuth();
@@ -16,10 +17,16 @@ export default function Profile() {
   useEffect(() => { setName(profile?.full_name || ''); }, [profile]);
   useEffect(() => {
     if (!profile?.email) return;
-    apiGet(`/api/my-bookings?email=${encodeURIComponent(profile.email)}`).then((d: any[]) => {
+    const apply = (server: any[]) => {
+      const refs = new Set(server.map((b: any) => b.ref));
+      const local = listLocalBookings(profile.email).filter((b) => !refs.has(b.ref));
+      const all = [...server, ...local];
       const now = Date.now();
-      setStats({ total: d.length, upcoming: d.filter(b => new Date(b.start_time).getTime() > now && b.status !== 'cancelled').length });
-    }).catch(() => {});
+      setStats({ total: all.length, upcoming: all.filter(b => new Date(b.start_time).getTime() > now && b.status !== 'cancelled').length });
+    };
+    apiGet(`/api/my-bookings?email=${encodeURIComponent(profile.email)}`)
+      .then((d: any[]) => apply(Array.isArray(d) ? d : []))
+      .catch(() => apply([]));
   }, [profile?.email]);
 
   const save = async () => {

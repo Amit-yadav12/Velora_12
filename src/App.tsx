@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { lazy, Suspense, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from './lib/theme';
 import { AuthProvider } from './contexts/AuthContext';
 import { LocationProvider } from './contexts/LocationContext';
@@ -10,6 +10,7 @@ import AuroraBackground from './components/premium/AuroraBackground';
 // Customer (product-first) pages — Home eager, rest lazy for fast first paint
 import Home from './pages/customer/Home';
 import Welcome from './pages/customer/Welcome';
+import Verify from './pages/Verify';
 const Explore = lazy(() => import('./pages/customer/Explore'));
 const BusinessDetail = lazy(() => import('./pages/customer/BusinessDetail'));
 const Appointments = lazy(() => import('./pages/customer/Appointments'));
@@ -36,15 +37,28 @@ const S = (el: React.ReactNode) => <Suspense fallback={<Fallback />}>{el}</Suspe
 const C = (el: React.ReactNode) => <CustomerGate>{S(el)}</CustomerGate>;
 const A = (el: React.ReactNode) => <AdminGate>{S(el)}</AdminGate>;
 
+// Reset scroll on every route change so navigations always start at the top.
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  return null;
+}
+
 export default function App() {
+  // Signal the boot watchdog (index.html) that first render committed.
+  useEffect(() => {
+    try { (window as any).__veloraBooted = true; } catch { /* ignore */ }
+  }, []);
   return (
     <ThemeProvider>
       <AuroraBackground />
       <AuthProvider>
         <LocationProvider>
         <BrowserRouter>
+          <ScrollToTop />
           <Routes>
             <Route path="/welcome" element={<Welcome />} />
+            <Route path="/verify/:token" element={<Verify />} />
 
             {/* Customer product — opens directly into the experience */}
             <Route path="/" element={<CustomerGate><Home /></CustomerGate>} />

@@ -7,11 +7,18 @@ import path from 'node:path'
 export default defineConfig(async ({ mode }) => {
   const plugins = [react(), tailwindcss()];
   try {
-    // @ts-ignore - optional local dev plugin, not present in all envs
+    // @ts-expect-error - optional local dev plugin, not present in all envs
     const m = await import('./.vite-source-tags.js');
     plugins.push(m.sourceTags());
   } catch {
     // optional plugin absent — safe to ignore
+  }
+  try {
+    // @ts-expect-error - dev-only API middleware (plain JS, serve only)
+    const api = await import('./dev-api.js');
+    if (typeof api.devApi === 'function') plugins.push(api.devApi());
+  } catch {
+    // dev api middleware absent — /api calls fall back gracefully
   }
 
   const env = loadEnv(mode, process.cwd(), ['VITE_', 'NEXT_PUBLIC_']);
@@ -29,6 +36,11 @@ export default defineConfig(async ({ mode }) => {
     },
     envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
     define: processEnvDefines,
+    server: {
+      host: '0.0.0.0',
+      // Allow cloud preview hosts (Arena/E2B sandboxes etc.).
+      allowedHosts: true as const,
+    },
     build: {
       // Split large vendor libs into their own cacheable chunks so the initial
       // parse/eval stays small and navigations feel instant.

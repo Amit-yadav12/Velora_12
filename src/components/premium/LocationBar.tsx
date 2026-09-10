@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, Crosshair, Search, Loader2, X } from 'lucide-react';
 import { useLocation, POPULAR_CITIES } from '../../contexts/LocationContext';
+import { getCity } from '../../lib/cities';
 import { Coords } from '../../lib/geo';
 
 export default function LocationBar() {
-  const { location, status, requestLocation, setManual } = useLocation();
+  const { location, status, requestLocation, setManual, city, setCity, isLive } = useLocation();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [preds, setPreds] = useState<Coords[]>([]);
@@ -38,13 +39,14 @@ export default function LocationBar() {
     setLoading(false);
   }, [open]);
 
-  const label = location?.label || (location ? `${location.lat.toFixed(3)}, ${location.lng.toFixed(3)}` : 'Set location');
+  const label = city.name;
+  const sub = isLive && location ? ' · GPS on' : '';
 
   return (
     <div ref={boxRef} className="relative">
       <button onClick={() => setOpen(o => !o)} className="flex items-center gap-2 rounded-xl border border-app bg-elev px-3 py-2 text-sm hover:border-[var(--border-strong)] transition-colors max-w-full">
         <MapPin className="h-4 w-4 text-[var(--color-brand-indigo)] shrink-0" />
-        <span className="truncate max-w-[160px]">{status === 'prompting' ? 'Locating…' : label}</span>
+        <span className="truncate max-w-[160px]">{status === 'prompting' ? 'Locating…' : `${label}${sub}`}</span>
       </button>
       <AnimatePresence>
         {open && (
@@ -64,14 +66,21 @@ export default function LocationBar() {
                 <p className="text-[10px] uppercase tracking-wide text-dim px-2 mb-1.5">Popular cities</p>
                 <div className="flex flex-wrap gap-1.5">
                   {POPULAR_CITIES.map((c) => (
-                    <button key={c.label} onClick={() => { setManual(c); setOpen(false); }} className={`text-xs rounded-full px-2.5 py-1 transition-colors ${location?.label === c.label ? 'grad-btn text-white' : 'border border-app text-muted hover:border-[var(--border-strong)]'}`}>{c.label}</button>
+                    <button key={c.label} onClick={() => { if (c.label) setCity(c.label); setOpen(false); }} className={`text-xs rounded-full px-2.5 py-1 transition-colors ${city.name === c.label ? 'grad-btn text-white' : 'border border-app text-muted hover:border-[var(--border-strong)]'}`}>{c.label}</button>
                   ))}
                 </div>
               </div>
             )}
             <div className="mt-1 max-h-56 overflow-y-auto no-scrollbar">
               {preds.map((p, i) => (
-                <button key={i} onClick={() => { setManual({ ...p, label: p.label?.split(',').slice(0, 2).join(',') }); setOpen(false); setQ(''); setPreds([]); }} className="w-full flex items-start gap-2.5 px-3 py-2 rounded-xl hover:bg-[var(--surface-hover)] text-left">
+                <button key={i} onClick={() => {
+                  // City predictions pin the city; addresses set a manual point.
+                  const first = (p.label || '').split(',')[0].trim();
+                  const asCity = getCity(first) || ((p as any).city ? getCity((p as any).city) : null);
+                  if (asCity) setCity(asCity.name);
+                  else setManual({ ...p, label: p.label?.split(',').slice(0, 2).join(',') });
+                  setOpen(false); setQ(''); setPreds([]);
+                }} className="w-full flex items-start gap-2.5 px-3 py-2 rounded-xl hover:bg-[var(--surface-hover)] text-left">
                   <MapPin className="h-3.5 w-3.5 text-dim mt-0.5 shrink-0" />
                   <span className="text-xs text-muted line-clamp-2">{p.label}</span>
                 </button>

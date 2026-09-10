@@ -2,21 +2,23 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Navigation, MapPin, Star, Clock } from 'lucide-react';
-import { categoryIcon, categoryColor } from '../../lib/product';
+import { categoryIcon, categoryColor, imgOnError } from '../../lib/product';
 import { formatDistance, formatTravel } from '../../lib/geo';
+import { fetchNearest } from '../../lib/hybridData';
 
 // "Nearest everything" — the single closest option in each key category.
-export default function NearestEverything({ lat, lng }: { lat: number; lng: number }) {
+export default function NearestEverything({ lat, lng, city }: { lat: number; lng: number; city?: string }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let alive = true;
     setLoading(true);
-    fetch(`/api/nearest?lat=${lat}&lng=${lng}`)
-      .then(r => r.json())
-      .then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
-  }, [lat, lng]);
+    fetchNearest(lat, lng, city || 'Jaipur')
+      .then(d => { if (alive) { setData(d); setLoading(false); } })
+      .catch(() => alive && setLoading(false));
+    return () => { alive = false; };
+  }, [lat, lng, city]);
 
   if (loading) return <div className="skeleton h-40 rounded-2xl" />;
   if (!data?.nearest_per_category?.length) return null;
@@ -33,9 +35,9 @@ export default function NearestEverything({ lat, lng }: { lat: number; lng: numb
             className="relative overflow-hidden rounded-2xl grad-btn p-5 text-white">
             <div className="absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10 blur-2xl" />
             <div className="relative flex items-center gap-4">
-              <img src={overall.image_url} alt={overall.name} className="h-16 w-16 rounded-2xl object-cover ring-2 ring-white/30" />
+              <img src={overall.image_url} alt={overall.name} onError={imgOnError(overall.category)} className="h-16 w-16 rounded-2xl object-cover ring-2 ring-white/30" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-white/80 flex items-center gap-1"><Navigation className="h-3 w-3" /> Closest to you</p>
+                <p className="text-xs text-white/80 flex items-center gap-1"><Navigation className="h-3 w-3" /> Closest to you{city ? ` in ${city}` : ''}</p>
                 <p className="font-semibold text-lg leading-tight truncate">{overall.name}</p>
                 <p className="text-sm text-white/85 flex items-center gap-2">
                   {overall.category} · <MapPin className="h-3 w-3" /> {formatDistance(overall.distance_km)} · <Clock className="h-3 w-3" /> ~{formatTravel(overall.travel_min)}

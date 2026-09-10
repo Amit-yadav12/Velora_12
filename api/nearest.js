@@ -1,8 +1,10 @@
 import supabase from './db-client.js';
-import { cors } from './_lib/security.js';
+import { cors, sanitizeText } from './_lib/security.js';
+import { cityBusinesses } from './_lib/synthetic.js';
 
 // "Nearest everything": returns the single closest active business in each
 // key category relative to the user's coordinates, with distance + travel est.
+// City-scoped; DB + synthetic merged.
 function haversineKm(a, b) {
   if (a.lat == null || b.lat == null) return null;
   const R = 6371;
@@ -17,14 +19,35 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   try {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
-    const { lat, lng } = req.query;
+    const { lat, lng, city } = req.query;
     if (!lat || !lng) return res.status(400).json({ error: 'lat and lng required' });
     const origin = { lat: +lat, lng: +lng };
+    const cityName = sanitizeText(city, 40) || 'Jaipur';
 
-    const { data, error } = await supabase.from('businesses').select('*').eq('active', true);
-    if (error) throw error;
+    let dbRows = [];
+    try {
+      const { data, error } = await supabase.from('businesses').select('*').eq('active', true);
+      if (!error && Array.isArray(data)) dbRows = data;
+    } catch (e) {
+      console.error('[nearest:db]', e.message);
+    }
+    let synth = [];
+    try {
+      synth = cityBusinesses(cityName);
+    } catch (e) {
+      console.error('[nearest:synth]', e.message);
+    }
+    const seen = new Set(dbRows.map((b) => String(b.id)));
+    const all = [...dbRows];
+    for (const b of synth) {
+      if (!seen.has(String(b.id))) {
+        seen.add(String(b.id));
+        all.push(b);
+      }
+    }
+    const pinned = all.filter((b) => !b.city || b.city === cityName);
 
-    const enriched = (data || [])
+    const enriched = pinned
       .map((b) => {
         const km = haversineKm(origin, b);
         return { ...b, distance_km: km, travel_min: km != null ? Math.round((km / 35) * 60) : null };
@@ -43,6 +66,7 @@ export default async function handler(req, res) {
       overall_nearest: enriched[0] || null,
       nearest_per_category: nearestPerCategory,
       total_within_5km: enriched.filter((b) => b.distance_km <= 5).length,
+      city: cityName,
     });
   } catch (err) {
     console.error('[nearest:error]', err.message);

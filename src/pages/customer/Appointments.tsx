@@ -7,9 +7,11 @@ import { useLocation } from '../../contexts/LocationContext';
 import { mapsDirections } from '../../lib/product';
 import { apiGet, apiSend } from '../../lib/api';
 import supabase from '../../lib/supabase';
+import { onBookingsChanged, toast } from '../../services/events';
 import ProgressTracker from '../../components/premium/ProgressTracker';
 import { inr, istTime, ist } from '../../lib/format';
 import QueueTracker from '../../components/premium/QueueTracker';
+import { listLocalBookings, updateLocalBooking } from '../../lib/offlineStore';
 
 function LeaveNow({ ref: bref, origin }: { ref: string; origin?: { lat: number; lng: number } | null }) {
   const [plan, setPlan] = useState<any>(null);
@@ -41,19 +43,47 @@ export default function Appointments() {
   const [newTime, setNewTime] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [expanded, setExpanded] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<number | string | null>(null);
 
   const load = async () => {
     const d = await apiGet(`/api/my-bookings?email=${encodeURIComponent(profile?.email || '')}`).catch(() => []);
-    setBookings(Array.isArray(d) ? d : []); setLoading(false);
+    const server = Array.isArray(d) ? d : [];
+    // Merge local/demo bookings (synthetic + offline continuity), de-duped by ref.
+    const local = listLocalBookings(profile?.email).map((b) => ({
+      id: b.id, ref: b.ref, service_name: b.service_name, employee_name: b.staff_name,
+      resource_name: b.business_name, start_time: b.start_time, end_time: b.end_time,
+      status: b.status, price: b.price, location: b.location, local: true,
+    }));
+    const refs = new Set(server.map((b: any) => b.ref));
+    const merged = [...server, ...local.filter((b) => !refs.has(b.ref))]
+      .sort((a: any, b: any) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+    setBookings(merged); setLoading(false);
   };
   useEffect(() => { if (profile?.email) load(); }, [profile?.email]);
-  useEffect(() => { const ch = supabase.channel('appts').on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => load()).subscribe(); return () => { supabase.removeChannel(ch); }; }, [profile?.email]);
+  useEffect(() => { const ch = supabase.channel('appts').on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => load()).subscribe(); const off = onBookingsChanged(() => load()); return () => { supabase.removeChannel(ch); off(); }; }, [profile?.email]);
 
-  const cancel = async (id: number) => { await apiSend('/api/bookings', 'PUT', { id, action: 'cancel' }); load(); };
+  const cancel = async (id: number | string) => {
+    const target = bookings.find((b) => String(b.id) === String(id));
+    if (target?.local) updateLocalBooking(id, { status: 'cancelled' });
+    else {
+      try { await apiSend('/api/bookings', 'PUT', { id, action: 'cancel' }); }
+      catch { updateLocalBooking(id, { status: 'cancelled' }); }
+    }
+    load();
+    toast('Booking cancelled', 'info');
+  };
   const doResched = async () => {
     setErr(''); setBusy(true);
-    try { await apiSend('/api/bookings', 'PUT', { id: resched.id, action: 'reschedule', start_time: new Date(newTime).toISOString() }); setResched(null); load(); }
+    try {
+      const iso = new Date(newTime).toISOString();
+      if (resched.local) {
+        const dur = new Date(resched.end_time).getTime() - new Date(resched.start_time).getTime();
+        updateLocalBooking(resched.id, { start_time: iso, end_time: new Date(new Date(iso).getTime() + dur).toISOString() });
+      } else {
+        await apiSend('/api/bookings', 'PUT', { id: resched.id, action: 'reschedule', start_time: iso });
+      }
+      setResched(null); load(); toast('Booking rescheduled', 'success');
+    }
     catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
 

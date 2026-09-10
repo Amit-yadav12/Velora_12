@@ -1,5 +1,5 @@
 import supabase from './db-client.js';
-import { cors, isEmail } from './_lib/security.js';
+import { cors, isEmail , safeError} from './_lib/security.js';
 import { getAuth } from './_lib/auth.js';
 
 // Customer's own bookings (upcoming + past), STRICTLY scoped to the
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     if (error) throw error;
     return res.status(200).json(data);
   } catch (err) {
-    console.error('[my-bookings:error]', err.message);
-    res.status(500).json({ error: err.message });
+    const se = safeError(err, 'my-bookings:error');
+    res.status(se.status).json({ error: se.error });
   }
 }

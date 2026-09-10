@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Mail, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
 import { PageHeader, Spinner, EmptyState } from '../../components/ui';
 import { apiGet } from '../../lib/api';
 import supabase from '../../lib/supabase';
