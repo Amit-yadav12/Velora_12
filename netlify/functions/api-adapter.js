@@ -16,6 +16,8 @@ import myBookings from '../../api/my-bookings.js';
 import nearest from '../../api/nearest.js';
 import notifications from '../../api/notifications.js';
 import places from '../../api/places.js';
+import provisionDemo from '../../api/provision-demo.js';
+import registerBusiness from '../../api/register-business.js';
 import processReminders from '../../api/process-reminders.js';
 import smartSlots from '../../api/smart-slots.js';
 import trackView from '../../api/track-view.js';
@@ -37,7 +39,9 @@ const handlers = {
   nearest,
   notifications,
   places,
+  'provision-demo': provisionDemo,
   'process-reminders': processReminders,
+  'register-business': registerBusiness,
   'smart-slots': smartSlots,
   'track-view': trackView,
   'travel-planner': travelPlanner,

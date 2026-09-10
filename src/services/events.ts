@@ -6,6 +6,10 @@
 export const EVENTS = {
   BOOKINGS_CHANGED: 'velora:bookings-changed',
   NOTIFS_CHANGED: 'velora:notifs-changed',
+  BUSINESSES_CHANGED: 'velora:businesses-changed',
+  SERVICES_CHANGED: 'velora:services-changed',
+  STAFF_CHANGED: 'velora:staff-changed',
+  DEMO_RESET: 'velora:demo-reset',
   TOAST: 'velora:toast',
 } as const;
 
@@ -48,11 +52,35 @@ export function emitBookingsChanged() {
 export function emitNotifsChanged() {
   ping(EVENTS.NOTIFS_CHANGED);
 }
+export function emitBusinessesChanged() {
+  ping(EVENTS.BUSINESSES_CHANGED);
+}
+export function emitServicesChanged() {
+  ping(EVENTS.SERVICES_CHANGED);
+}
+export function emitStaffChanged() {
+  ping(EVENTS.STAFF_CHANGED);
+}
+export function emitDemoReset() {
+  ping(EVENTS.DEMO_RESET);
+}
 export function onBookingsChanged(cb: () => void): () => void {
   return listen(EVENTS.BOOKINGS_CHANGED, cb);
 }
 export function onNotifsChanged(cb: () => void): () => void {
   return listen(EVENTS.NOTIFS_CHANGED, cb);
+}
+export function onBusinessesChanged(cb: () => void): () => void {
+  return listen(EVENTS.BUSINESSES_CHANGED, cb);
+}
+export function onServicesChanged(cb: () => void): () => void {
+  return listen(EVENTS.SERVICES_CHANGED, cb);
+}
+export function onStaffChanged(cb: () => void): () => void {
+  return listen(EVENTS.STAFF_CHANGED, cb);
+}
+export function onDemoReset(cb: () => void): () => void {
+  return listen(EVENTS.DEMO_RESET, cb);
 }
 
 export type ToastKind = 'success' | 'info' | 'warning' | 'error';

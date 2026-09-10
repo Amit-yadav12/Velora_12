@@ -38,16 +38,16 @@ function createDemoClient() {
       .trim();
     return n ? n.charAt(0).toUpperCase() + n.slice(1) : 'Guest';
   };
-  const userFor = (email) => {
+  const userFor = (email, fullName) => {
     const em = String(email || 'guest@velora.ai').toLowerCase().trim();
     return {
       id: `demo-${em.replace(/[^a-z0-9]+/g, '-')}`,
       email: em,
-      user_metadata: { full_name: nameFor(em) },
+      user_metadata: { full_name: fullName || nameFor(em) },
     };
   };
-  const sessionFor = (email) => {
-    const user = userFor(email);
+  const sessionFor = (email, fullName) => {
+    const user = userFor(email, fullName);
     return { user, access_token: 'demo-token', refresh_token: 'demo-refresh', expires_in: 3600 * 24 * 7 };
   };
   const emit = (event) => {
@@ -61,14 +61,14 @@ function createDemoClient() {
     });
   };
 
-  const passwordAuth = async ({ email, password } = {}) => {
+  const passwordAuth = async ({ email, password, options } = {}) => {
     if (!email || !String(email).includes('@')) {
       return { data: { user: null, session: null }, error: { message: 'Enter a valid email address' } };
     }
     if (!password) {
       return { data: { user: null, session: null }, error: { message: 'Enter your password' } };
     }
-    const session = sessionFor(email);
+    const session = sessionFor(email, options?.data?.full_name);
     writeSession(session);
     setTimeout(() => emit('SIGNED_IN'), 0);
     return { data: { user: session.user, session }, error: null };
@@ -76,20 +76,42 @@ function createDemoClient() {
 
   // Chainable, thenable query builder: absorbs select/eq/order/... and resolves
   // demo-shaped results so every page renders with zero backend.
+  // profiles are PERSISTED locally (velora-demo-profiles) so demo-mode business
+  // registration genuinely grants console access across sessions.
+  const PROFILES_KEY = 'velora-demo-profiles';
+  const readProfiles = () => {
+    try {
+      const raw = localStorage.getItem(PROFILES_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch {
+      return [];
+    }
+  };
+  const writeProfiles = (rows) => {
+    try { localStorage.setItem(PROFILES_KEY, JSON.stringify(rows.slice(0, 100))); } catch { /* ignore */ }
+  };
   const from = (table) => {
     const state = { single: false, op: 'select', payload: null };
     const exec = () => {
       if (table === 'profiles') {
         const sess = readSession();
         const em = sess?.user?.email || 'guest@velora.ai';
-        const row = {
+        const defaults = {
           id: sess?.user?.id || 'demo-guest',
           email: em,
           full_name: sess?.user?.user_metadata?.full_name || nameFor(em),
           role: roleFor(em),
+          created_at: new Date().toISOString(),
         };
+        const stored = readProfiles();
+        const mine = stored.find((p) => p.id === defaults.id || p.email === em);
+        const row = { ...defaults, ...(mine || {}) };
         if (state.op === 'insert' || state.op === 'upsert' || state.op === 'update') {
-          return { data: state.payload ?? row, error: null };
+          const payload = Array.isArray(state.payload) ? state.payload[0] : state.payload;
+          const merged = { ...row, ...(payload || {}) };
+          writeProfiles([...stored.filter((p) => p.id !== merged.id && p.email !== merged.email), merged]);
+          return { data: merged, error: null };
         }
         return state.single ? { data: row, error: null } : { data: [row], error: null };
       }

@@ -4,7 +4,8 @@ import { motion } from 'framer-motion';
 import { Bell, Check, Info, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import supabase from '../../lib/supabase';
 import { useLocation } from '../../contexts/LocationContext';
-import { markLocalNotificationRead, seedCityNotifications } from '../../lib/offlineStore';
+import { markLocalNotificationRead, listLocalNotificationsFor } from '../../lib/offlineStore';
+import { onNotifsChanged } from '../../services/events';
 
 const iconFor = (t: string) => t === 'success' ? CheckCircle2 : t === 'warning' ? AlertTriangle : Info;
 const colorFor = (t: string) => t === 'success' ? '#34d399' : t === 'warning' ? '#f59e0b' : '#60a5fa';
@@ -14,9 +15,10 @@ export default function Notifications() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const load = () => {
-    const local = seedCityNotifications(city.name);
+    // Customer-audience ONLY — business-side notifications are never shown here.
+    const local = listLocalNotificationsFor('customer');
     fetch('/api/notifications?audience=customer').then(r => r.json()).then(d => {
-      const server = Array.isArray(d) ? d : [];
+      const server = Array.isArray(d) ? d.filter((n: any) => n.audience !== 'admin') : [];
       const seen = new Set(server.map((n: any) => `${n.title}|${n.body}`));
       const merged = [...server, ...local.filter((n) => !seen.has(`${n.title}|${n.body}`))]
         .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -24,7 +26,11 @@ export default function Notifications() {
     }).catch(() => { setItems(local); setLoading(false); });
   };
   useEffect(() => { load(); }, [city.name]);
-  useEffect(() => { const ch = supabase.channel('n-page').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, load).subscribe(); return () => { supabase.removeChannel(ch); }; }, []);
+  useEffect(() => {
+    const ch = supabase.channel('n-page').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, load).subscribe();
+    const offLocal = onNotifsChanged(load);
+    return () => { supabase.removeChannel(ch); offLocal(); };
+  }, []);
   const markRead = async (id: number | string) => {
     const target = items.find((n) => String(n.id) === String(id));
     if (target?.local) markLocalNotificationRead(String(id));

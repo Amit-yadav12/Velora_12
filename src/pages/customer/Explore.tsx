@@ -12,6 +12,7 @@ import EmptyState from '../../components/premium/EmptyState';
 import { BusinessCardSkeleton } from '../../components/premium/Skeleton';
 import GoogleMapEmbed from '../../components/premium/GoogleMapEmbed';
 import supabase from '../../lib/supabase';
+import { onBusinessesChanged, onServicesChanged } from '../../services/events';
 import { fetchDiscover, hydrateLiveBusiness } from '../../lib/hybridData';
 import { buildSuggestions, pushSearchHistory, type Suggestion } from '../../lib/smartSearch';
 import { cacheSet } from '../../lib/smartCache';
@@ -63,9 +64,12 @@ export default function Explore() {
   useEffect(() => { fetchResults(); /* eslint-disable-next-line */ }, [category, sort, openNow, minRating, maxKm, priceMax, city.name, origin.lat, origin.lng, view]);
   useEffect(() => { const t = setTimeout(fetchResults, 350); return () => clearTimeout(t); /* eslint-disable-next-line */ }, [q]);
   // Real-time: refresh discovery when any booking changes (availability shifts)
+  // or when demo businesses/services change in the console (add / edit / deactivate).
   useEffect(() => {
     const ch = supabase.channel('discover-rt').on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => fetchResults()).subscribe();
-    return () => { supabase.removeChannel(ch); };
+    const offBiz = onBusinessesChanged(fetchResults);
+    const offSvc = onServicesChanged(fetchResults);
+    return () => { supabase.removeChannel(ch); offBiz(); offSvc(); };
     // eslint-disable-next-line
   }, [category, sort, city.name, origin.lat, origin.lng]);
   useEffect(() => {
