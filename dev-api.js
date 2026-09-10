@@ -31,7 +31,7 @@ function readJsonBody(req) {
   });
 }
 
-export function devApi() {
+function ensurePreviewEnv() {
   // Dummy backend env so server handlers boot in pure-synthetic preview mode.
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://demo.local';
@@ -39,6 +39,26 @@ export function devApi() {
   if (!process.env.SUPABASE_URL) process.env.SUPABASE_URL = 'https://demo.local';
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) process.env.SUPABASE_SERVICE_ROLE_KEY = 'demo';
   if (!process.env.SUPABASE_ANON_KEY) process.env.SUPABASE_ANON_KEY = 'demo';
+}
+
+// SPA fallback for `vite preview` (deep links like /verify/... serve index.html).
+function spaFallback(req, res, next) {
+  if (req.method !== 'GET') return next();
+  let p = '';
+  try { p = new URL(req.url || '/', 'http://local').pathname; } catch { return next(); }
+  if (p.startsWith('/api/')) return next();
+  const file = path.join(ROOT, 'dist', decodeURIComponent(p));
+  fs.stat(file, (err, st) => {
+    if (!err && st.isFile()) return next();
+    fs.readFile(path.join(ROOT, 'dist', 'index.html'), (e2, data) => {
+      if (e2) return next();
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end(data);
+    });
+  });
+}
+
+export function devApi() {
 
   const cache = new Map();
   async function load(name) {
@@ -50,11 +70,7 @@ export function devApi() {
     return cache.get(name);
   }
 
-  return {
-    name: 'velora-dev-api',
-    apply: 'serve',
-    configureServer(server) {
-      server.middlewares.use(async (nodeReq, nodeRes, next) => {
+  const apiMiddleware = async (nodeReq, nodeRes, next) => {
         let pathname = '';
         try {
           pathname = new URL(nodeReq.url || '/', 'http://local').pathname;
@@ -130,7 +146,19 @@ export function devApi() {
             nodeRes.end(JSON.stringify({ error: 'Internal error' }));
           }
         }
-      });
+      };
+
+  return {
+    name: 'velora-dev-api',
+    apply: 'serve',
+    configureServer(server) {
+      ensurePreviewEnv();
+      server.middlewares.use(apiMiddleware);
+    },
+    configurePreviewServer(server) {
+      ensurePreviewEnv();
+      server.middlewares.use(apiMiddleware);
+      server.middlewares.use(spaFallback);
     },
   };
 }
