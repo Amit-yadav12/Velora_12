@@ -7,7 +7,7 @@ import { useTheme } from '../lib/theme';
 import { LogoMark } from '../components/Logo';
 import PageTransition from '../components/premium/PageTransition';
 import ToastHost from '../components/premium/ToastHost';
-import supabase from '../lib/supabase';
+import supabase, { isDemoMode } from '../lib/supabase';
 import { apiGet, apiSend } from '../lib/api';
 import { listLocalNotificationsFor, markAllLocalNotificationsRead, markLocalNotificationRead } from '../lib/offlineStore';
 import { onNotifsChanged, toast } from '../services/events';
@@ -107,7 +107,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         <header className="h-16 border-b border-app flex items-center gap-3 px-5 sticky top-0 z-20 bg-elev/80 backdrop-blur">
           <button aria-label="Open menu" onClick={() => setOpen(true)} className="lg:hidden h-9 w-9 grid place-items-center rounded-lg border border-app"><Menu className="h-4 w-4" /></button>
           <span className="text-sm font-medium">Business Console</span>
-          <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-violet)]/15 text-[var(--color-brand-violet)] border border-[var(--color-brand-violet)]/25">Demo tenant</span>
+          {isDemoMode && <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-violet)]/15 text-[var(--color-brand-violet)] border border-[var(--color-brand-violet)]/25">Demo tenant</span>}
           <div className="ml-auto flex items-center gap-2">
             <Link to="/" className="text-sm text-dim hover:text-[var(--text)] hidden sm:block">Customer app ↗</Link>
             {/* Notifications */}

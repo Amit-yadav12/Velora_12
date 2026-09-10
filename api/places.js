@@ -2,7 +2,7 @@
 // Returns REAL Google Maps businesses (names, ratings, photos, hours) when a
 // Google Maps API key is configured; otherwise { live:false, results:[] } so
 // the client gracefully falls back to the synthetic ecosystem.
-import { cors, sanitizeText } from './_lib/security.js';
+import { cors, sanitizeText, enforceRateLimit } from './_lib/security.js';
 
 const cache = new Map();
 const TTL = 120000;
@@ -56,6 +56,7 @@ function normalize(p, apiKey, category) {
 export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
+  if (!enforceRateLimit(req, res, 'places', { limit: 120, windowMs: 60_000 })) return;
   try {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
     const { lat, lng, query, category, city, radius = '5000' } = req.query;

@@ -528,7 +528,8 @@ export function listDemoBusinesses(city?: string, withDetails = false): DemoBusi
   const services = read<DemoService>(K_SVC);
   const staff = read<DemoStaff>(K_STAFF);
   return biz
-    .filter((b) => b.active !== false || true) // keep inactive visible to the console
+    // Inactive businesses stay here so the console can list/manage them;
+    // customer discovery filters them out in hybridData.
     .filter((b) => !city || b.seeded || !b.city || b.city === city)
     .map((b) => {
       const base: DemoBusinessView = { ...b, city: city || b.city || '', demo: true, tenant_id: DEMO_TENANT_ID };

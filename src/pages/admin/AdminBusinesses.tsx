@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Star, MapPin, Plus, Pencil, Trash2, Phone, Clock, ExternalLink } from 'lucide-react';
+import { Star, MapPin, Plus, Pencil, Trash2, Phone, Clock, ExternalLink, Power } from 'lucide-react';
 import { PageHeader, Spinner, EmptyState, DemoBadge, Modal, Field, inputCls, btnGhost, btnPrimary } from '../../components/ui';
 import { useConsoleData } from '../../lib/useConsoleData';
 import { useLocation } from '../../contexts/LocationContext';
@@ -110,6 +110,14 @@ export default function AdminBusinesses() {
     reload();
   };
 
+  /** Deactivated demo businesses disappear from customer discovery instantly. */
+  const toggleActive = (b: Business) => {
+    const next = b.active === false;
+    updateDemoBusiness(String(b.id), { active: next });
+    toast(next ? 'Business active — visible to customers' : 'Business deactivated — hidden from customers', next ? 'success' : 'info');
+    reload();
+  };
+
   if (loading) return <Spinner />;
 
   return (
@@ -148,6 +156,7 @@ export default function AdminBusinesses() {
                     {isDemoBusinessId(b.id) ? (
                       <>
                         <button onClick={() => openEdit(b)} title="Edit" className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:border-[var(--border-strong)]"><Pencil className="h-3.5 w-3.5" /></button>
+                        <button onClick={() => toggleActive(b)} title={b.active === false ? 'Activate' : 'Deactivate'} className={`h-7 w-7 grid place-items-center rounded-lg border border-app ${b.active === false ? 'hover:text-emerald-400 hover:border-emerald-400/50' : 'hover:text-amber-400 hover:border-amber-400/50'}`}><Power className="h-3.5 w-3.5" /></button>
                         <button onClick={() => setConfirmDelete(b)} title="Delete" className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:text-red-400 hover:border-red-400/50"><Trash2 className="h-3.5 w-3.5" /></button>
                       </>
                     ) : (

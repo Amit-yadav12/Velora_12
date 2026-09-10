@@ -205,7 +205,16 @@ export default function BusinessDetail() {
       setResult(res);
       toast(res?.deduplicated ? 'Booking already confirmed' : 'Booking confirmed', 'success');
       } catch (e: unknown) {
-      // Ultimate fallback: confirm locally so the demo flow never dead-ends.
+      // Demo-tenant bookings are already authoritative in the local store —
+      // never fabricate a second local booking here (it would bypass the
+      // double-booking guard). Surface the real error instead.
+      if (isDemoBusinessId(biz!.id)) {
+        setErr(errMsg(e) || 'We could not complete your booking. Please try again.');
+        setSubmitting(false);
+        return;
+      }
+      // Offline continuity for server-backed businesses: keep the appointment
+      // on this device and clearly tell the user it is saved locally only.
       try {
         const ref = genLocalRef();
         const salt = genQrSalt();
@@ -231,12 +240,14 @@ export default function BusinessDetail() {
           qr_salt: salt,
         });
         saveLocalInvoice({ id: ref, number: invoice.number, booking_ref: ref, customer_name: custName.trim() || '', amount: Number(service!.price) || 0, tax, total: invoice.total, status: 'issued' });
-        pushLocalNotification({ audience: 'customer', title: 'Booking confirmed', body: `${service!.name} at ${biz!.name} — ${ref}`, type: 'success', read: false, booking_ref: ref });
+        pushLocalNotification({ audience: 'customer', title: 'Booking saved on this device', body: `${service!.name} at ${biz!.name} — ${ref} (offline copy)`, type: 'info', read: false, booking_ref: ref });
+        toast("The server couldn't be reached — this booking is saved on this device only and hasn't reached the business yet.", 'warning');
         setResult({
           booking: bk, invoice, business: biz || undefined,
           maps_link: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz!.address || biz!.name)}`,
           qr_payload: localVerifyUrl(ref, salt),
           pipeline: { email: 'log-fallback' },
+          local: true,
         });
       } catch {
         setErr(errMsg(e));
@@ -260,7 +271,7 @@ export default function BusinessDetail() {
   const photos: string[] = biz.photos || [];
   const isLive = !!biz.live;
 
-  if (result?.booking) return <SuccessExperience booking={result.booking} invoice={result.invoice || { total: Number(service?.price) || 0, number: result.booking.ref }} business={biz} mapsLink={result.maps_link || `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz.address || biz.name)}`} qrPayload={result.qr_payload || undefined} gmailComposeUrl={result.gmail_compose_url} emailStatus={result.pipeline?.email} onClose={() => nav('/appointments')} />;
+  if (result?.booking) return <SuccessExperience booking={result.booking} invoice={result.invoice || { total: Number(service?.price) || 0, number: result.booking.ref }} business={biz} mapsLink={result.maps_link || `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz.address || biz.name)}`} qrPayload={result.qr_payload || undefined} gmailComposeUrl={result.gmail_compose_url} emailStatus={result.pipeline?.email} remindersScheduled={!!result.pipeline && (result.pipeline.reminders_scheduled ?? 0) > 0} onClose={() => nav('/appointments')} />;
 
   // Review + confirm — the final step of the booking engine
   const reviewModal = (

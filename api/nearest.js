@@ -1,5 +1,5 @@
 import supabase from './db-client.js';
-import { cors, sanitizeText } from './_lib/security.js';
+import { cors, sanitizeText, enforceRateLimit } from './_lib/security.js';
 import { cityBusinesses } from './_lib/synthetic.js';
 
 // "Nearest everything": returns the single closest active business in each
@@ -17,6 +17,7 @@ function haversineKm(a, b) {
 export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
+  if (!enforceRateLimit(req, res, 'nearest', { limit: 120, windowMs: 60_000 })) return;
   try {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
     const { lat, lng, city } = req.query;

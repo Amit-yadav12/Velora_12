@@ -3,7 +3,20 @@ import { Moon, Sun, Bell, Globe, Shield, LogOut, ChevronRight, type LucideIcon }
 import { useTheme } from '../../lib/theme';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+
+// Persisted notification preferences (device-local, demo + production).
+const PREF_KEY = 'velora-notif-prefs';
+function readPrefs(): { email: boolean; push: boolean } {
+  try {
+    const raw = localStorage.getItem(PREF_KEY);
+    const p = raw ? JSON.parse(raw) : null;
+    return { email: p?.email !== false, push: p?.push !== false };
+  } catch { return { email: true, push: true }; }
+}
+function writePrefs(p: { email: boolean; push: boolean }) {
+  try { localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch { /* non-fatal */ }
+}
 
 function Toggle({ on, onChange }: { on: boolean; onChange: () => void }) {
   return <button onClick={onChange} className={`relative h-6 w-11 rounded-full transition-colors ${on ? 'grad-btn' : 'bg-[var(--surface-hover)]'}`}><motion.span layout className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow" style={{ left: on ? 22 : 2 }} /></button>;
@@ -13,8 +26,9 @@ export default function Settings() {
   const { theme, toggle } = useTheme();
   const { signOut } = useAuth();
   const nav = useNavigate();
-  const [emailNotif, setEmailNotif] = useState(true);
-  const [pushNotif, setPushNotif] = useState(true);
+  const [emailNotif, setEmailNotif] = useState(readPrefs().email);
+  const [pushNotif, setPushNotif] = useState(readPrefs().push);
+  useEffect(() => { writePrefs({ email: emailNotif, push: pushNotif }); }, [emailNotif, pushNotif]);
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -25,7 +39,7 @@ export default function Settings() {
         <Setting icon={theme === 'dark' ? Moon : Sun} title="Dark mode" sub="Switch between light and dark themes"><Toggle on={theme === 'dark'} onChange={toggle} /></Setting>
         <Setting icon={Bell} title="Email notifications" sub="Booking confirmations & reminders"><Toggle on={emailNotif} onChange={() => setEmailNotif(v => !v)} /></Setting>
         <Setting icon={Bell} title="Push notifications" sub="Real-time alerts on your device"><Toggle on={pushNotif} onChange={() => setPushNotif(v => !v)} /></Setting>
-        <Setting icon={Globe} title="Language" sub="English (US)"><ChevronRight className="h-4 w-4 text-dim" /></Setting>
+        <Setting icon={Globe} title="Language" sub="English (India)"><ChevronRight className="h-4 w-4 text-dim" /></Setting>
         <Setting icon={Shield} title="Privacy & security" sub="Manage your data"><ChevronRight className="h-4 w-4 text-dim" /></Setting>
       </div>
 

@@ -11,7 +11,7 @@
 *India's AI-Powered Smart Appointment & Booking Platform*
 
 <p align="center">
-<a href="https://velora-ai-os-h5vj.arcada.app/">🌐 Live Demo</a> •
+<a href="https://velora-ai-in.netlify.app/">🌐 Live Demo</a> •
 </p>
 
 ![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react)
@@ -250,7 +250,7 @@ Velora is more than a booking website—it is a scalable AI-powered appointment 
 
 ## 🌐 Live Demo
 
-### **https://velora-ai-os-h5vj.arcada.app/**
+### **https://velora-ai-in.netlify.app/**
 
 ### ⭐ If you like Velora, please give this repository a Star!
 

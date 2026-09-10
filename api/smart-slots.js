@@ -1,5 +1,5 @@
 import supabase from './db-client.js';
-import { cors } from './_lib/security.js';
+import { cors, enforceRateLimit } from './_lib/security.js';
 import { travelTimeMin } from './_lib/maps.js';
 import { syntheticBusiness, syntheticSlots, isSyntheticId } from './_lib/synthetic.js';
 
@@ -9,6 +9,7 @@ import { syntheticBusiness, syntheticSlots, isSyntheticId } from './_lib/synthet
 export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
+  if (!enforceRateLimit(req, res, 'smart-slots', { limit: 120, windowMs: 60_000 })) return;
   try {
     const { business_id, service_id, date, origin_lat, origin_lng } = req.query;
     if (!business_id) return res.status(400).json({ error: 'business_id required' });

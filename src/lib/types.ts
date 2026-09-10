@@ -142,7 +142,7 @@ export interface BookingConfirmation {
   qr_payload?: string | null;
   gmail_compose_url?: string;
   deduplicated?: boolean;
-  pipeline?: { email?: string };
+  pipeline?: { email?: string; reminders_scheduled?: number };
   local?: boolean;
 }
 

@@ -1,19 +1,29 @@
 import supabase from './db-client.js';
-import { cors } from './_lib/security.js';
+import { cors, enforceRateLimit } from './_lib/security.js';
+import { getAuth } from './_lib/auth.js';
 import { travelTimeMin } from './_lib/maps.js';
 import { syntheticBusiness, isSyntheticId } from './_lib/synthetic.js';
 
 // AI Travel Planner: given a booking (or business + start time) and an origin,
 // computes travel time, recommended leave-time, and a \"leave now\" countdown.
+// Booking lookups are authorization-checked (owner or admin) — a booking ref
+// must never reveal another customer's appointment details.
 export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
   try {
+    if (!enforceRateLimit(req, res, 'travel-planner', { limit: 60, windowMs: 60_000 })) return;
     const { business_id, booking_ref, start_time, origin_lat, origin_lng } = req.query;
     let biz = null, start = start_time ? new Date(start_time) : null;
     if (booking_ref) {
+      const auth = await getAuth(req);
       const { data: bk } = await supabase.from('bookings').select('*').eq('ref', booking_ref).single();
       if (bk) {
+        // Authorization: admin or the booking's own customer only.
+        const isAdmin = auth?.profile?.role === 'admin';
+        const isOwner = (auth?.user?.email || '').toLowerCase() === (bk.customer_email || '').toLowerCase();
+        if (!isAdmin && !isOwner) return res.status(403).json({ error: 'Not your booking' });
+        if (bk.status === 'cancelled') return res.status(404).json({ error: 'Booking cancelled' });
         start = new Date(bk.start_time);
         if (isSyntheticId(bk.resource_id)) {
           biz = syntheticBusiness(bk.resource_id);

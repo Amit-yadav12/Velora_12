@@ -47,6 +47,18 @@ export function istToday(): string {
   return parts;
 }
 
+/** IST wall-clock value for <input type="datetime-local">: YYYY-MM-DDTHH:mm. */
+export function istDateTimeLocal(d: string | Date): string {
+  const date = asDate(d);
+  if (!date) return '';
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: IST, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(date);
+  const get = (t: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === t)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}`;
+}
+
 /** Distance helper (km) for nearby businesses. */
 export function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6371;

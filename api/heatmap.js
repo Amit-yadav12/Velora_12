@@ -1,5 +1,5 @@
 import supabase from './db-client.js';
-import { cors } from './_lib/security.js';
+import { cors, enforceRateLimit } from './_lib/security.js';
 import { syntheticHeatmap } from './_lib/synthetic.js';
 
 // Live availability heatmap + AI availability predictor. Returns predicted
@@ -8,6 +8,7 @@ import { syntheticHeatmap } from './_lib/synthetic.js';
 export default async function handler(req, res) {
   cors(res);
   if (req.method === 'OPTIONS') return res.status(204).end();
+  if (!enforceRateLimit(req, res, 'heatmap', { limit: 120, windowMs: 60_000 })) return;
   try {
     const { business_id } = req.query;
     // Synthetic businesses get deterministic predictions instantly.
