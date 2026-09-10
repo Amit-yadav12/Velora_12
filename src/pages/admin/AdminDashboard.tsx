@@ -14,6 +14,8 @@ import { getSyntheticReviews } from '../../lib/synthetic';
 import { resetDemo } from '../../lib/demoStore';
 import { toast } from '../../services/events';
 import { isActionable } from '../../lib/bookingStatus';
+import type { ConsoleAction } from '../../services/consoleActions';
+import type { ConsoleBooking, ReviewRow } from '../../lib/types';
 
 export default function AdminDashboard() {
   const { city } = useLocation();
@@ -23,12 +25,12 @@ export default function AdminDashboard() {
 
   // ---- Every number on this page is DERIVED from the shared dataset ----
   const m = useMemo(() => revenueMetrics(bookings), [bookings]);
-  const activeServices = useMemo(() => services.filter((s: any) => s.active !== false), [services]);
-  const activeStaff = useMemo(() => staff.filter((s: any) => s.active !== false), [staff]);
+  const activeServices = useMemo(() => services.filter((s) => s.active !== false), [services]);
+  const activeStaff = useMemo(() => staff.filter((s) => s.active !== false), [staff]);
   const reviews = useMemo(() => {
-    const list = businesses.filter((b: any) => b.review_count > 0);
-    const total = list.reduce((s: number, b: any) => s + Number(b.review_count || 0), 0);
-    const avg = list.length ? list.reduce((s: number, b: any) => s + Number(b.rating || 0) * Number(b.review_count || 0), 0) / (total || 1) : 0;
+    const list = businesses.filter((b) => b.review_count > 0);
+    const total = list.reduce((s: number, b) => s + Number(b.review_count || 0), 0);
+    const avg = list.length ? list.reduce((s: number, b) => s + Number(b.rating || 0) * Number(b.review_count || 0), 0) / (total || 1) : 0;
     return { total, avg: Math.round(avg * 10) / 10 };
   }, [businesses]);
 
@@ -37,17 +39,17 @@ export default function AdminDashboard() {
     // the dataset changes (real-time updates).
     () => bookings
       // eslint-disable-next-line react-hooks/purity
-      .filter((b: any) => isActionable(b.status) && new Date(b.start_time).getTime() > Date.now())
-      .sort((a: any, b: any) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
+      .filter((b) => isActionable(b.status) && new Date(b.start_time).getTime() > Date.now())
+      .sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
       .slice(0, 8),
     [bookings],
   );
   const latest = useMemo(
-    () => [...bookings].sort((a: any, b: any) => new Date(b.created_at || b.start_time).getTime() - new Date(a.created_at || a.start_time).getTime()).slice(0, 6),
+    () => [...bookings].sort((a, b) => new Date(b.created_at || b.start_time).getTime() - new Date(a.created_at || a.start_time).getTime()).slice(0, 6),
     [bookings],
   );
 
-  const act = async (b: any, action: any) => {
+  const act = async (b: ConsoleBooking, action: ConsoleAction) => {
     setBusy(b.id);
     const ok = await applyBookingAction(b, action);
     if (ok) {
@@ -72,10 +74,10 @@ export default function AdminDashboard() {
   const recentReviews = useMemo(() => {
     // Deterministic demo reviews for the demo businesses (same generator the
     // customer profile uses — one source of truth).
-    const rows: any[] = [];
-    for (const b of businesses.filter((x: any) => x.demo).slice(0, 2)) {
+    const rows: (ReviewRow & { biz: string })[] = [];
+    for (const b of businesses.filter((x) => x.demo).slice(0, 2)) {
       try {
-        getSyntheticReviews(b.id, 2).forEach((r: any) => rows.push({ ...r, biz: b.name }));
+        getSyntheticReviews(b.id, 2).forEach((r) => rows.push({ ...r, biz: b.name }));
       } catch { /* non-fatal */ }
     }
     return rows.slice(0, 4);
@@ -95,7 +97,7 @@ export default function AdminDashboard() {
     { label: 'Total revenue', value: inr(m.totalRevenue), icon: IndianRupee, color: '#34d399', sub: `Avg ${inr(m.avgValue)}/booking` },
     { label: 'Upcoming appointments', value: m.upcomingCount, icon: CalendarClock, color: '#818cf8', sub: `${inr(m.upcomingRevenue)} booked` },
     { label: "Today's appointments", value: m.todayCount, icon: Clock, color: '#f59e0b', sub: `${inr(m.todayRevenue)} today` },
-    { label: 'Total customers', value: customers.length, icon: Users, color: '#f472b6', sub: `${customers.filter((c: any) => c.status === 'vip').length} VIP` },
+    { label: 'Total customers', value: customers.length, icon: Users, color: '#f472b6', sub: `${customers.filter((c) => c.status === 'vip').length} VIP` },
     { label: 'Active staff', value: activeStaff.length, icon: UserCog, color: '#22d3ee', sub: `${staff.length} total` },
     { label: 'Active services', value: activeServices.length, icon: Sparkles, color: '#a78bfa', sub: `${services.length} total` },
     { label: 'Reviews', value: reviews.total, icon: Star, color: '#fbbf24', sub: reviews.avg ? `${reviews.avg} avg rating` : 'No reviews yet' },
@@ -163,7 +165,7 @@ export default function AdminDashboard() {
             <EmptyState title="No upcoming appointments" sub="New bookings appear here instantly — no refresh needed." />
           ) : (
             <div className="space-y-2">
-              {upcoming.map((b: any) => (
+              {upcoming.map((b) => (
                 <div key={b.id} className="flex items-center gap-3 rounded-xl border border-app p-3 hover:border-[var(--border-strong)] transition-colors">
                   <div className="h-10 w-10 rounded-xl grad-btn grid place-items-center text-white text-xs font-semibold shrink-0">
                     {ist(b.start_time, { day: 'numeric' })}
@@ -202,7 +204,7 @@ export default function AdminDashboard() {
             <EmptyState title="No bookings yet" sub="Try the demo customer app — book something and watch it appear here live." />
           ) : (
             <div className="space-y-2">
-              {latest.map((b: any) => (
+              {latest.map((b) => (
                 <div key={b.id} className="flex items-center gap-4 rounded-xl border border-app p-3">
                   <div className="h-10 w-10 rounded-xl grad-btn grid place-items-center text-white text-xs font-semibold shrink-0">{ist(b.start_time, { day: 'numeric' })}</div>
                   <div className="flex-1 min-w-0">
@@ -231,7 +233,7 @@ export default function AdminDashboard() {
             </div>
             <div className="grid grid-cols-2 gap-3 pt-2">
               <div className="rounded-xl border border-app p-3"><p className="text-xs text-dim">Businesses</p><p className="text-lg font-semibold">{businesses.length}</p></div>
-              <div className="rounded-xl border border-app p-3"><p className="text-xs text-dim">Active now</p><p className="text-lg font-semibold">{businesses.filter((b: any) => b.active !== false).length}</p></div>
+              <div className="rounded-xl border border-app p-3"><p className="text-xs text-dim">Active now</p><p className="text-lg font-semibold">{businesses.filter((b) => b.active !== false).length}</p></div>
               <div className="rounded-xl border border-app p-3"><p className="text-xs text-dim">Sales this week</p><p className="text-lg font-semibold">{m.weekCount}</p></div>
               <div className="rounded-xl border border-app p-3"><p className="text-xs text-dim">Avg value</p><p className="text-lg font-semibold">{inr(m.avgValue)}</p></div>
             </div>
@@ -239,7 +241,7 @@ export default function AdminDashboard() {
               <div className="pt-4 mt-4 border-t border-app">
                 <p className="text-xs text-dim uppercase tracking-wide mb-2">Top services</p>
                 <div className="space-y-1.5">
-                  {topServices.map(([name, st]: any) => (
+                  {topServices.map(([name, st]) => (
                     <div key={name} className="flex items-center justify-between text-sm">
                       <span className="truncate mr-3">{name}</span>
                       <span className="text-dim shrink-0 text-xs">{st.n}× · {inr(st.revenue)}</span>
@@ -260,7 +262,7 @@ export default function AdminDashboard() {
             <span className="text-xs text-dim inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-400" /> {reviews.avg} avg · {reviews.total} reviews</span>
           </div>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {recentReviews.map((r: any, i: number) => (
+            {recentReviews.map((r, i: number) => (
               <div key={i} className="rounded-xl border border-app p-3.5">
                 <div className="flex items-center gap-2 mb-1.5">
                   <div className="h-7 w-7 rounded-full grad-btn grid place-items-center text-white text-[10px] font-semibold shrink-0">{r.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2)}</div>

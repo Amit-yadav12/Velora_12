@@ -5,10 +5,11 @@ import { Navigation, MapPin, Star, Clock } from 'lucide-react';
 import { categoryIcon, categoryColor, imgOnError } from '../../lib/product';
 import { formatDistance, formatTravel } from '../../lib/geo';
 import { fetchNearest } from '../../lib/hybridData';
+import type { NearestData } from '../../lib/types';
 
 // "Nearest everything" — the single closest option in each key category.
 export default function NearestEverything({ lat, lng, city }: { lat: number; lng: number; city?: string }) {
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<NearestData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -53,7 +54,7 @@ export default function NearestEverything({ lat, lng, city }: { lat: number; lng
 
       {/* Grid: nearest per category */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-        {items.map((b: any, i: number) => {
+        {items.map((b, i: number) => {
           const Icon = categoryIcon(b.category);
           const color = categoryColor(b.category);
           return (

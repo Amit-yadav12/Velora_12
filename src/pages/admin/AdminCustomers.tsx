@@ -4,23 +4,25 @@ import { PageHeader, Spinner, EmptyState, DemoBadge, Modal, StatusBadge, StatCar
 import { useConsoleData } from '../../lib/useConsoleData';
 import { inr, istDate, istTime } from '../../lib/format';
 import { Users, Wallet as WalletIcon, Repeat } from 'lucide-react';
+import type { ReactNode } from 'react';
+import type { CustomerRecord } from '../../lib/metrics';
 
 export default function AdminCustomers() {
   const { customers, bookings, loading } = useConsoleData();
-  const [detail, setDetail] = useState<any>(null);
+  const [detail, setDetail] = useState<CustomerRecord | null>(null);
   const [q, setQ] = useState('');
 
   const filtered = useMemo(() => {
     if (!q.trim()) return customers;
     const s = q.toLowerCase();
-    return customers.filter((c: any) => `${c.name} ${c.email} ${c.phone || ''}`.toLowerCase().includes(s));
+    return customers.filter((c) => `${c.name} ${c.email} ${c.phone || ''}`.toLowerCase().includes(s));
   }, [customers, q]);
 
   const stats = useMemo(() => {
-    const totalSpend = customers.reduce((s: number, c: any) => s + c.totalSpend, 0);
+    const totalSpend = customers.reduce((s: number, c) => s + c.totalSpend, 0);
     return {
       total: customers.length,
-      vip: customers.filter((c: any) => c.status === 'vip').length,
+      vip: customers.filter((c) => c.status === 'vip').length,
       spend: totalSpend,
       avg: customers.length ? Math.round(totalSpend / customers.length) : 0,
     };
@@ -29,8 +31,8 @@ export default function AdminCustomers() {
   const customerBookings = useMemo(() => {
     if (!detail) return [];
     return bookings
-      .filter((b: any) => (b.customer_email || '').toLowerCase() === detail.email.toLowerCase())
-      .sort((a: any, b: any) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+      .filter((b) => (b.customer_email || '').toLowerCase() === detail.email.toLowerCase())
+      .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
   }, [detail, bookings]);
 
   if (loading) return <Spinner />;
@@ -68,7 +70,7 @@ export default function AdminCustomers() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((c: any) => (
+                {filtered.map((c) => (
                   <tr key={c.id} className="border-b border-app last:border-0 hover:bg-[var(--surface-hover)] transition-colors cursor-pointer" onClick={() => setDetail(c)}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
@@ -133,7 +135,7 @@ export default function AdminCustomers() {
                 <p className="text-sm text-dim">No bookings recorded.</p>
               ) : (
                 <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-                  {customerBookings.map((b: any) => (
+                  {customerBookings.map((b) => (
                     <div key={b.id} className="flex items-center gap-3 rounded-xl border border-app p-3">
                       <div className="h-9 w-9 rounded-lg grad-btn grid place-items-center text-white text-[10px] font-semibold shrink-0">
                         {istDate(b.start_time).slice(0, 6)}
@@ -159,7 +161,7 @@ export default function AdminCustomers() {
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: any }) {
+function MiniStat({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-xl border border-app p-3">
       <p className="text-[11px] text-dim uppercase tracking-wide">{label}</p>

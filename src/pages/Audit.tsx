@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react';
 import { Shield } from 'lucide-react';
 import { PageHeader, Spinner, EmptyState } from '../components/ui';
 import { apiGet } from '../lib/api';
+import type { AuditLog } from '../lib/types';
 
 export default function Audit() {
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
-  useEffect(() => { apiGet('/api/audit').then(d => setLogs(Array.isArray(d) ? d : [])).catch(() => {}).finally(() => setLoading(false)); }, []);
+  useEffect(() => { apiGet<AuditLog[]>('/api/audit').then(d => setLogs(Array.isArray(d) ? d : [])).catch(() => {}).finally(() => setLoading(false)); }, []);
   if (loading) return <Spinner />;
   return (
     <div>

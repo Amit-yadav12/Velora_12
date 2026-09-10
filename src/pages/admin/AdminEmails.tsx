@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Clock, AlertTriangle, Mail } from 'lucide-react';
+import { CheckCircle2, Clock, AlertTriangle, Mail, type LucideIcon } from 'lucide-react';
 import { PageHeader, Spinner, EmptyState } from '../../components/ui';
 import { apiGet } from '../../lib/api';
 import supabase from '../../lib/supabase';
+import type { EmailLogRow } from '../../lib/types';
 
-const statusMeta: Record<string, { icon: any; color: string; label: string }> = {
+const statusMeta: Record<string, { icon: LucideIcon; color: string; label: string }> = {
   sent: { icon: CheckCircle2, color: '#34d399', label: 'Sent' },
   queued: { icon: Clock, color: '#f59e0b', label: 'Queued' },
   failed: { icon: AlertTriangle, color: '#ef4444', label: 'Failed' },
@@ -12,9 +13,9 @@ const statusMeta: Record<string, { icon: any; color: string; label: string }> = 
 };
 
 export default function AdminEmails() {
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<EmailLogRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const load = () => apiGet('/api/admin?resource=emails').then((d) => { setLogs(Array.isArray(d) ? d : []); setLoading(false); }).catch(() => setLoading(false));
+  const load = () => apiGet<EmailLogRow[]>('/api/admin?resource=emails').then((d) => { setLogs(Array.isArray(d) ? d : []); setLoading(false); }).catch(() => setLoading(false));
   useEffect(() => { load(); }, []);
   useEffect(() => {
     const ch = supabase.channel('adm-email').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'email_log' }, load).subscribe();

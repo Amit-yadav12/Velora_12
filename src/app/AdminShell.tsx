@@ -12,6 +12,7 @@ import { apiGet, apiSend } from '../lib/api';
 import { listLocalNotificationsFor, markAllLocalNotificationsRead, markLocalNotificationRead } from '../lib/offlineStore';
 import { onNotifsChanged, toast } from '../services/events';
 import { resetDemo } from '../lib/demoStore';
+import type { NotificationRow } from '../lib/types';
 
 const items = [
   { to: '/admin', label: 'Dashboard', icon: LayoutGrid },
@@ -31,22 +32,22 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [bellOpen, setBellOpen] = useState(false);
-  const [notifs, setNotifs] = useState<any[]>([]);
+  const [notifs, setNotifs] = useState<NotificationRow[]>([]);
   const unread = notifs.filter((n) => !n.read).length;
   const bellRef = useRef<HTMLDivElement>(null);
 
   const loadNotifs = () => {
     // Server notifications (role-scoped, authorization-checked) + demo tenant.
-    apiGet('/api/notifications').then((d) => {
-      const server = Array.isArray(d) ? d : [];
-      const local = listLocalNotificationsFor('admin') as any[];
-      const ids = new Set(server.map((n: any) => String(n.id)));
-      const merged = [...server, ...local.filter((n: any) => !ids.has(String(n.id)))]
-        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    apiGet<NotificationRow[]>('/api/notifications').then((d) => {
+      const server: NotificationRow[] = Array.isArray(d) ? d : [];
+      const local = listLocalNotificationsFor('admin');
+      const ids = new Set(server.map((n) => String(n.id)));
+      const merged: NotificationRow[] = [...server, ...local.filter((n) => !ids.has(String(n.id)))]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         .slice(0, 30);
       setNotifs(merged);
     }).catch(() => {
-      setNotifs(listLocalNotificationsFor('admin') as any[]);
+      setNotifs(listLocalNotificationsFor('admin'));
     });
   };
 
@@ -59,7 +60,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     return () => { supabase.removeChannel(ch); off(); window.removeEventListener('click', click); };
   }, []);
 
-  const markRead = async (n: any) => {
+  const markRead = async (n: NotificationRow) => {
     if (n.local) markLocalNotificationRead(String(n.id));
     else { try { await apiSend('/api/notifications', 'PUT', { id: n.id }); } catch { /* non-fatal */ } }
     loadNotifs();

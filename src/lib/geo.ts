@@ -1,4 +1,4 @@
-export interface Coords { lat: number; lng: number; label?: string; }
+export interface Coords { lat: number; lng: number; label?: string; city?: string; }
 
 export function haversineKm(a: Coords, b: Coords): number {
   const R = 6371;

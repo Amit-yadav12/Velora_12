@@ -67,7 +67,7 @@ function read<T>(key: string): T[] {
   }
 }
 
-function write(key: string, arr: any[]): void {
+function write<T>(key: string, arr: T[]): void {
   try {
     localStorage.setItem(key, JSON.stringify(arr.slice(0, 100)));
   } catch { /* non-fatal */ }

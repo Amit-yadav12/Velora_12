@@ -10,6 +10,8 @@ import { saveDemoBusiness } from '../../lib/demoStore';
 import { apiSend } from '../../lib/api';
 import { toast } from '../../services/events';
 import { inputCls } from '../../components/ui';
+import type { LucideIcon } from 'lucide-react';
+import { errMsg } from '../../lib/types';
 
 type Role = 'customer' | 'admin';
 type Mode = 'choose' | 'signin' | 'register' | 'bizreg';
@@ -75,8 +77,8 @@ export default function Welcome() {
         if (error) throw error;
         nav(homeFor(role || 'customer'), { replace: true });
       }
-    } catch (e: any) {
-      setErr(friendly(e.message));
+    } catch (e: unknown) {
+      setErr(friendly(errMsg(e)));
       setLoading(false);
     }
   };
@@ -88,8 +90,8 @@ export default function Welcome() {
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/welcome` });
       if (error) throw error;
       setInfo(`Reset link sent to ${email}. Check your inbox (and spam).`);
-    } catch (e: any) {
-      setErr(friendly(e.message));
+    } catch (e: unknown) {
+      setErr(friendly(errMsg(e)));
     } finally {
       setLoading(false);
     }
@@ -128,8 +130,8 @@ export default function Welcome() {
         throw error;
       }
       nav(homeFor(role || 'customer'), { replace: true });
-    } catch (e: any) {
-      setErr(friendly(e.message));
+    } catch (e: unknown) {
+      setErr(friendly(errMsg(e)));
       setLoading(false);
     }
   };
@@ -185,8 +187,8 @@ export default function Welcome() {
       });
       toast('Business account created — welcome to Velora', 'success');
       nav('/admin', { replace: true });
-    } catch (e: any) {
-      setErr(friendly(e?.message) || 'Could not create the business account. Please try again.');
+    } catch (e: unknown) {
+      setErr(friendly(errMsg(e)) || 'Could not create the business account. Please try again.');
       setLoading(false);
     }
   };
@@ -251,11 +253,14 @@ export default function Welcome() {
             {(isAdmin
               ? [['Live dashboard', CalendarCheck], ['Manage staff', User], ['Instant sync', Sparkles]]
               : [['Instant booking', CalendarCheck], ['Nearest first', MapPin], ['AI concierge', Sparkles]]
-            ).map(([t, Icon]: any) => (
-              <span key={t as string} className="glass rounded-xl px-4 py-2 text-sm flex items-center gap-2">
-                <Icon className="h-4 w-4 text-emerald-400" /> {t as string}
-              </span>
-            ))}
+            ).map(([t, Icon]: (string | LucideIcon)[]) => {
+              const I = Icon as LucideIcon;
+              return (
+                <span key={t as string} className="glass rounded-xl px-4 py-2 text-sm flex items-center gap-2">
+                  <I className="h-4 w-4 text-emerald-400" /> {t as string}
+                </span>
+              );
+            })}
           </div>
         </div>
         <p className="relative text-xs text-dim">Secure sign-in · Google · Email</p>
@@ -461,7 +466,7 @@ export default function Welcome() {
   );
 }
 
-function RoleCard({ onClick, icon: Icon, title, sub, tint, delay }: any) {
+function RoleCard({ onClick, icon: Icon, title, sub, tint, delay }: { onClick: () => void; icon: LucideIcon; title: string; sub: string; tint: string; delay: number }) {
   return (
     <motion.button
       onClick={onClick}

@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import supabase from '../../lib/supabase';
 import { apiGet } from '../../lib/api';
 import { listLocalBookings } from '../../lib/offlineStore';
+import type { ConsoleBooking } from '../../lib/types';
 
 export default function Profile() {
   const { profile, user, refresh } = useAuth();
@@ -17,21 +18,22 @@ export default function Profile() {
   useEffect(() => { setName(profile?.full_name || ''); }, [profile]);
   useEffect(() => {
     if (!profile?.email) return;
-    const apply = (server: any[]) => {
-      const refs = new Set(server.map((b: any) => b.ref));
+    const apply = (server: ConsoleBooking[]) => {
+      const refs = new Set(server.map((b) => b.ref));
       const local = listLocalBookings(profile.email).filter((b) => !refs.has(b.ref));
       const all = [...server, ...local];
       const now = Date.now();
       setStats({ total: all.length, upcoming: all.filter(b => new Date(b.start_time).getTime() > now && b.status !== 'cancelled').length });
     };
-    apiGet(`/api/my-bookings?email=${encodeURIComponent(profile.email)}`)
-      .then((d: any[]) => apply(Array.isArray(d) ? d : []))
+    apiGet<ConsoleBooking[]>(`/api/my-bookings?email=${encodeURIComponent(profile.email)}`)
+      .then((d) => apply(Array.isArray(d) ? d : []))
       .catch(() => apply([]));
   }, [profile?.email]);
 
   const save = async () => {
+    if (!user) return;
     setSaving(true); setSaved(false);
-    await supabase.from('profiles').update({ full_name: name, phone }).eq('id', user!.id);
+    await supabase.from('profiles').update({ full_name: name, phone }).eq('id', user.id);
     refresh(); setSaving(false); setSaved(true); setTimeout(() => setSaved(false), 2000);
   };
 

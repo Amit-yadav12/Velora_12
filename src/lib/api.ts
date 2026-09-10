@@ -21,7 +21,7 @@ async function timedFetch(url: string, init: RequestInit = {}, timeoutMs = 8000)
   }
 }
 
-export async function apiGet(path: string, opts?: { timeout?: number }) {
+export async function apiGet<T = unknown>(path: string, opts?: { timeout?: number }): Promise<T> {
   const timeout = opts?.timeout ?? 8000;
   const res = await timedFetch(path, { headers: { ...(await authHeaders()) } }, timeout);
   if (!res.ok) {
@@ -31,7 +31,7 @@ export async function apiGet(path: string, opts?: { timeout?: number }) {
   return res.json();
 }
 
-export async function apiSend(path: string, method: string, body: any, opts?: { timeout?: number }) {
+export async function apiSend<T = unknown>(path: string, method: string, body: unknown, opts?: { timeout?: number }): Promise<T> {
   const timeout = opts?.timeout ?? 10000;
   const res = await timedFetch(
     path,
@@ -54,7 +54,8 @@ export async function apiGetWithFallback<T>(path: string, fallback: () => T, opt
     if (Array.isArray(data) && data.length === 0) {
       return fallback();
     }
-    if (data && typeof data === 'object' && Array.isArray((data as any).results) && (data as any).results.length === 0) {
+    const results = data && typeof data === 'object' ? (data as { results?: unknown }).results : undefined;
+    if (Array.isArray(results) && results.length === 0) {
       return fallback();
     }
     return data as T;

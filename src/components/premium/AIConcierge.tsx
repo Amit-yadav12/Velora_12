@@ -4,8 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, X, Send, Loader2, Navigation, ArrowRight, Mic } from 'lucide-react';
 import { apiSend } from '../../lib/api';
 import { useLocation } from '../../contexts/LocationContext';
+import type { ConciergeAction } from '../../lib/types';
 
-interface Msg { role: 'user' | 'ai'; text: string; action?: any; }
+interface Msg { role: 'user' | 'ai'; text: string; action?: ConciergeAction; }
 const SUGGESTIONS = ['Book a dentist tomorrow afternoon', 'Find the nearest salon', 'Show my appointments', 'Reschedule my booking'];
 
 export default function AIConcierge() {
@@ -24,13 +25,13 @@ export default function AIConcierge() {
     if (!text.trim()) return;
     setMsgs(m => [...m, { role: 'user', text }]); setInput(''); setThinking(true);
     try {
-      const res = await apiSend('/api/concierge', 'POST', { message: text, city: city.name, lat: mapCenter.lat, lng: mapCenter.lng });
+      const res = await apiSend<{ reply: string; action?: ConciergeAction }>('/api/concierge', 'POST', { message: text, city: city.name, lat: mapCenter.lat, lng: mapCenter.lng });
       setMsgs(m => [...m, { role: 'ai', text: res.reply, action: res.action }]);
     } catch { setMsgs(m => [...m, { role: 'ai', text: 'Sorry, something went wrong. Please try again.' }]); }
     finally { setThinking(false); }
   };
 
-  const runAction = (action: any) => {
+  const runAction = (action?: ConciergeAction | null) => {
     if (!action) return;
     if (action.type === 'directions' && action.maps_link) { window.open(action.maps_link, '_blank'); return; }
     if (action.to) { nav(action.to); setOpen(false); }
@@ -38,11 +39,11 @@ export default function AIConcierge() {
 
   // Voice input via Web Speech API (progressive enhancement)
   const startVoice = () => {
-    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { send('Find the nearest clinic'); return; }
     const rec = new SR(); rec.lang = 'en-US'; rec.interimResults = false;
     setListening(true);
-    rec.onresult = (e: any) => { const t = e.results[0][0].transcript; setInput(t); setListening(false); send(t); };
+    rec.onresult = (e: SpeechRecognitionEvent) => { const t = e.results[0][0].transcript; setInput(t); setListening(false); send(t); };
     rec.onerror = () => setListening(false); rec.onend = () => setListening(false);
     rec.start();
   };

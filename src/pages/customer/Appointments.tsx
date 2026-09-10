@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
@@ -18,8 +18,9 @@ import { isCancellable } from '../../lib/bookingStatus';
 import { googleCalendarUrl } from '../../lib/calendar';
 import { publicOrigin } from '../../lib/site';
 import { Modal } from '../../components/ui';
+import { errMsg, type ConsoleBooking, type TravelPlan } from '../../lib/types';
 
-function gcalLink(b: any) {
+function gcalLink(b: ConsoleBooking) {
   return googleCalendarUrl({
     title: `${b.service_name} — ${b.resource_name}`,
     start: b.start_time,
@@ -30,12 +31,12 @@ function gcalLink(b: any) {
 }
 
 function LeaveNow({ bookingRef, origin }: { bookingRef: string; origin?: { lat: number; lng: number } | null }) {
-  const [plan, setPlan] = useState<any>(null);
+  const [plan, setPlan] = useState<TravelPlan | null>(null);
   useEffect(() => {
     const geo = origin ? `&origin_lat=${origin.lat}&origin_lng=${origin.lng}` : '';
     if (!bookingRef) return;
     fetch(`/api/travel-planner?booking_ref=${encodeURIComponent(bookingRef)}${geo}`).then(r => r.json()).then(setPlan).catch(() => {});
-  }, [bookingRef, origin?.lat, origin?.lng]);
+  }, [bookingRef, origin]);
   if (!plan || plan.error) return null;
   const soon = plan.mins_until_leave <= 60 && plan.mins_until_leave > -30;
   return (
@@ -53,18 +54,18 @@ function LeaveNow({ bookingRef, origin }: { bookingRef: string; origin?: { lat: 
 export default function Appointments() {
   const { profile, user } = useAuth();
   const { location } = useLocation();
-  const [bookings, setBookings] = useState<any[]>([]);
+  const [bookings, setBookings] = useState<ConsoleBooking[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming');
-  const [resched, setResched] = useState<any>(null);
+  const [resched, setResched] = useState<ConsoleBooking | null>(null);
   const [newTime, setNewTime] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [expanded, setExpanded] = useState<number | string | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     const email = profile?.email || user?.email || '';
-    const d = await apiGet(`/api/my-bookings?email=${encodeURIComponent(email)}`).catch(() => []);
+    const d = await apiGet<ConsoleBooking[]>(`/api/my-bookings?email=${encodeURIComponent(email)}`).catch(() => []);
     const server = Array.isArray(d) ? d : [];
     // Merge local/demo bookings (synthetic + offline continuity), de-duped by ref.
     const local = listLocalBookings(email).map((b) => ({
@@ -73,13 +74,13 @@ export default function Appointments() {
       status: b.status, price: b.price, location: b.location, local: true,
       qr_payload: b.qr_salt ? localVerifyUrl(b.ref, b.qr_salt) : null,
     }));
-    const refs = new Set(server.map((b: any) => b.ref));
+    const refs = new Set(server.map((b) => b.ref));
     const merged = [...server, ...local.filter((b) => !refs.has(b.ref))]
-      .sort((a: any, b: any) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+      .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
     setBookings(merged); setLoading(false);
-  };
-  useEffect(() => { if (profile?.email || user?.email) load(); else setLoading(false); }, [profile?.email, user?.email]);
-  useEffect(() => { const ch = supabase.channel('appts').on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => load()).subscribe(); const off = onBookingsChanged(() => load()); return () => { supabase.removeChannel(ch); off(); }; }, [profile?.email, user?.email]);
+  }, [profile?.email, user?.email]);
+  useEffect(() => { if (profile?.email || user?.email) load(); else setLoading(false); }, [load, profile?.email, user?.email]);
+  useEffect(() => { const ch = supabase.channel('appts').on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => load()).subscribe(); const off = onBookingsChanged(() => load()); return () => { supabase.removeChannel(ch); off(); }; }, [load]);
 
   const cancel = async (id: number | string) => {
     const target = bookings.find((b) => String(b.id) === String(id));
@@ -97,7 +98,7 @@ export default function Appointments() {
   };
 
   /** QR ticket modal — regenerate the payload for local bookings on demand. */
-  const [ticket, setTicket] = useState<any>(null);
+  const [ticket, setTicket] = useState<ConsoleBooking | null>(null);
   const ticketQr = useMemo(() => {
     if (!ticket) return '';
     if (ticket.qr_payload) return ticket.qr_payload;
@@ -120,7 +121,8 @@ export default function Appointments() {
       const px = 1024;
       const canvas = document.createElement('canvas');
       canvas.width = px; canvas.height = px;
-      const ctx = canvas.getContext('2d')!;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('no canvas ctx');
       ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, px, px);
       const pad = Math.round(px * 0.08);
       ctx.drawImage(img, pad, pad, px - pad * 2, px - pad * 2);
@@ -129,24 +131,25 @@ export default function Appointments() {
       if (!blob) throw new Error('blob');
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `Velora-${ticket.ref}-ticket.png`;
+      a.download = `Velora-${ticket?.ref || 'ticket'}-ticket.png`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     } catch { toast('Could not export the QR — try again.', 'error'); }
   };
   const doResched = async () => {
+    if (!resched) return;
     setErr(''); setBusy(true);
     try {
       const iso = new Date(newTime).toISOString();
       if (resched.local) {
-        const dur = new Date(resched.end_time).getTime() - new Date(resched.start_time).getTime();
+        const dur = new Date(resched.end_time || resched.start_time).getTime() - new Date(resched.start_time).getTime();
         updateLocalBooking(resched.id, { start_time: iso, end_time: new Date(new Date(iso).getTime() + dur).toISOString() });
       } else {
         await apiSend('/api/bookings', 'PUT', { id: resched.id, action: 'reschedule', start_time: iso });
       }
       setResched(null); load(); toast('Booking rescheduled', 'success');
     }
-    catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+    catch (e: unknown) { setErr(errMsg(e)); } finally { setBusy(false); }
   };
 
   const { upcoming, past } = useMemo(() => {

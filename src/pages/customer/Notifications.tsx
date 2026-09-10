@@ -6,22 +6,23 @@ import supabase from '../../lib/supabase';
 import { useLocation } from '../../contexts/LocationContext';
 import { markLocalNotificationRead, listLocalNotificationsFor } from '../../lib/offlineStore';
 import { onNotifsChanged } from '../../services/events';
+import type { NotificationRow } from '../../lib/types';
 
 const iconFor = (t: string) => t === 'success' ? CheckCircle2 : t === 'warning' ? AlertTriangle : Info;
 const colorFor = (t: string) => t === 'success' ? '#34d399' : t === 'warning' ? '#f59e0b' : '#60a5fa';
 
 export default function Notifications() {
   const { city } = useLocation();
-  const [items, setItems] = useState<any[]>([]);
+  const [items, setItems] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const load = () => {
     // Customer-audience ONLY — business-side notifications are never shown here.
     const local = listLocalNotificationsFor('customer');
     fetch('/api/notifications?audience=customer').then(r => r.json()).then(d => {
-      const server = Array.isArray(d) ? d.filter((n: any) => n.audience !== 'admin') : [];
-      const seen = new Set(server.map((n: any) => `${n.title}|${n.body}`));
+      const server = Array.isArray(d) ? d.filter((n: NotificationRow) => n.audience !== 'admin') : [];
+      const seen = new Set(server.map((n: NotificationRow) => `${n.title}|${n.body}`));
       const merged = [...server, ...local.filter((n) => !seen.has(`${n.title}|${n.body}`))]
-        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        .sort((a: NotificationRow, b: NotificationRow) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setItems(merged); setLoading(false);
     }).catch(() => { setItems(local); setLoading(false); });
   };

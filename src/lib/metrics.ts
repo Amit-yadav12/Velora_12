@@ -10,16 +10,22 @@
 //   • completedRevenue is the realised subset; upcomingRevenue is the
 //     not-yet-delivered subset. completed + upcoming = totalRevenue.
 
-import { REVENUE_STATUSES } from './bookingStatus';
+import { REVENUE_STATUSES, type BookingStatus } from './bookingStatus';
 
 export interface BookingLike {
   id: number | string;
   ref: string;
   status: string;
-  price: number | string;
+  price?: number | string | null;
   start_time: string;
-  end_time?: string;
+  end_time?: string | null;
   created_at?: string;
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string | null;
+  name?: string;
+  email?: string;
+  phone?: string | null;
 }
 
 export interface RevenueMetrics {
@@ -43,10 +49,10 @@ export interface RevenueMetrics {
 }
 
 function counts(b: BookingLike): boolean {
-  return REVENUE_STATUSES.includes(b.status as any);
+  return REVENUE_STATUSES.includes(b.status as BookingStatus);
 }
 
-const num = (v: any) => Number(v) || 0;
+const num = (v: unknown) => Number(v) || 0;
 
 function startOfDay(d: Date): number {
   const x = new Date(d);
@@ -118,8 +124,8 @@ export interface CustomerRecord {
  * customer profiles. Nothing is double-counted.
  */
 export function deriveCustomers(
-  bookings: BookingLike[] & any[],
-  explicit: { id: string; email: string; full_name?: string; name?: string; phone?: string; created_at?: string }[] = [],
+  bookings: BookingLike[],
+  explicit: { id: string | number; email: string; full_name?: string; name?: string; phone?: string; created_at?: string }[] = [],
   now = new Date(),
 ): CustomerRecord[] {
   const byEmail = new Map<string, CustomerRecord>();
@@ -148,12 +154,12 @@ export function deriveCustomers(
   for (const b of bookings) {
     const email = key(b.customer_email || b.email || '');
     if (!email) continue;
-    const rec = ensure(email, b.customer_name || b.name, b.customer_phone || b.phone, b.created_at);
+    const rec = ensure(email, b.customer_name || b.name, b.customer_phone || b.phone || undefined, b.created_at);
     rec.totalBookings += 1;
     const t = new Date(b.start_time).getTime();
     if (b.status === 'completed') rec.completedBookings += 1;
     if (b.status === 'cancelled') rec.cancelledBookings += 1;
-    if (counts(b as BookingLike)) {
+    if (counts(b)) {
       rec.totalSpend += num(b.price);
       if (t > nowMs) rec.upcomingBookings += 1;
     }

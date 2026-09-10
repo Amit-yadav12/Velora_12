@@ -5,13 +5,13 @@ import { storageGet, storageSet } from '../../lib/storage';
 import { LogoMark } from '../Logo';
 
 export default function InstallPrompt() {
-  const [deferred, setDeferred] = useState<any>(null);
+  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    const handler = (e: any) => {
+    const handler = (e: Event) => {
       e.preventDefault();
-      setDeferred(e);
+      setDeferred(e as BeforeInstallPromptEvent);
       if (!storageGet('velora-install-dismissed')) setShow(true);
     };
     window.addEventListener('beforeinstallprompt', handler);

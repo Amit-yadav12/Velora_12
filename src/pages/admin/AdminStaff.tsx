@@ -5,6 +5,8 @@ import { useConsoleData } from '../../lib/useConsoleData';
 import { saveDemoStaff, updateDemoStaff, deleteDemoStaff } from '../../lib/demoStore';
 import { apiSend } from '../../lib/api';
 import { toast } from '../../services/events';
+import { errMsg } from '../../lib/types';
+import type { BusinessStaff } from '../../lib/product';
 
 const ALL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -15,14 +17,14 @@ interface StaffForm {
 export default function AdminStaff() {
   const { staff, businesses, services, bookings, loading, reload } = useConsoleData();
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<BusinessStaff | null>(null);
   const [form, setForm] = useState<StaffForm>({ business_id: '', name: '', role: '', service_ids: [], days: [...ALL_DAYS], start: '10:00', end: '19:00' });
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
-  const demoBiz = useMemo(() => businesses.filter((b: any) => String(b.id).startsWith('demo-biz-')), [businesses]);
-  const bizName = (id: any) => businesses.find((b) => String(b.id) === String(id))?.name || '—';
-  const bizServices = (bizId: any) => services.filter((s: any) => String(s.business_id) === String(bizId));
+  const demoBiz = useMemo(() => businesses.filter((b) => String(b.id).startsWith('demo-biz-')), [businesses]);
+  const bizName = (id: number | string) => businesses.find((b) => String(b.id) === String(id))?.name || '—';
+  const bizServices = (bizId: number | string) => services.filter((s) => String(s.business_id) === String(bizId));
 
   const upcomingFor = useMemo(() => {
     const map = new Map<string, number>();
@@ -37,14 +39,14 @@ export default function AdminStaff() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ business_id: demoBiz[0]?.id || '', name: '', role: '', service_ids: [], days: [...ALL_DAYS], start: '10:00', end: '19:00' });
+    setForm({ business_id: demoBiz[0] ? String(demoBiz[0].id) : '', name: '', role: '', service_ids: [], days: [...ALL_DAYS], start: '10:00', end: '19:00' });
     setErr(''); setOpen(true);
   };
-  const openEdit = (s: any) => {
+  const openEdit = (s: BusinessStaff) => {
     setEditing(s);
     setForm({
       business_id: String(s.business_id), name: s.name, role: s.role || '',
-      service_ids: Array.isArray(s.service_ids) ? s.service_ids : [],
+      service_ids: Array.isArray(s.service_ids) ? s.service_ids.map(String) : [],
       days: Array.isArray(s.days) && s.days.length ? s.days : [...ALL_DAYS],
       start: s.start || '10:00', end: s.end || '19:00',
     });
@@ -67,24 +69,24 @@ export default function AdminStaff() {
       toast(editing ? 'Staff updated — availability is live' : 'Staff added — counts update everywhere', 'success');
       setOpen(false);
       reload();
-    } catch (e: any) {
-      setErr(e?.message || 'Could not save staff.');
+    } catch (e: unknown) {
+      setErr(errMsg(e) || 'Could not save staff.');
     } finally {
       setBusy(false);
     }
   };
 
-  const toggleActive = async (s: any) => {
+  const toggleActive = async (s: BusinessStaff) => {
     const next = s.active === false;
     if (s.demo) updateDemoStaff(String(s.id), { active: next });
-    else { try { await apiSend('/api/admin', 'PUT', { resource: 'staff', id: s.id, active: next }); } catch (e: any) { toast(e.message, 'error'); return; } }
+    else { try { await apiSend('/api/admin', 'PUT', { resource: 'staff', id: s.id, active: next }); } catch (e: unknown) { toast(errMsg(e), 'error'); return; } }
     toast(next ? 'Staff active' : 'Staff deactivated — hidden from booking', next ? 'success' : 'info');
     reload();
   };
 
-  const del = async (s: any) => {
+  const del = async (s: BusinessStaff) => {
     if (s.demo) deleteDemoStaff(String(s.id));
-    else { try { await apiSend('/api/admin', 'DELETE', { resource: 'staff', id: s.id }); } catch (e: any) { toast(e.message, 'error'); return; } }
+    else { try { await apiSend('/api/admin', 'DELETE', { resource: 'staff', id: s.id }); } catch (e: unknown) { toast(errMsg(e), 'error'); return; } }
     toast('Staff removed', 'info');
     reload();
   };
@@ -103,7 +105,7 @@ export default function AdminStaff() {
         <EmptyState title="No staff yet" sub="Add specialists to a demo business — customers can pick them when booking." action={<button onClick={openCreate} className={btnGhost}><Plus className="h-4 w-4" /> Add staff</button>} />
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {staff.map((s: any) => {
+          {staff.map((s) => {
             const svcCount = Array.isArray(s.service_ids) ? s.service_ids.length : bizServices(s.business_id).length;
             const upcoming = upcomingFor.get(s.name) || 0;
             return (
@@ -145,7 +147,7 @@ export default function AdminStaff() {
           <Field label="Business *">
             <select className={inputCls} value={form.business_id} onChange={(e) => setForm({ ...form, business_id: e.target.value, service_ids: [] })} disabled={!!editing}>
               <option value="">Select business</option>
-              {(demoBiz.length ? [...demoBiz, ...businesses.filter((b: any) => !String(b.id).startsWith('demo-biz-'))] : businesses).map((b: any) => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
+              {(demoBiz.length ? [...demoBiz, ...businesses.filter((b) => !String(b.id).startsWith('demo-biz-'))] : businesses).map((b) => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
             </select>
           </Field>
           <div className="grid grid-cols-2 gap-3">
@@ -156,7 +158,7 @@ export default function AdminStaff() {
             <>
               <Field label="Services they deliver">
                 <div className="flex flex-wrap gap-1.5">
-                  {bizServices(form.business_id).map((s: any) => {
+                  {bizServices(form.business_id).map((s) => {
                     const on = form.service_ids.includes(String(s.id));
                     return (
                       <button key={s.id} type="button" onClick={() => setForm({ ...form, service_ids: on ? form.service_ids.filter((x) => x !== String(s.id)) : [...form.service_ids, String(s.id)] })}

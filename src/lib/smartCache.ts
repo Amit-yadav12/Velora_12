@@ -1,11 +1,11 @@
 // Velora smart cache — instant page transitions via memory + persistent cache,
 // request deduping, hard timeouts and idle-time prefetching.
 
-const mem = new Map<string, { at: number; ttl: number; data: any }>();
-const inflight = new Map<string, Promise<any>>();
+const mem = new Map<string, { at: number; ttl: number; data: unknown }>();
+const inflight = new Map<string, Promise<unknown>>();
 const CACHE_PREFIX = 'velora-cache-v2:';
 
-function readDisk(key: string): { at: number; ttl: number; data: any } | null {
+function readDisk(key: string): { at: number; ttl: number; data: unknown } | null {
   try {
     const raw = localStorage.getItem(CACHE_PREFIX + key);
     if (!raw) return null;
@@ -15,7 +15,7 @@ function readDisk(key: string): { at: number; ttl: number; data: any } | null {
   }
 }
 
-function writeDisk(key: string, entry: { at: number; ttl: number; data: any }) {
+function writeDisk(key: string, entry: { at: number; ttl: number; data: unknown }) {
   try {
     localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(entry));
   } catch {
@@ -32,7 +32,7 @@ function writeDisk(key: string, entry: { at: number; ttl: number; data: any }) {
   }
 }
 
-export function cacheGet<T = any>(key: string): T | null {
+export function cacheGet<T = unknown>(key: string): T | null {
   const now = Date.now();
   const m = mem.get(key);
   if (m && now - m.at < m.ttl) return m.data as T;
@@ -44,7 +44,7 @@ export function cacheGet<T = any>(key: string): T | null {
   return null;
 }
 
-export function cacheSet(key: string, data: any, ttl = 60000, persist = true): void {
+export function cacheSet(key: string, data: unknown, ttl = 60000, persist = true): void {
   const entry = { at: Date.now(), ttl, data };
   mem.set(key, entry);
   if (mem.size > 200) mem.delete(mem.keys().next().value as string);
@@ -63,7 +63,7 @@ export function cacheInvalidate(prefix: string): void {
   } catch { /* non-fatal */ }
 }
 
-export async function timedJson(url: string, ms = 6000, init?: RequestInit): Promise<any> {
+export async function timedJson(url: string, ms = 6000, init?: RequestInit): Promise<unknown> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
@@ -80,7 +80,7 @@ export async function timedJson(url: string, ms = 6000, init?: RequestInit): Pro
  * served from memory/disk cache when fresh. Never throws for cache misses —
  * only for network failures (caller decides fallback).
  */
-export function cachedFetch<T = any>(url: string, opts?: { ttl?: number; timeout?: number; persist?: boolean; init?: RequestInit }): Promise<T> {
+export function cachedFetch<T = unknown>(url: string, opts?: { ttl?: number; timeout?: number; persist?: boolean; init?: RequestInit }): Promise<T> {
   const ttl = opts?.ttl ?? 45000;
   const hit = cacheGet<T>(url);
   if (hit != null) return Promise.resolve(hit);
@@ -108,7 +108,7 @@ export function prefetch(urls: string[], opts?: { ttl?: number; timeout?: number
       cachedFetch(u, { ttl: opts?.ttl ?? 60000, timeout: opts?.timeout ?? 5000 }).catch(() => {});
     }
   };
-  const ric = (window as any).requestIdleCallback;
+  const ric = (window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback;
   if (typeof ric === 'function') ric(run, { timeout: 2500 });
   else setTimeout(run, 1200);
 }

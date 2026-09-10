@@ -11,6 +11,8 @@ import { isValidIndianPin, isValidIndianPhone } from '../../lib/india';
 import { getCity } from '../../lib/cities';
 import { toast } from '../../services/events';
 import { useNavigate } from 'react-router-dom';
+import { errMsg } from '../../lib/types';
+import type { Business } from '../../lib/product';
 
 interface BizForm {
   name: string; category: string; description: string;
@@ -31,20 +33,20 @@ export default function AdminBusinesses() {
   const nav = useNavigate();
   const { businesses, loading, reload } = useConsoleData(city.name);
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
+  const [editing, setEditing] = useState<Business | null>(null);
   const [form, setForm] = useState<BizForm>(emptyForm(city.name));
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [confirmDelete, setConfirmDelete] = useState<any>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Business | null>(null);
 
   const list = useMemo(() => {
-    const demo = businesses.filter((b: any) => isDemoBusinessId(b.id));
-    const rest = businesses.filter((b: any) => !isDemoBusinessId(b.id));
+    const demo = businesses.filter((b) => isDemoBusinessId(b.id));
+    const rest = businesses.filter((b) => !isDemoBusinessId(b.id));
     return [...demo, ...rest];
   }, [businesses]);
 
   const openCreate = () => { setEditing(null); setForm(emptyForm(city.name)); setErr(''); setOpen(true); };
-  const openEdit = (b: any) => {
+  const openEdit = (b: Business) => {
     setEditing(b);
     setForm({
       name: b.name, category: b.category, description: b.description || '',
@@ -93,8 +95,8 @@ export default function AdminBusinesses() {
       }
       setOpen(false);
       reload();
-    } catch (e: any) {
-      setErr(e?.message || 'Could not save the business.');
+    } catch (e: unknown) {
+      setErr(errMsg(e) || 'Could not save the business.');
     } finally {
       setBusy(false);
     }
@@ -122,7 +124,7 @@ export default function AdminBusinesses() {
         <EmptyState title="No businesses yet" sub="Add your first demo business — it appears in customer discovery instantly." action={<button onClick={openCreate} className={btnGhost}><Plus className="h-4 w-4" /> Add business</button>} />
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {list.slice(0, 90).map((b: any) => (
+          {list.slice(0, 90).map((b) => (
             <div key={b.id} className="card overflow-hidden group hover:border-[var(--border-strong)] transition-colors">
               <div className="relative">
                 <img src={b.image_url} alt={b.name} onError={imgOnError(b.category)} loading="lazy" className={`h-32 w-full object-cover ${b.active === false ? 'opacity-50' : ''}`} />

@@ -5,13 +5,16 @@ import { Search, Star, Sparkles, CornerDownLeft, TrendingUp, History, MapPin } f
 import { CATEGORIES, categoryIcon, categoryColor, imgOnError } from '../../lib/product';
 import { useLocation } from '../../contexts/LocationContext';
 import { fetchDiscover } from '../../lib/hybridData';
-import { buildSuggestions, pushSearchHistory, readRecentViews, type Suggestion } from '../../lib/smartSearch';
+import { buildSuggestions, pushSearchHistory, readRecentViews, type Suggestion, type RecentView } from '../../lib/smartSearch';
+import type { Business } from '../../lib/product';
+
+type Item = { type: 'suggest'; data: Suggestion } | { type: 'recent'; data: RecentView };
 
 export default function Spotlight({ open, onClose }: { open: boolean; onClose: () => void }) {
   const nav = useNavigate();
   const { city, mapCenter } = useLocation();
   const [q, setQ] = useState('');
-  const [businesses, setBusinesses] = useState<any[]>([]);
+  const [businesses, setBusinesses] = useState<Business[]>([]);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -32,7 +35,6 @@ export default function Spotlight({ open, onClose }: { open: boolean; onClose: (
   );
   const recent = useMemo(() => (open && !q ? readRecentViews().slice(0, 3) : []), [open, q]);
 
-  interface Item { type: 'suggest' | 'recent'; data: any }
   const items: Item[] = [
     ...suggestions.map((s) => ({ type: 'suggest' as const, data: s })),
     ...recent.map((r) => ({ type: 'recent' as const, data: r })),
@@ -41,24 +43,29 @@ export default function Spotlight({ open, onClose }: { open: boolean; onClose: (
   const select = (item?: Item) => {
     if (!item) { if (q.trim()) { pushSearchHistory(q.trim()); nav(`/search?q=${encodeURIComponent(q)}`); onClose(); } return; }
     if (item.type === 'recent') { nav(`/business/${item.data.id}`); onClose(); return; }
-    const s = item.data as Suggestion;
+    const s = item.data;
     if (s.kind === 'business' && s.id != null) nav(`/business/${s.id}`);
     else if (s.kind === 'category') nav(`/search?category=${encodeURIComponent(s.text)}`);
     else { pushSearchHistory(s.text); nav(`/search?q=${encodeURIComponent(s.text)}`); }
     onClose();
   };
 
+  // Keyboard navigation reads the latest state via ref — the listener is
+  // subscribed once per open, not re-created on every keystroke.
+  const keyRef = useRef({ items, active, onClose, select });
+  useEffect(() => { keyRef.current = { items, active, onClose, select }; });
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
+      const k = keyRef.current;
       if (!open) return;
-      if (e.key === 'Escape') onClose();
-      if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => Math.min(a + 1, items.length - 1)); }
+      if (e.key === 'Escape') k.onClose();
+      if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => Math.min(a + 1, k.items.length - 1)); }
       if (e.key === 'ArrowUp') { e.preventDefault(); setActive(a => Math.max(a - 1, 0)); }
-      if (e.key === 'Enter') { e.preventDefault(); select(items[active]); }
+      if (e.key === 'Enter') { e.preventDefault(); k.select(k.items[k.active]); }
     };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [open, items, active]);
+  }, [open]);
 
   const iconFor = (s: Suggestion) => {
     if (s.kind === 'trending') return <TrendingUp className="h-4 w-4 text-[var(--color-brand-indigo)]" />;
@@ -99,7 +106,7 @@ export default function Spotlight({ open, onClose }: { open: boolean; onClose: (
                     </div>
                   );
                 }
-                const s = item.data as Suggestion;
+                const s = item.data;
                 return (
                   <button key={`s-${i}`} onMouseEnter={() => setActive(i)} onClick={() => select(item)} className={`flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl ${isActive ? 'bg-[var(--surface-hover)]' : ''}`}>
                     <div className="h-9 w-9 rounded-xl grid place-items-center bg-surface shrink-0">{iconFor(s)}</div>

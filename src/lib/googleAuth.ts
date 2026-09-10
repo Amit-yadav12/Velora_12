@@ -1,4 +1,5 @@
 import supabase, { isDemoMode } from './supabase';
+import { errMsg } from './types';
 
 const isMobile = () => /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
@@ -49,8 +50,8 @@ export async function signInWithGoogleNative(nextPath = '/'): Promise<GoogleAuth
     });
     if (error) throw error;
     return { ok: true, method: 'native' };
-  } catch (err: any) {
-    const msg = String(err?.message || err || '');
+  } catch (err: unknown) {
+    const msg = errMsg(err);
     console.warn('[google-auth] native OAuth failed:', msg);
     // Google provider disabled in Supabase → precise, actionable error.
     if (/provider.*(not.*enabled|is not enabled)|unsupported.*provider|provider.*not.*found|401|403/i.test(msg)) {

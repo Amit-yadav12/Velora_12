@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, lazy, Suspense, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Map as MapIcon, List, SlidersHorizontal, Sparkles, Search, X, Compass, Pin, TrendingUp, History } from 'lucide-react';
-import { CATEGORIES } from '../../lib/product';
+import { CATEGORIES, type Business } from '../../lib/product';
 import { Grid } from '../../components/product';
 import { useLocation } from '../../contexts/LocationContext';
 import { useTheme } from '../../lib/theme';
@@ -42,8 +42,8 @@ export default function Explore() {
   const [minRating, setMinRating] = useState(0);
   const [maxKm, setMaxKm] = useState(0);
   const [priceMax, setPriceMax] = useState(0);
-  const [results, setResults] = useState<any[]>([]);
-  const [topPick, setTopPick] = useState<any>(null);
+  const [results, setResults] = useState<Business[]>([]);
+  const [topPick, setTopPick] = useState<Business | null>(null);
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState<number | string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -61,8 +61,10 @@ export default function Explore() {
     }).catch(() => setLoading(false));
   };
 
-  useEffect(() => { fetchResults(); /* eslint-disable-next-line */ }, [category, sort, openNow, minRating, maxKm, priceMax, city.name, origin.lat, origin.lng, view]);
-  useEffect(() => { const t = setTimeout(fetchResults, 350); return () => clearTimeout(t); /* eslint-disable-next-line */ }, [q]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchResults intentionally unmemoized; q is debounced by the next effect
+  useEffect(() => { fetchResults(); }, [category, sort, openNow, minRating, maxKm, priceMax, city.name, origin.lat, origin.lng, view]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- debounced q; immediate + debounced fetch split is intentional
+  useEffect(() => { const t = setTimeout(fetchResults, 350); return () => clearTimeout(t); }, [q]);
   // Real-time: refresh discovery when any booking changes (availability shifts)
   // or when demo businesses/services change in the console (add / edit / deactivate).
   useEffect(() => {
@@ -224,7 +226,7 @@ export default function Explore() {
               <GoogleMapEmbed center={origin} city={city.name} category={category !== 'All' ? category : undefined} onSelectLive={selectLive} />
             ) : (
               <Suspense fallback={<div className="skeleton h-full w-full" />}>
-                <MapView origin={origin} businesses={mapBusinesses} activeId={typeof active === 'number' ? active : null} onSelect={setActive} theme={theme} />
+                <MapView origin={origin} businesses={mapBusinesses} activeId={active} onSelect={setActive} theme={theme} />
               </Suspense>
             )}
             <div className="absolute left-3 top-[68px] flex rounded-xl border border-app bg-[var(--bg-elev)]/90 backdrop-blur p-0.5 z-[5]">

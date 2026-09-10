@@ -22,7 +22,7 @@ export default function GoogleMapEmbed({ center, city, category, onSelectLive }:
   const embedSrc = useMemo(() => {
     const query = submitted || category || 'top rated';
     return googleEmbedUrl(`${query} in ${city}`, center, 14);
-  }, [submitted, category, city, center.lat, center.lng]);
+  }, [submitted, category, city, center]);
 
   // Live places refresh with city/category/search (best-effort, cached).
   useEffect(() => {
