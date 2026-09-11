@@ -1,5 +1,5 @@
 {
-  "name": "placeholder-model-1",
+  "name": "velora-ai-os",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,9 +8,12 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "verify": "npm run verify:demo && npm run verify:integrations && npm run verify:app",
     "verify:demo": "tsx scripts/test-demo-engine.mjs && tsx scripts/verify-demo-auth.mjs",
+    "verify:integrations": "tsx scripts/verify-integrations.mjs",
     "verify:app": "tsx scripts/verify-app.mjs",
-    "verify": "npm run verify:demo && npm run verify:app"
+    "sql:bundle": "tsx scripts/build-sql.mjs",
+    "sql:check": "tsx scripts/build-sql.mjs --check"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.1",
@@ -41,5 +44,9 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.48.0",
     "vite": "^7.3.1"
+  },
+  "description": "Velora AI OS \u2014 India-first AI appointment booking platform (React 19 + Vite 7, serverless API, Supabase).",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
   }
 }

@@ -46,6 +46,11 @@ export default function Welcome() {
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
   const [info, setInfo] = useState('');
+  // Deployment-facing notice when the business demo cannot be granted console
+  // access (missing schema / missing credentials / rotated key). While it is
+  // set we stay on this page and say why, instead of silently bouncing the
+  // operator into the customer app.
+  const [demoNotice, setDemoNotice] = useState('');
   const [loading, setLoading] = useState(false);
 
   // Business registration (2 steps)
@@ -58,14 +63,14 @@ export default function Welcome() {
   // Runs only on a fully settled state — never mid-load, never while an auth
   // action is in flight — so it can't race the demo sign-in or double-fire.
   useEffect(() => {
-    if (!authLoading && user && profile && !loading) {
+    if (!authLoading && user && profile && !loading && !demoNotice) {
       nav(profile.role === 'admin' ? '/admin' : next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user, profile, loading, next]);
+  }, [authLoading, user, profile, loading, next, demoNotice]);
 
   const homeFor = (r: Role) => (r === 'admin' ? '/admin' : next);
-  const resetMsgs = () => { setErr(''); setInfo(''); };
+  const resetMsgs = () => { setErr(''); setInfo(''); setDemoNotice(''); };
   const switchMode = (m: Mode, revealEmail = false) => { resetMsgs(); setMode(m); setEmailOpen(revealEmail); };
 
   /* ---------------- Email auth (sign in / create account) ---------------- */
@@ -133,11 +138,23 @@ export default function Welcome() {
     setLoading(true); resetMsgs();
     const target = role || 'customer';
     try {
-      await signInDemo(target, (p) => setInfo(p.message));
+      const signed = await signInDemo(target, (p) => setInfo(p.message));
       // Re-read session + profile from the live session BEFORE navigating so
       // the target gate (AdminGate) already sees user + role=admin — this is
       // what makes the business demo land directly on the console.
       await refresh();
+      // Console access could not be granted server-side. Report the cause and
+      // stay put — navigating to /admin would bounce straight back to `/` and
+      // the operator would have no idea what to fix.
+      if (target === 'admin' && signed.provision && !signed.provision.ok) {
+        const cause = signed.provision.hint
+          || signed.provision.error
+          || 'the server could not grant the console role';
+        setDemoNotice(cause);
+        setErr(`Business demo is signed in as ${signed.email}, but the console role was not granted: ${cause}`);
+        setLoading(false);
+        return;
+      }
       nav(homeFor(target), { replace: true });
     } catch (e: unknown) {
       setErr(friendly(errMsg(e)));
@@ -461,6 +478,18 @@ export default function Welcome() {
                 <button onClick={demo} disabled={loading} className="w-full text-xs rounded-lg border border-app hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] py-2.5 font-medium flex items-center justify-center gap-1.5 transition-colors">
                   {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><ShieldCheck className="h-3.5 w-3.5" /> Continue as demo {isAdmin ? 'business' : 'customer'}</>}
                 </button>
+                {demoNotice && (
+                  <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2.5">
+                    <p className="text-xs text-amber-300">{demoNotice}</p>
+                    <button
+                      type="button"
+                      onClick={() => { setRole('customer'); setDemoNotice(''); setErr(''); nav(homeFor('customer'), { replace: true }); }}
+                      className="mt-2 text-xs font-medium text-[var(--color-brand-indigo)] underline hover:opacity-80"
+                    >
+                      Continue into the customer demo instead
+                    </button>
+                  </div>
+                )}
               </div>
 
               {!isAdmin && (

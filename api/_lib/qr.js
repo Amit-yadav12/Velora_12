@@ -60,14 +60,32 @@ export function verifyBookingToken(token) {
 }
 
 // Absolute base URL for verification links embedded in QR codes.
+// NEVER hardcodes a deployment domain: a new Netlify site must not mint QR
+// codes that point at the previous one. Resolution order:
+//   1. APP_URL (explicit, set in the host dashboard)
+//   2. the host actually serving the request (x-forwarded-host / host)
+//   3. the platform's own site URL (Netlify URL / DEPLOY_PRIME_URL, Vercel URL)
+// If none exist the link is returned relative and a warning is logged, so the
+// problem is visible in the function logs instead of baked into a QR code.
+let originWarned = false;
 export function baseUrl(req) {
   if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, '');
   const host = req?.headers?.['x-forwarded-host'] || req?.headers?.host;
   if (host) {
-    const proto = /localhost|127\.0\.0\.1/i.test(host) ? 'http' : 'https';
-    return `${proto}://${host}`;
+    const fwdProto = String(req?.headers?.['x-forwarded-proto'] || '').split(',')[0].trim();
+    const proto = fwdProto || (/localhost|127\.0\.0\.1/i.test(host) ? 'http' : 'https');
+    return `${proto}://${String(host).split(',')[0].trim()}`;
   }
-  return 'https://velora-ai-in.netlify.app';
+  for (const v of ['URL', 'DEPLOY_PRIME_URL', 'VERCEL_URL']) {
+    const raw = process.env[v];
+    if (!raw) continue;
+    return (raw.startsWith('http') ? raw : `https://${raw}`).replace(/\/$/, '');
+  }
+  if (!originWarned) {
+    originWarned = true;
+    console.warn('[qr] No APP_URL and no request host — verification links are relative. Set APP_URL to the site origin.');
+  }
+  return '';
 }
 
 export function verifyUrl(req, token) {

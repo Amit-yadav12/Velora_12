@@ -12,6 +12,13 @@ dist
 dist-ssr
 *.local
 
+# Secrets — never committed (only .env.example is tracked)
+.env
+.env.*
+!.env.example
+.netlify
+.vercel
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

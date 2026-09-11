@@ -4,8 +4,13 @@
   functions = "netlify/functions"
 
 [build.environment]
-  VITE_APP_URL = "https://velora-ai-in.netlify.app"
-  APP_URL = "https://velora-ai-in.netlify.app"
+  # NOTE: values declared here OVERRIDE the same keys set in the Netlify UI
+  # (https://docs.netlify.com/build/environment-variables/overview/). The site
+  # origin is therefore deliberately NOT hardcoded: set APP_URL and
+  # VITE_APP_URL in the site's dashboard (Site configuration → Environment
+  # variables) so a new domain, a deploy preview or a custom domain all build
+  # with their own correct origin. Vite 7 requires Node ^20.19.0 || >=22.12.0.
+  NODE_VERSION = "22"
 
 [functions]
   node_bundler = "esbuild"

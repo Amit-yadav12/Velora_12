@@ -280,23 +280,32 @@ npm install
 
 ## Environment Variables
 
-Create a `.env` file.
+Copy `.env.example` to `.env` — it is the authoritative, commented list.
+The variables the app actually reads:
 
 ```env
+# Frontend (public by design — publishable values only)
+VITE_APP_URL=            # deployed origin, no trailing slash
 VITE_SUPABASE_URL=
 VITE_SUPABASE_ANON_KEY=
-
-VITE_FIREBASE_API_KEY=
-VITE_FIREBASE_AUTH_DOMAIN=
-VITE_FIREBASE_PROJECT_ID=
-VITE_FIREBASE_STORAGE_BUCKET=
-VITE_FIREBASE_MESSAGING_SENDER_ID=
-VITE_FIREBASE_APP_ID=
-
 VITE_GOOGLE_MAPS_API_KEY=
 
-VITE_RESEND_API_KEY=
+# Server-side (functions only — never VITE_ prefixed)
+APP_URL=
+NEXT_PUBLIC_SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+QR_SIGNING_SECRET=       # HMAC for signed QR verification tokens
+CRON_SECRET=             # protects the reminder cron endpoint
+RESEND_API_KEY=          # or SENDGRID_API_KEY / SMTP_RELAY_URL
+EMAIL_FROM=
+GOOGLE_CALENDAR_REFRESH_TOKEN=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
 ```
+
+No Firebase and no `VITE_RESEND_API_KEY` — email is delivered server-side from
+`RESEND_API_KEY` (see `api/_lib/email.js`). Full deployment steps, including the
+one-paste `supabase/APPLY_ALL.sql`, are in [DEPLOY.md](DEPLOY.md).
 
 ---
 

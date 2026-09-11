@@ -1,5 +1,23 @@
 import supabase from './supabase';
 
+/**
+ * API failure with the HTTP status attached. `errMsg()` still returns just the
+ * message, so every existing call site is unaffected — but callers that need to
+ * react differently per status (e.g. demo provisioning: 409 = schema missing,
+ * 503 = no credentials, 401/403 = bad key) can branch on `.status` instead of
+ * pattern-matching prose.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly path: string;
+  constructor(message: string, status: number, path: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.path = path;
+  }
+}
+
 async function authHeaders(): Promise<Record<string, string>> {
   try {
     const { data } = await supabase.auth.getSession();
@@ -26,7 +44,7 @@ export async function apiGet<T = unknown>(path: string, opts?: { timeout?: numbe
   const res = await timedFetch(path, { headers: { ...(await authHeaders()) } }, timeout);
   if (!res.ok) {
     const errJson = await res.json().catch(() => ({}));
-    throw new Error(errJson.error || `Request failed (${res.status})`);
+    throw new ApiError(errJson.error || `Request failed (${res.status})`, res.status, path);
   }
   return res.json();
 }
@@ -43,7 +61,7 @@ export async function apiSend<T = unknown>(path: string, method: string, body: u
     timeout,
   );
   const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(json.error || `Request failed (${res.status})`);
+  if (!res.ok) throw new ApiError(json.error || `Request failed (${res.status})`, res.status, path);
   return json;
 }
 

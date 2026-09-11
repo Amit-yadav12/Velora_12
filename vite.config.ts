@@ -1,11 +1,11 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig, loadEnv, type PluginOption } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'node:path'
 
 // https://vite.dev/config/
 export default defineConfig(async ({ mode }) => {
-  const plugins = [react(), tailwindcss()];
+  const plugins: PluginOption[] = [react(), tailwindcss()];
   try {
     // @ts-expect-error - optional local dev plugin, not present in all envs
     const m = await import('./.vite-source-tags.js');
@@ -22,6 +22,20 @@ export default defineConfig(async ({ mode }) => {
   }
 
   const env = loadEnv(mode, process.cwd(), ['VITE_', 'NEXT_PUBLIC_', 'GOOGLE_']);
+
+  // Stamp the deployment origin into index.html (canonical / og:url /
+  // structured data) at BUILD time. Crawlers do not execute JS, so a runtime
+  // rewrite alone cannot fix SEO on a new domain; the host's APP_URL /
+  // VITE_APP_URL is the single source of truth.
+  const appUrl = String(process.env.APP_URL || process.env.VITE_APP_URL || env.VITE_APP_URL || '').replace(/\/$/, '');
+  if (appUrl) {
+    plugins.push({
+      name: 'velora-seo-origin',
+      transformIndexHtml(html: string) {
+        return html.replace(/https:\/\/velora-ai-in\.netlify\.app/g, appUrl);
+      },
+    });
+  }
   if (env.GOOGLE_MAPS_API_KEY) process.env.GOOGLE_MAPS_API_KEY = env.GOOGLE_MAPS_API_KEY;
   if (!process.env.GOOGLE_MAPS_API_KEY && env.VITE_GOOGLE_MAPS_API_KEY) {
     process.env.GOOGLE_MAPS_API_KEY = env.VITE_GOOGLE_MAPS_API_KEY;

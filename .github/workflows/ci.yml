@@ -1,6 +1,7 @@
 # Velora CI — runs on every push and pull request to main.
-# Verifies: lint (errors fail), typecheck + production build, demo engine,
-# and the full app/API harness (real App.tsx + real /api handlers under jsdom).
+# Verifies: lint (errors fail), typecheck + production build, SQL bundle drift,
+# the demo engine, the server-side integration suite, and the full app/API
+# harness (real App.tsx + real /api handlers under jsdom).
 name: CI
 
 on:
@@ -31,8 +32,14 @@ jobs:
       - name: Typecheck + production build
         run: npm run build
 
+      - name: SQL bundle in sync with migrations
+        run: npm run sql:check
+
       - name: Demo engine tests
         run: npm run verify:demo
+
+      - name: Integration suite (calendar OAuth, email, QR, IST, booking guards)
+        run: npm run verify:integrations
 
       - name: Full app + API harness
         run: npm run verify:app
