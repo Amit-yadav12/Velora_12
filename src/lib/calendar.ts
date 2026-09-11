@@ -2,6 +2,7 @@
  * Instant calendar helpers — NO OAuth, NO server round-trip required.
  * These make "Add to Google Calendar" work the moment a booking is created.
  */
+import { canonicalHost } from './site';
 
 function fmt(dtISO: string) {
   // Google Calendar / ICS expect UTC basic format: YYYYMMDDTHHMMSSZ
@@ -32,7 +33,8 @@ export function googleCalendarUrl(e: CalEvent): string {
 
 /** Builds a downloadable .ics file (works with Apple Calendar, Outlook, etc.). */
 export function icsBlob(e: CalEvent): Blob {
-  const uid = `${Date.now()}@velora-ai-in.netlify.app`;
+  // RFC 5545 UID: unique per event, scoped to the live deployment's host.
+  const uid = `${Date.now()}.${Math.random().toString(36).slice(2, 8)}@${canonicalHost()}`;
   const ics = [
     'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Velora//Booking//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
     'BEGIN:VEVENT',

@@ -52,6 +52,28 @@
     </script>
 
     <script>
+      // Deployment-agnostic SEO/social URLs. The build stamps APP_URL when it
+      // is known; this keeps alias domains and deploy previews self-consistent
+      // (canonical + og:url + structured-data url follow the serving origin).
+      (function () {
+        try {
+          var o = location.origin;
+          if (!/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)/i.test(o)) {
+            var canon = document.querySelector('link[rel="canonical"]');
+            if (canon) canon.setAttribute('href', o + '/');
+            var og = document.querySelector('meta[property="og:url"]');
+            if (og) og.setAttribute('content', o + '/');
+            var ld = document.querySelector('script[type="application/ld+json"]');
+            if (ld && ld.textContent) {
+              var d = JSON.parse(ld.textContent);
+              d.url = o + '/';
+              ld.textContent = JSON.stringify(d);
+            }
+          }
+        } catch (e) { /* non-fatal */ }
+      })();
+    </script>
+    <script>
       // SW recovery kill-switch: if an old cache-first service worker is
       // serving a stale build (broken assets), clear caches + reload once.
       (function () {
