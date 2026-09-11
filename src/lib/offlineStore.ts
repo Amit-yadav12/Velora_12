@@ -208,15 +208,28 @@ export async function createDemoBooking(input: {
   if (Number.isNaN(start.getTime())) throw new Error('Please pick a valid time slot.');
   const end = new Date(start.getTime() + (input.service_duration || 30) * 60000);
 
+  // Double-booking guard, capacity-aware — enforced HERE (the one write path
+  // for demo bookings) so no caller can create an impossible record:
+  //  • specific specialist selected → that person can only be in one place
+  //  • "any specialist"            → the slot closes only when every ACTIVE
+  //    specialist of that business is already booked for the same window.
   const overlaps = listLocalBookings().filter(
     (b) => String(b.business_id) === String(input.business_id)
       && b.status !== 'cancelled' && b.status !== 'no_show'
       && new Date(b.start_time) < end && new Date(b.end_time) > start,
   );
-  const staffTaken = input.staff_name
+  let capacity = 1;
+  if (!input.staff_name) {
+    try {
+      const { getDemoBusiness } = await import('./demoStore');
+      const biz = getDemoBusiness(String(input.business_id));
+      capacity = Math.max(1, (biz?.staff || []).filter((s) => s.active !== false).length);
+    } catch { /* non-fatal — fall back to single capacity */ }
+  }
+  const blocking = input.staff_name
     ? overlaps.filter((b) => (b.staff_name || '').toLowerCase() === input.staff_name!.toLowerCase())
     : overlaps;
-  if (input.staff_name && staffTaken.length >= 1) {
+  if (blocking.length >= capacity) {
     throw new Error('That slot was just taken. Please pick another time.');
   }
 

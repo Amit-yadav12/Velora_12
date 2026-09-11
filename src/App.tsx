@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { ThemeProvider } from './lib/theme';
 import { AuthProvider } from './contexts/AuthContext';
 import { LocationProvider } from './contexts/LocationContext';
-import { handleGoogleRedirect } from './lib/googleAuth';
 import { CustomerGate, AdminGate } from './app/Guards';
 import AuroraBackground from './components/premium/AuroraBackground';
 import { ensureDemoOps, ensureDemoSeeded } from './lib/demoStore';
@@ -29,7 +28,18 @@ const AdminCustomers = lazy(() => import('./pages/admin/AdminCustomers'));
 const AdminEmails = lazy(() => import('./pages/admin/AdminEmails'));
 const Audit = lazy(() => import('./pages/Audit'));
 
-handleGoogleRedirect();
+// NOTE: Google sign-in is intentionally INERT in the UI (the "Continue with
+// Google" button is a visual/hover-only affordance). The OAuth helpers remain
+// in src/lib/googleAuth.ts, unwired, ready to be re-enabled deliberately —
+// `handleGoogleRedirect()` is therefore not called here so no URL parameter can
+// silently start a Google session.
+
+// Seed the isolated demo tenant (showcase businesses, services, staff and the
+// sample operating dataset) at MODULE SCOPE — i.e. before the first render and
+// before any page effect runs. Seeding inside an effect would run AFTER the
+// child pages' data loads (React runs child effects first), leaving the very
+// first dashboard/customer paint empty until something else triggered a reload.
+try { ensureDemoSeeded(); ensureDemoOps(); } catch { /* non-fatal (private mode) */ }
 
 function Fallback() {
   return <div className="min-h-[60vh] grid place-items-center"><div className="h-8 w-8 rounded-full border-2 border-[var(--color-brand-indigo)] border-t-transparent animate-spin" /></div>;
@@ -48,10 +58,8 @@ function ScrollToTop() {
 export default function App() {
   // Signal the boot watchdog (index.html) that first render committed.
   useEffect(() => {
+    // Signal the boot watchdog (index.html) that first render committed.
     try { window.__veloraBooted = true; } catch { /* ignore */ }
-    // Seed the isolated demo tenant (showcase businesses/services/staff) so
-    // the demo environment is complete from the very first page load.
-    try { ensureDemoSeeded(); ensureDemoOps(); } catch { /* non-fatal */ }
   }, []);
   return (
     <ThemeProvider>
