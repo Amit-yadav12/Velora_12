@@ -140,7 +140,7 @@ on conflict (id) do update set role=excluded.role;
 
 ### 6-C. RLS & Realtime
 
-- RLS is enabled by migration; policies allow public read for businesses/services, owner-only for bookings.
+- RLS is enabled by migration; policies allow public read for businesses/services, owner-only for bookings, owner-scoped reads for `booking_meta`/`booking_history`, and **service-role-only writes** for `reminders`, `email_log`, `audit_logs`, `idempotency_keys` (see `0003_rls_tightening.sql`).
 - Realtime: migration adds `bookings`, `notifications`, `reminders`, `businesses`, `booking_history` to `supabase_realtime` publication.
 - Verify in **Database → Realtime** that those tables show as enabled.
 
@@ -228,6 +228,7 @@ VITE_GOOGLE_AUTH_PROXY=https://your-proxy.workers.dev/auth/google
 
 - [ ] Paste `supabase/migrations/0001_velora_core.sql` into Supabase SQL Editor + Run
 - [ ] Paste `supabase/migrations/0002_business_registration_role_lock.sql` into Supabase SQL Editor + Run (business ownership + role lock — REQUIRED for secure business registration)
+- [ ] Paste `supabase/migrations/0003_rls_tightening.sql` into Supabase SQL Editor + Run (RLS hardening — REQUIRED: closes the always-true policies on `booking_meta`, `booking_history`, `reminders`, `email_log`, `audit_logs`, `idempotency_keys`, `notifications`; without it the QR payloads / email log / audit trail are readable by anyone holding the anon key)
 - [ ] Turn OFF confirm-email (Auth → Configuration → Email Auth)
 - [ ] Google OAuth setup per §7-A (native)
 - [ ] Set all env vars in Netlify dashboard

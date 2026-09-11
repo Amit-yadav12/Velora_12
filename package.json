@@ -8,7 +8,9 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "verify:demo": "tsx scripts/test-demo-engine.mjs && tsx scripts/verify-demo-auth.mjs"
+    "verify:demo": "tsx scripts/test-demo-engine.mjs && tsx scripts/verify-demo-auth.mjs",
+    "verify:app": "tsx scripts/verify-app.mjs",
+    "verify": "npm run verify:demo && npm run verify:app"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.1",
