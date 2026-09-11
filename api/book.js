@@ -32,31 +32,31 @@ function genRef() {
 const idemMemory = new Map();
 
 // Slot ledger: authoritative overlap protection even when no database is
-// reachable (previews, demo deployments). Keyed by business|staff|start; pruned
-// when the slot is in the past. The DB clash check below runs on top of this.
-const slotLedger = new Map();
-function ledgerKey(businessId, staffName, startIso) {
-  return `${String(businessId)}|${(staffName || 'any').toLowerCase()}|${startIso}`;
-}
+// reachable (previews, demo deployments). One ENTRY PER BOOKING (not per slot —
+// a slot can legitimately hold as many bookings as there are specialists), each
+// pruned once it is in the past. The DB clash check below runs on top of this.
+const slotLedger = [];
 function ledgerClash(businessId, start, end, staffName, capacity) {
-  let sameStaff = 0, anyStaff = 0, now = Date.now();
-  for (const [k, v] of slotLedger) {
-    if (v.end <= now) { slotLedger.delete(k); continue; }
-    const [biz, st, t] = k.split('|');
-    if (biz !== String(businessId)) continue;
-    const s = Number(t);
-    if (s < end.getTime() && v.end > start.getTime()) {
-      if (st !== 'any' && st === (staffName || '').toLowerCase()) sameStaff++;
-      if (st === 'any') anyStaff++;
-    }
+  const now = Date.now();
+  const s = start.getTime(), e = end.getTime();
+  const overlapping = slotLedger.filter((row) => row.biz === String(businessId) && row.start < e && row.end > s);
+  // A named specialist is exclusive: any overlapping booking that either named
+  // them or was auto-assigned counts against them.
+  if (staffName) {
+    const key = staffName.toLowerCase();
+    return overlapping.some((row) => row.staff === null || row.staff === key);
   }
-  if (staffName) return sameStaff >= 1;
-  return anyStaff + Math.min(sameStaff, 1) >= capacity;
+  // "Any specialist" consumes one seat per booking; every named booking holds
+  // its own seat. The slot closes when all roster seats are taken.
+  const named = new Set(overlapping.filter((row) => row.staff).map((row) => row.staff)).size;
+  const unassigned = overlapping.filter((row) => row.staff === null).length;
+  return named + unassigned >= capacity;
 }
 function ledgerAdd(businessId, staffName, start, end) {
-  slotLedger.set(ledgerKey(businessId, staffName, start.getTime()), { end: end.getTime() });
-  if (slotLedger.size > 2000) {
-    for (const [k, v] of slotLedger) if (v.end <= Date.now()) slotLedger.delete(k);
+  slotLedger.push({ biz: String(businessId), staff: staffName ? staffName.toLowerCase() : null, start: start.getTime(), end: end.getTime() });
+  if (slotLedger.length > 2000) {
+    const now = Date.now();
+    for (let i = slotLedger.length - 1; i >= 0; i -= 1) if (slotLedger[i].end <= now) slotLedger.splice(i, 1);
   }
 }
 async function findReplay(key) {
@@ -179,11 +179,25 @@ export default async function handler(req, res) {
       assert(!ledgerClash(biz.id, start, end, staffName || null, staffCapacity), 'That slot was just taken. Please pick another time.', 409);
     }
     // 4b. Database clash check (authoritative when a DB is configured).
+    //     Consistent with the ledger above: a NAMED specialist is exclusive,
+    //     "any specialist" bookings are capped at the roster size — and at a
+    //     single resource when no roster is known (conservative default).
     try {
-      const { data: clash } = await supabase.from('bookings').select('id')
+      const { data: clash } = await supabase.from('bookings').select('id,employee_name')
         .eq('resource_name', biz.name).neq('status', 'cancelled')
         .lt('start_time', end.toISOString()).gt('end_time', start.toISOString());
-      assert(!clash || clash.length === 0, 'That slot was just taken. Please pick another time.', 409);
+      if (Array.isArray(clash)) {
+        const roster = Array.isArray(biz.staff) && biz.staff.length ? biz.staff.length : 1;
+        const named = new Set(clash.map((r) => String(r.employee_name || '').toLowerCase()).filter(Boolean));
+        const unassigned = clash.filter((r) => !r.employee_name).length;
+        if (staffName) {
+          // Named specialist: conflicts with their own row — or when every
+          // roster seat is already taken by auto-assigned bookings.
+          assert(!named.has(staffName.toLowerCase()) && unassigned < roster, 'That slot was just taken. Please pick another time.', 409);
+        } else {
+          assert(named.size + unassigned < roster, 'That slot was just taken. Please pick another time.', 409);
+        }
+      }
     } catch (e) {
       if (e.status === 409) throw e;
       console.error('[book:clash-check]', e.message);

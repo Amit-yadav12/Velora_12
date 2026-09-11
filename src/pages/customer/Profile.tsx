@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { User, Mail, Phone, Check, Loader2, CalendarCheck, Clock } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import supabase, { isDemoMode } from '../../lib/supabase';
+import supabase from '../../lib/supabase';
 import { apiGet } from '../../lib/api';
 import { listLocalBookings } from '../../lib/offlineStore';
 import type { ConsoleBooking } from '../../lib/types';
@@ -20,7 +20,8 @@ export default function Profile() {
     if (!profile?.email) return;
     const apply = (server: ConsoleBooking[]) => {
       const refs = new Set(server.map((b) => b.ref));
-      const local = listLocalBookings(isDemoMode ? null : profile.email).filter((b) => !refs.has(b.ref));
+      // Same scope as the Appointments page — only this customer's bookings.
+      const local = listLocalBookings(profile.email).filter((b) => !refs.has(b.ref));
       const all = [...server, ...local];
       const now = Date.now();
       setStats({ total: all.length, upcoming: all.filter(b => new Date(b.start_time).getTime() > now && b.status !== 'cancelled').length });

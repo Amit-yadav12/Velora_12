@@ -6,6 +6,7 @@ import { Check, Navigation, CalendarPlus, Share2, Download, QrCode, CalendarChec
 import { inr } from '../../lib/format';
 import { googleCalendarUrl } from '../../lib/calendar';
 import { publicOrigin } from '../../lib/site';
+import { downloadBlob, svgBlob } from '../../lib/download';
 import type { Business } from '../../lib/product';
 import type { TicketBooking, TicketInvoice } from '../../lib/types';
 
@@ -71,7 +72,10 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
     if (qrPayload && qrPayload.startsWith('http')) { doc.setTextColor(100); doc.setFontSize(9); doc.text('Verify ticket: ' + qrPayload, 20, y + 2, { maxWidth: 170 }); y += 8; }
     doc.setDrawColor(220); doc.line(20, y, 190, y);
     doc.setTextColor(150); doc.setFontSize(9); doc.text('Present this confirmation or your QR ticket at check-in. Thank you for booking with Velora.', 20, y + 12, { maxWidth: 170 });
-    doc.save(`Velora-${booking.ref}.pdf`);
+    // Download it ourselves: jsPDF's internal save() silently no-ops in some
+    // environments (and gives no signal when it does), so the anchor path is
+    // the single, predictable download route for both PDF and QR.
+    downloadBlob(doc.output('blob'), `Velora-${booking.ref}.pdf`);
     } catch (e) { console.error('[pdf]', e); } finally { setPdfLoading(false); }
   };
 
@@ -84,7 +88,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
     // High-resolution PNG (1024×1024, white quiet zone) — stays scannable when
     // printed or zoomed. Falls back to SVG if canvas export is unavailable.
     try {
-      const svg = document.querySelector('[data-qr] svg');
+      const svg = document.querySelector('[data-qr] svg') as SVGSVGElement | null;
       if (!svg) return;
       const xml = new XMLSerializer().serializeToString(svg);
       const svgUrl = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml;charset=utf-8' }));
@@ -112,23 +116,11 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
       URL.revokeObjectURL(svgUrl);
       const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, 'image/png'));
       if (!blob) throw new Error('toBlob failed');
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `Velora-${booking.ref}-ticket.png`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      downloadBlob(blob, `Velora-${booking.ref}-ticket.png`);
     } catch {
       // SVG fallback — still a crisp, scannable vector ticket.
-      try {
-        const svg = document.querySelector('[data-qr] svg');
-        if (!svg) return;
-        const blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = `Velora-${booking.ref}-ticket.svg`;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      } catch { /* non-fatal */ }
+      const blob = svgBlob(document.querySelector('[data-qr] svg') as SVGSVGElement | null);
+      if (blob) downloadBlob(blob, `Velora-${booking.ref}-ticket.svg`);
     }
   };
 

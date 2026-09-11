@@ -54,10 +54,31 @@ function counts(b: BookingLike): boolean {
 
 const num = (v: unknown) => Number(v) || 0;
 
-function startOfDay(d: Date): number {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x.getTime();
+// Day/month boundaries are computed in INDIA STANDARD TIME, never in the
+// host's local zone: a booking at 11:00 IST belongs to "today" whether the
+// device is in Jaipur, London or a UTC server. Without this, "Today's
+// appointments" and "This month" drift by up to a day for IST-first data.
+const IST_TZ = 'Asia/Kolkata';
+const IST_OFFSET = '+05:30';
+
+/** UTC instant of 00:00 IST for the IST calendar day containing `d`. */
+function istStartOfDay(d: Date): number {
+  try {
+    const ymd = new Intl.DateTimeFormat('en-CA', { timeZone: IST_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    return new Date(`${ymd}T00:00:00${IST_OFFSET}`).getTime();
+  } catch {
+    const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime();
+  }
+}
+
+/** UTC instant of 00:00 IST on the 1st of the IST month containing `d`. */
+function istStartOfMonth(d: Date): number {
+  try {
+    const ym = new Intl.DateTimeFormat('en-CA', { timeZone: IST_TZ, year: 'numeric', month: '2-digit' }).format(d);
+    return new Date(`${ym}-01T00:00:00${IST_OFFSET}`).getTime();
+  } catch {
+    const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(1); return x.getTime();
+  }
 }
 
 export function revenueMetrics(bookings: BookingLike[], now = new Date()): RevenueMetrics {
@@ -69,9 +90,9 @@ export function revenueMetrics(bookings: BookingLike[], now = new Date()): Reven
 
   const sum = (list: BookingLike[]) => list.reduce((s, b) => s + num(b.price), 0);
   const nowMs = now.getTime();
-  const todayStart = startOfDay(now);
+  const todayStart = istStartOfDay(now);
   const weekStart = nowMs - 7 * 86400000;
-  const monthStart = startOfDay(new Date(now.getFullYear(), now.getMonth(), 1));
+  const monthStart = istStartOfMonth(now);
 
   const today = active.filter((b) => {
     const t = new Date(b.start_time).getTime();

@@ -1,4 +1,4 @@
-import supabase from './db-client.js';
+import supabase, { isDatabaseConfigured } from './db-client.js';
 import { cors, enforceRateLimit } from './_lib/security.js';
 import { syntheticHeatmap } from './_lib/synthetic.js';
 
@@ -18,10 +18,17 @@ export default async function handler(req, res) {
     let allBookings = null;
     try {
       const q = supabase.from('bookings').select('start_time,status,resource_name');
-      const { data } = await q;
-      allBookings = data;
+      const { data, error } = await q;
+      // A configured-yet-unreachable database is worth reporting; an
+      // environment without credentials is the expected preview path and
+      // falls through silently to the deterministic forecast below.
+      if (error && isDatabaseConfigured()) console.error('[heatmap:db]', error.message);
+      // Only trust a real ARRAY of rows. A degraded/unexpected payload (an
+      // object, a string, a proxy error body) must fall through to the
+      // deterministic synthetic forecast instead of throwing on .filter().
+      allBookings = Array.isArray(data) ? data : null;
     } catch (e) {
-      console.error('[heatmap:db]', e.message);
+      if (isDatabaseConfigured()) console.error('[heatmap:db]', e.message);
     }
     if (!allBookings) {
       return res.status(200).json(syntheticHeatmap(Number(business_id) || 0));
@@ -33,7 +40,7 @@ export default async function handler(req, res) {
         bizName = biz?.data?.name;
       } catch { /* non-fatal */ }
     }
-    const bookings = (allBookings || []).filter((b) => b.status !== 'cancelled' && (!bizName || b.resource_name === bizName));
+    const bookings = allBookings.filter((b) => b && b.status !== 'cancelled' && (!bizName || b.resource_name === bizName));
 
     // Occupancy by weekday (0-6) and hour (9-18) from history
     const weekdayCount = Array(7).fill(0);

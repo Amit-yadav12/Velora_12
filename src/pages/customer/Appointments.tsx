@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
 import { Calendar, MapPin, Clock, Navigation, X, CalendarClock, Loader2, Star, ChevronDown, Car, QrCode, CalendarPlus, Download, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import supabase, { isDemoMode } from '../../lib/supabase';
+import supabase from '../../lib/supabase';
 import { useLocation } from '../../contexts/LocationContext';
 import { mapsDirections } from '../../lib/product';
 import { apiGet, apiSend } from '../../lib/api';
@@ -17,6 +17,7 @@ import { localVerifyUrl } from '../../lib/demoStore';
 import { isCancellable } from '../../lib/bookingStatus';
 import { googleCalendarUrl } from '../../lib/calendar';
 import { publicOrigin } from '../../lib/site';
+import { downloadBlob, svgBlob } from '../../lib/download';
 import { Modal } from '../../components/ui';
 import { errMsg, type ConsoleBooking, type TravelPlan } from '../../lib/types';
 
@@ -73,9 +74,10 @@ export default function Appointments() {
     const d = await apiGet<ConsoleBooking[]>(`/api/my-bookings?email=${encodeURIComponent(email)}`).catch(() => []);
     const server = Array.isArray(d) ? d : [];
     // Merge local/demo bookings (synthetic + offline continuity), de-duped by ref.
-    // Demo mode: the local store IS the demo tenant, so the demo customer sees
-    // every demo booking. Production: strictly the signed-in user's email.
-    const local = listLocalBookings(isDemoMode ? null : email).map((b) => ({
+    // Always scoped to the SIGNED-IN customer's email — demo or production — so
+    // one customer can never see another customer's appointments. (Bookings
+    // created without an email are treated as belonging to the current user.)
+    const local = listLocalBookings(email).map((b) => ({
       id: b.id, ref: b.ref, service_name: b.service_name, employee_name: b.staff_name,
       resource_name: b.business_name, start_time: b.start_time, end_time: b.end_time,
       status: b.status, price: b.price, location: b.location, local: true,
@@ -110,16 +112,16 @@ export default function Appointments() {
     if (!ticket) return '';
     if (ticket.qr_payload) return ticket.qr_payload;
     if (ticket.local) {
-      const lb = listLocalBookings(isDemoMode ? null : profile?.email).find((b) => b.ref === ticket.ref);
+      const lb = listLocalBookings(profile?.email || user?.email || '').find((b) => b.ref === ticket.ref);
       const url = lb?.qr_salt ? localVerifyUrl(lb.ref, lb.qr_salt) : null;
       if (url) return url;
     }
     return `${publicOrigin()}/appointments`;
-  }, [ticket, profile?.email]);
+  }, [ticket, profile?.email, user?.email]);
 
   const downloadTicketQr = async () => {
     try {
-      const svg = document.querySelector('[data-ticket-qr] svg');
+      const svg = document.querySelector('[data-ticket-qr] svg') as SVGSVGElement | null;
       if (!svg) return;
       const xml = new XMLSerializer().serializeToString(svg);
       const svgUrl = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml;charset=utf-8' }));
@@ -135,13 +137,11 @@ export default function Appointments() {
       ctx.drawImage(img, pad, pad, px - pad * 2, px - pad * 2);
       URL.revokeObjectURL(svgUrl);
       const blob: Blob | null = await new Promise((res) => canvas.toBlob(res, 'image/png'));
-      if (!blob) throw new Error('blob');
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = `Velora-${ticket?.ref || 'ticket'}-ticket.png`;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-    } catch { toast('Could not export the QR — try again.', 'error'); }
+      if (!blob || !downloadBlob(blob, `Velora-${ticket?.ref || 'ticket'}-ticket.png`)) throw new Error('blob');
+    } catch {
+      const blob = svgBlob(document.querySelector('[data-ticket-qr] svg') as SVGSVGElement | null);
+      if (!blob || !downloadBlob(blob, `Velora-${ticket?.ref || 'ticket'}-ticket.svg`)) toast('Could not export the QR — try again.', 'error');
+    }
   };
   const doResched = async () => {
     if (!resched) return;

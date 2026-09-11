@@ -10,7 +10,6 @@ import { saveDemoBusiness } from '../../lib/demoStore';
 import { apiSend } from '../../lib/api';
 import { toast } from '../../services/events';
 import { inputCls } from '../../components/ui';
-import { signInWithGoogleNative } from '../../lib/googleAuth';
 import { signInDemo } from '../../lib/demoAuth';
 import { useAuth } from '../../contexts/AuthContext';
 import type { LucideIcon } from 'lucide-react';
@@ -123,26 +122,11 @@ export default function Welcome() {
     }
   };
 
-  /* ---------------- Google sign-in (primary) ---------------- */
-  const google = async () => {
-    resetMsgs(); setLoading(true);
-    try {
-      const res = await signInWithGoogleNative(next, role || 'customer');
-      if (!res.ok) {
-        setErr(friendly(res.error || 'Google sign-in could not start.'));
-        return;
-      }
-      // Demo mode signs in in-process; native OAuth redirects the browser
-      // itself. Either way, sync auth state from the live session first so the
-      // destination gate sees a settled user + role.
-      await refresh();
-      nav(homeFor(role || 'customer'), { replace: true });
-    } catch (e: unknown) {
-      setErr(friendly(errMsg(e)));
-    } finally {
-      setLoading(false);
-    }
-  };
+  /* ---------------- Google sign-in — intentionally INERT ---------------- */
+  // The "Continue with Google" button is a visual/hover-only affordance for
+  // now: it renders, it hovers, it performs NO action. No handler is attached,
+  // so a click can never start an OAuth flow, create a session or navigate.
+  // (Email + business account creation remain fully functional below.)
 
   /* ---------------- Demo accounts ---------------- */
   const demo = async () => {
@@ -383,15 +367,16 @@ export default function Welcome() {
                 {mode === 'register' ? 'Join Velora in seconds.' : `Sign in to your ${isAdmin ? 'business console' : 'account'}.`}
               </p>
 
-              {/* Google — primary action, outlined treatment (wire it to the real
-                  OAuth flow; in demo mode it signs into the demo account). */}
+              {/* Google — visual/hover-only for now: no handler, no action.
+                  Kept in the same position and styling so the sign-in screen is
+                  unchanged; email + demo remain the working paths. */}
               <button
                 type="button"
-                onClick={google}
-                disabled={loading}
-                className="mt-6 w-full rounded-xl border border-app bg-[var(--surface)] py-3 text-sm font-semibold flex items-center justify-center gap-2.5 transition-all duration-200 hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[var(--color-brand-indigo)]/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)] disabled:opacity-60 disabled:hover:translate-y-0"
+                aria-disabled="true"
+                title="Google sign-in is not enabled yet — continue with email or the demo below"
+                className="mt-6 w-full rounded-xl border border-app bg-[var(--surface)] py-3 text-sm font-semibold flex items-center justify-center gap-2.5 transition-all duration-200 hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[var(--color-brand-indigo)]/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]"
               >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <GoogleLogo />} Continue with Google
+                <GoogleLogo /> Continue with Google
               </button>
 
               <div className="my-4 flex items-center gap-3 text-xs text-dim">
