@@ -748,8 +748,16 @@ ok('Every result card states a starting price in ₹ (or "price on request")',
 
 const compareBtns = all('button').filter((b) => /to price comparison$/.test(b.getAttribute('aria-label') || ''));
 ok('Cards expose a comparison toggle', compareBtns.length >= 3, `${compareBtns.length} toggles`);
-if (compareBtns[0]) await click(compareBtns[0]);
-if (compareBtns[1]) await click(compareBtns[1]);
+// Compare two businesses that actually list catalogue prices: a listing with no
+// published services legitimately reads "Price on request" and is not a price
+// comparison (the sheet says so in plain language).
+const pricedToggles = compareBtns.filter((button) => {
+  const card = button.closest('.card');
+  return !!card && /from ₹/.test(txt(card));
+});
+const [firstToggle, secondToggle] = pricedToggles.length >= 2 ? pricedToggles : compareBtns;
+if (firstToggle) await click(firstToggle);
+if (secondToggle) await click(secondToggle);
 await settle(250);
 ok('Shortlisting two businesses opens the comparison tray', bodyHas('Compare 2'));
 const compareCta = all('button').find((b) => /^Compare 2$/.test(txt(b)));
