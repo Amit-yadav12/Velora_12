@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { Star, MapPin, Clock, Navigation, Phone, Heart, ChevronRight, Sparkles, Car, ArrowLeftRight, Check } from 'lucide-react';
 import { categoryColor, mapsDirections, type Business } from '../../lib/product';
 import { CategoryIcon } from '../product';
 import { formatDistance, formatTravel } from '../../lib/geo';
-import { fadeUp } from '../../lib/motion';
+import Reveal from '../Reveal';
 import { prefetchOnIntent } from '../../lib/smartCache';
 import { fromPriceLabel } from '../../lib/compare';
 import { isMiRoadElectricianSample, MI_ROAD_ELECTRICIAN_ALT } from '../../lib/miRoadElectrician';
@@ -25,8 +24,7 @@ export default function DiscoverCard({ b, active, onHover, compact, onCompare, c
   const call = (e: React.MouseEvent) => { e.stopPropagation(); window.location.href = `tel:${b.phone}`; };
 
   return (
-    <motion.div
-      variants={fadeUp}
+    <Reveal
       style={{ contentVisibility: 'auto', containIntrinsicSize: '220px' } as React.CSSProperties}
       onMouseEnter={() => { onHover?.(b.id); prefetchOnIntent(`/api/businesses?id=${b.id}`); }} onMouseLeave={() => onHover?.(null)}
       onClick={() => nav(`/business/${b.id}`)}
@@ -81,6 +79,6 @@ export default function DiscoverCard({ b, active, onHover, compact, onCompare, c
         {!b.synthetic && !b.demo && <button onClick={directions} title="Directions" className="px-3.5 border-l border-app hover:bg-[var(--surface-hover)]"><Navigation className="h-4 w-4 text-[var(--text-link-strong)]" /></button>}
         {!b.synthetic && !b.demo && b.phone && <button onClick={call} title="Call" className="px-3.5 border-l border-app hover:bg-[var(--surface-hover)]"><Phone className="h-4 w-4 text-emerald-400" /></button>}
       </div>
-    </motion.div>
+    </Reveal>
   );
 }

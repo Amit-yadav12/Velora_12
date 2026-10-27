@@ -1,9 +1,8 @@
 import { createElement } from 'react';
 import { Link } from 'react-router-dom';
-import { motion, useReducedMotion } from 'framer-motion';
 import { Star, MapPin, Clock } from 'lucide-react';
 import { Business, categoryIcon, categoryColor } from '../lib/product';
-import { fadeUp } from '../lib/motion';
+import Reveal from './Reveal';
 import { todayHours } from '../lib/businessHours';
 import { prefetchOnIntent } from '../lib/smartCache';
 import { isMiRoadElectricianSample, MI_ROAD_ELECTRICIAN_ALT } from '../lib/miRoadElectrician';
@@ -32,17 +31,20 @@ export function Rating({ value, count, sm }: { value: number | null | undefined;
 }
 
 /**
- * BusinessCard is a motion child: it inherits the `variants={fadeUp}` state
- * from its parent `<Grid>` container, so ONE viewport observer drives the
- * whole list (no per-card observers / delay math = no scroll jank).
- * Only transform+opacity animate. `content-visibility:auto` skips paint for
- * off-screen cards.
+ * BusinessCard reveals itself when it enters the viewport.
+ *
+ * It used to inherit `variants={fadeUp}` from <Grid>, but a grid that mounts
+ * below the fold never flipped its children out of the "hidden" variant, so
+ * whole sections (Nearby, Recommended) rendered as blank space. Each card now
+ * owns a <Reveal>, which always resolves (see Reveal.tsx). Only transform and
+ * opacity animate.
+ * `content-visibility:auto` skips paint for off-screen cards.
  */
 export function BusinessCard({ b }: { b: Business; index?: number }) {
   const color = categoryColor(b.category);
   const isIllustratedSample = isMiRoadElectricianSample(b);
   return (
-    <motion.div variants={fadeUp} style={{ contentVisibility: 'auto', containIntrinsicSize: '280px' } as React.CSSProperties}>
+    <Reveal style={{ contentVisibility: 'auto', containIntrinsicSize: '280px' } as React.CSSProperties}>
       <Link
         to={`/business/${b.id}`}
         onMouseEnter={() => prefetchOnIntent(`/api/businesses?id=${b.id}`)}
@@ -70,27 +72,17 @@ export function BusinessCard({ b }: { b: Business; index?: number }) {
           </div>
         </div>
       </Link>
-    </motion.div>
+    </Reveal>
   );
 }
 
 /**
- * Grid — a single stagger container. Wrap BusinessCard lists in this so the
- * reveal is orchestrated once (cheap) rather than per item.
+ * Grid — layout only. Reveal is owned by each card (see BusinessCard), because
+ * a container-level `whileInView` left cards stranded at opacity 0 whenever the
+ * grid mounted below the viewport.
  */
 export function Grid({ children, className = '' }: { children: React.ReactNode; className?: string }) {
-  const reduceMotion = useReducedMotion();
-  return (
-    <motion.div
-      initial={reduceMotion ? false : 'hidden'}
-      whileInView={reduceMotion ? undefined : 'show'}
-      viewport={{ once: true, amount: 0.1 }}
-      variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}
-      className={className}
-    >
-      {children}
-    </motion.div>
-  );
+  return <div className={className}>{children}</div>;
 }
 
 export function SectionTitle({ title, action, to }: { title: string; action?: string; to?: string }) {

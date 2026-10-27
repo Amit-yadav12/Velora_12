@@ -37,9 +37,29 @@ async function expectNoHorizontalOverflow(page, label) {
   expect(scroll, `${label}: page-level horizontal overflow (${scroll}px > ${client}px)`).toBeLessThanOrEqual(client + 1);
 }
 
+async function settleAnimations(page) {
+  // Framer Motion drives opacity/transform through the Web Animations API.
+  // Waiting for those animations to finish means axe measures final colours,
+  // not a mid-fade blend (a semi-transparent card fails AA by definition).
+  await page.evaluate(async () => {
+    // Skip infinite animations (the "live" pulse dots) — their `finished`
+    // promise never resolves — and cap the wait so a stuck animation can never
+    // hang the check.
+    const finite = document.getAnimations().filter((a) => {
+      const timing = a.effect?.getTiming?.();
+      return timing && timing.iterations !== Infinity;
+    });
+    await Promise.race([
+      Promise.all(finite.map((a) => a.finished.catch(() => {}))),
+      new Promise((r) => setTimeout(r, 3000)),
+    ]);
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  });
+  await page.waitForTimeout(150);
+}
+
 async function expectAxeClean(page, label) {
-  // Let entrance animations finish so contrast is measured on final colours.
-  await page.waitForTimeout(500);
+  await settleAnimations(page);
   if (!(await page.evaluate(() => Boolean(window.axe)))) {
     await page.addScriptTag({ path: axeScript });
   }
@@ -428,6 +448,26 @@ for (const viewport of SIZES) {
     test.setTimeout(120_000);
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     const shot = async (name) => {
+      // Cards below the fold reveal on first view, so scroll through before a
+      // full-page capture — then wait until every card is actually opaque.
+      // (Reveal has a safety timer, so this resolves even if a fast scroll
+      // skips an IntersectionObserver callback.) Screenshots that show blank
+      // sections are worthless as evidence, so this waits rather than guesses.
+      await page.evaluate(async () => {
+        const step = window.innerHeight * 0.6;
+        for (let y = 0; y < document.body.scrollHeight; y += step) {
+          window.scrollTo(0, y);
+          await new Promise((r) => setTimeout(r, 150));
+        }
+        window.scrollTo(0, 0);
+      });
+      for (let i = 0; i < 40; i++) {
+        const hidden = await page.evaluate(() => [...document.querySelectorAll('.card')]
+          .filter((c) => c.offsetParent !== null && Number(getComputedStyle(c).opacity) < 0.99).length);
+        if (hidden === 0) break;
+        await page.waitForTimeout(200);
+      }
+      await settleAnimations(page);
       await page.screenshot({ path: `test-results/browser/${viewport.label}/${name}.png`, fullPage: true, animations: 'disabled' });
     };
 
