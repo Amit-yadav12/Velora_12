@@ -20,6 +20,18 @@ function detectorCtor(): BarcodeDetectorCtor | null {
   return typeof ctor === 'function' ? ctor : null;
 }
 
+function appointmentTime(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  return `${new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' }).format(date)} IST`;
+}
+
+function appointmentPrice(value: ConsoleBooking['price']): string | null {
+  if (value == null || value === '') return null;
+  const amount = Number(value);
+  return Number.isFinite(amount) ? new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(amount) : null;
+}
+
 const CODE_STYLE: Record<string, { ring: string; icon: 'ok' | 'warn' | 'error' }> = {
   verified: { ring: 'border-emerald-500/40 bg-emerald-500/10', icon: 'ok' },
   already_checked_in: { ring: 'border-cyan-500/40 bg-cyan-500/10', icon: 'ok' },
@@ -194,7 +206,18 @@ export default function CheckInDialog({ open, onClose, bookings, onCheckedIn, on
                 <div className="min-w-0">
                   <p className="font-medium">{plan.title}</p>
                   <p className="text-sm text-muted mt-0.5">{plan.message}</p>
-                  {plan.ref && <p className="text-[11px] font-mono text-dim mt-1.5">{plan.ref}</p>}
+                  {plan.ref && <p className="text-[11px] font-mono text-dim mt-1.5">Booking reference · {plan.ref}</p>}
+                  {plan.booking && (
+                    <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 rounded-xl border border-app bg-[var(--surface)]/60 p-3 text-xs">
+                      <dt className="text-dim">Guest</dt><dd className="font-medium">{plan.booking.customer_name || 'Guest'}</dd>
+                      <dt className="text-dim">Service</dt><dd className="font-medium">{plan.booking.service_name}</dd>
+                      <dt className="text-dim">Appointment</dt><dd className="font-medium">{appointmentTime(plan.booking.start_time)}</dd>
+                      {plan.booking.employee_name && <><dt className="text-dim">Staff</dt><dd className="font-medium">{plan.booking.employee_name}</dd></>}
+                      <dt className="text-dim">Status</dt><dd className="font-medium capitalize">{plan.booking.status.replaceAll('_', ' ')}</dd>
+                      {appointmentPrice(plan.booking.price) && <><dt className="text-dim">Price</dt><dd className="font-medium">{appointmentPrice(plan.booking.price)}</dd></>}
+                      {plan.booking.location && <><dt className="text-dim">Location</dt><dd className="font-medium">{plan.booking.location}</dd></>}
+                    </dl>
+                  )}
                   {plan.booking && onOpenBooking && (
                     <button
                       type="button"

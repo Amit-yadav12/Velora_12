@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ArrowRight, Loader2, Mail, Lock, User, ShieldCheck, CalendarCheck, Sparkles, MapPin, ChevronLeft, Store, UserRound, Building2, KeyRound } from 'lucide-react';
+import { motion, useReducedMotion } from 'framer-motion';
+import { ArrowRight, Loader2, Mail, Lock, User, ShieldCheck, CalendarCheck, Sparkles, MapPin, ChevronLeft, Store, UserRound, Building2, KeyRound, Phone, RotateCw } from 'lucide-react';
 import supabase, { isDemoMode } from '../../lib/supabase';
 import { LogoMark } from '../../components/Logo';
 import { inputCls } from '../../components/ui';
-import { signInDemo } from '../../lib/demoAuth';
+import { signInDemo, isCanonicalDemoCredential } from '../../lib/demoAuth';
 import { useAuth } from '../../contexts/AuthContext';
 import type { LucideIcon } from 'lucide-react';
 import { errMsg } from '../../lib/types';
+import { isValidIndianPhone, normalizeIndianPhone } from '../../lib/india';
 
 type Role = 'customer' | 'admin';
 type Mode = 'choose' | 'signin' | 'register' | 'bizreg';
+type AuthPath = 'email' | 'phone';
 
 const GoogleLogo = () => (
   <svg className="h-4 w-4" viewBox="0 0 24 24">
@@ -28,6 +30,7 @@ export default function Welcome() {
   const requestedNext = params.get('next') || '/';
   const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '/';
   const { user, profile, loading: authLoading, refresh } = useAuth();
+  const reduceMotion = useReducedMotion();
 
   // ?role=business preselects the business console path (?role=customer the
   // customer path) — used by the one-click business demo fallback.
@@ -42,6 +45,13 @@ export default function Welcome() {
   const [password, setPassword] = useState('');
   const [err, setErr] = useState('');
   const [info, setInfo] = useState('');
+  const [authPath, setAuthPath] = useState<AuthPath | null>(null);
+  const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
+  const [otpRequested, setOtpRequested] = useState(false);
+  const [demoOtp, setDemoOtp] = useState('');
+  const [demoOtpExpiresAt, setDemoOtpExpiresAt] = useState(0);
+  const [resendCooldown, setResendCooldown] = useState(0);
   // Deployment-facing notice when the business demo cannot be granted console
   // access (missing schema / missing credentials / rotated key). While it is
   // set we stay on this page and say why, instead of silently bouncing the
@@ -61,14 +71,86 @@ export default function Welcome() {
 
   const homeFor = (r: Role) => (r === 'admin' ? '/admin' : next);
   const resetMsgs = () => { setErr(''); setInfo(''); };
-  const switchMode = (m: Mode, revealEmail = false) => { resetMsgs(); setMode(m); setEmailOpen(revealEmail); };
+  const switchMode = (m: Mode, revealEmail = false) => { resetMsgs(); setMode(m); setEmailOpen(revealEmail); setAuthPath(null); };
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setTimeout(() => setResendCooldown((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [resendCooldown]);
+
+  const phoneIsValid = (value: string) => {
+    const digits = value.replace(/\D/g, '');
+    const national = digits.length === 12 && digits.startsWith('91') ? digits.slice(2) : digits;
+    // Reject trunk prefixes and leading 0/1 rather than silently normalizing them away.
+    return /^[6-9]\d{9}$/.test(national) && isValidIndianPhone(value);
+  };
+
+  const requestPhoneOtp = async () => {
+    resetMsgs();
+    if (!phoneIsValid(phone)) { setErr('Enter a valid Indian mobile number: 10 digits starting with 6–9, optionally prefixed by +91.'); return; }
+    setLoading(true);
+    setOtp('');
+    try {
+      const e164 = `+91${normalizeIndianPhone(phone)}`;
+      if (isDemoMode) {
+        const values = new Uint32Array(1);
+        if (window.crypto?.getRandomValues) window.crypto.getRandomValues(values);
+        else values[0] = Math.floor(Math.random() * 1_000_000);
+        setDemoOtp(String(values[0] % 1_000_000).padStart(6, '0'));
+        setDemoOtpExpiresAt(Date.now() + 5 * 60 * 1000);
+      } else {
+        const { error } = await supabase.auth.signInWithOtp({ phone: e164 });
+        if (error) throw error;
+        setDemoOtp('');
+        setDemoOtpExpiresAt(0);
+        setInfo('OTP request accepted by Supabase. Check your messages; delivery depends on your SMS provider.');
+      }
+      setOtpRequested(true);
+      setResendCooldown(30);
+    } catch (e: unknown) {
+      setErr(friendly(errMsg(e)) || 'The SMS provider did not accept the OTP request.');
+    } finally { setLoading(false); }
+  };
+
+  const verifyPhoneOtp = async (event: React.FormEvent) => {
+    event.preventDefault();
+    resetMsgs();
+    if (!/^\d{6}$/.test(otp)) { setErr('Enter the 6-digit verification code.'); return; }
+    setLoading(true);
+    try {
+      if (isDemoMode) {
+        if (Date.now() >= demoOtpExpiresAt) throw new Error('That demo code has expired. Request a new code and try again.');
+        if (!demoOtp || otp !== demoOtp) throw new Error('That demo code is incorrect. Request a new code and try again.');
+        await signInDemo('customer');
+      } else {
+        const e164 = `+91${normalizeIndianPhone(phone)}`;
+        const { error } = await supabase.auth.verifyOtp({ phone: e164, token: otp, type: 'sms' });
+        if (error) throw error;
+      }
+      await refresh();
+      nav(next, { replace: true });
+    } catch (e: unknown) {
+      // Do not leave a stale/partial session after a failed code attempt.
+      try { await supabase.auth.signOut(); } catch { /* preserve the verification error */ }
+      await refresh();
+      setErr(friendly(errMsg(e)) || 'The code could not be verified. Request a new code and try again.');
+      setLoading(false);
+    }
+  };
 
   /* ---------------- Email auth (sign in / create account) ---------------- */
   const emailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     resetMsgs();
+    if (mode === 'register' && !name.trim()) { setErr('Enter your name.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setErr('Enter a valid email address.'); return; }
+    if (!password || (mode === 'register' && password.length < 6)) { setErr(mode === 'register' ? 'Password must be at least 6 characters.' : 'Enter your password.'); return; }
     setLoading(true);
     try {
+      if (mode === 'signin' && !isDemoMode && isCanonicalDemoCredential(email, password)) {
+        throw new Error('Demo credentials are available only in offline sample mode. Use an account registered with this project.');
+      }
       if (mode === 'register') {
         const { data, error } = await supabase.auth.signUp({
           email, password,
@@ -101,7 +183,7 @@ export default function Welcome() {
   };
 
   const forgotPassword = async () => {
-    if (!email) { setErr('Enter your email above first, then tap reset.'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setErr('Enter a valid email address before requesting a reset.'); return; }
     resetMsgs(); setLoading(true);
     try {
       // Demo mode has no mail infrastructure — never claim a link was sent.
@@ -118,17 +200,6 @@ export default function Welcome() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const googleSignIn = async () => {
-    if (isDemoMode) return;
-    resetMsgs(); setLoading(true);
-    try {
-      const destination = role === 'admin' ? '/onboard' : next;
-      const redirectTo = `${window.location.origin}/welcome?role=${role === 'admin' ? 'business' : 'customer'}&next=${encodeURIComponent(destination)}`;
-      const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } });
-      if (error) throw error;
-    } catch (e: unknown) { setErr(friendly(errMsg(e)) || 'Google sign-in is unavailable.'); setLoading(false); }
   };
 
   /* ---------------- Demo accounts ---------------- */
@@ -151,7 +222,7 @@ export default function Welcome() {
   /* Account creation happens first; the full business is saved only in the launch flow. */
   const createBusinessAccount = async (e: React.FormEvent) => {
     e.preventDefault(); resetMsgs();
-    if (!name.trim() || !email.includes('@') || password.length < 6) { setErr('Enter your name, email and a password of at least 6 characters.'); return; }
+    if (!name.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) || password.length < 6) { setErr('Enter your name, a valid email, and a password of at least 6 characters.'); return; }
     setLoading(true);
     try {
       const redirect = `${window.location.origin}/welcome?role=business&next=${encodeURIComponent('/onboard')}`;
@@ -172,15 +243,20 @@ export default function Welcome() {
       <div className="min-h-screen grid place-items-center p-6 relative overflow-hidden">
         <div className="mesh" />
         <div className="absolute inset-0 grid-bg opacity-30" />
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="relative w-full max-w-md text-center">
+        <motion.div initial={reduceMotion ? false : { opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }} className="relative w-full max-w-md text-center">
           <div className="inline-flex items-center gap-2.5 mb-8">
             <LogoMark size={40} />
             <span className="font-semibold tracking-tight text-2xl">Velora</span>
           </div>
           <h1 className="text-3xl font-semibold tracking-tight">How would you like to continue?</h1>
           <p className="text-muted mt-2">Choose your experience — you can switch anytime.</p>
+          <button type="button" disabled aria-disabled="true" tabIndex={-1} className="mt-6 w-full min-h-11 rounded-xl border border-app bg-[var(--surface)] py-3 text-sm font-semibold flex items-center justify-center gap-2.5 opacity-70 cursor-not-allowed">
+            <GoogleLogo /> Continue with Google
+          </button>
+          <p className="mt-2 text-xs text-dim">Google sign-in isn&apos;t connected in this build.</p>
+          <p className="mt-2 text-xs text-dim">Sample mode: demo customer, demo business and demo OTP work offline. Google needs OAuth; SMS and email need providers.</p>
 
-          <div className="mt-8 grid gap-4">
+          <div className="mt-6 grid gap-4">
             <RoleCard onClick={() => { setRole('customer'); setMode('signin'); }} icon={UserRound} title="I'm a Customer" sub="Discover and book appointments near you" tint="#6366f1" delay={0.05} />
             <RoleCard onClick={() => { setRole('admin'); setMode('signin'); }} icon={Store} title="I'm a Business" sub="Manage bookings, staff, services & availability" tint="#10b981" delay={0.12} />
           </div>
@@ -242,7 +318,7 @@ export default function Welcome() {
       {/* Auth side */}
       <div className="flex items-center justify-center p-6 sm:p-12 relative">
         <div className="mesh lg:hidden" />
-        <motion.div key={role + mode} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm relative">
+        <motion.div key={role + mode} initial={reduceMotion ? false : { opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2 }} className="w-full max-w-sm relative">
           <button
             onClick={() => {
               if (mode === 'bizreg') { switchMode('signin'); }
@@ -265,15 +341,21 @@ export default function Welcome() {
 
           {mode === 'bizreg' ? (
             <>
-              <h2 className="text-2xl font-semibold">Create your business account</h2>
+              <button type="button" disabled aria-disabled="true" tabIndex={-1} title="Google sign-in isn't connected in this build." className="mt-2 w-full min-h-11 rounded-xl border border-app bg-[var(--surface)] py-3 text-sm font-semibold flex items-center justify-center gap-2.5 opacity-70 cursor-not-allowed"><GoogleLogo /> Continue with Google</button>
+              <p className="mt-2 text-center text-xs text-dim">Google sign-in isn&apos;t connected in this build.</p>
+              <p className="mt-2 text-center text-xs text-dim">Sample mode: demo customer, demo business and demo OTP work offline. Google needs OAuth; SMS and email need providers.</p>
+              <h2 className="mt-4 text-2xl font-semibold">Create your business account</h2>
               <p className="text-sm text-dim mt-1">Start with your owner account, then build your business profile.</p>
               <form onSubmit={createBusinessAccount} className="mt-6 space-y-3">
-                <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" placeholder="Owner name" className={inputCls} />
-                <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required autoComplete="email" placeholder="business@email.com" className={inputCls} />
-                <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required minLength={6} autoComplete="new-password" placeholder="Password (min 6 characters)" className={inputCls} />
-                {err && <p role="alert" className="text-sm text-red-400">{err}</p>}
+                <label htmlFor="owner-name" className="sr-only">Owner name</label>
+                <input id="owner-name" value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" placeholder="Owner name" aria-invalid={!!err} aria-describedby={err ? 'business-auth-error' : undefined} className={inputCls + ' min-h-11 focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]'} />
+                <label htmlFor="business-email" className="sr-only">Business email address</label>
+                <input id="business-email" value={email} onChange={(e) => setEmail(e.target.value)} type="email" required autoComplete="email" placeholder="business@email.com" aria-invalid={!!err} aria-describedby={err ? 'business-auth-error' : undefined} className={inputCls + ' min-h-11 focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]'} />
+                <label htmlFor="business-password" className="sr-only">Password</label>
+                <input id="business-password" value={password} onChange={(e) => setPassword(e.target.value)} type="password" required minLength={6} autoComplete="new-password" placeholder="Password (min 6 characters)" aria-invalid={!!err} aria-describedby={err ? 'business-auth-error' : undefined} className={inputCls + ' min-h-11 focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]'} />
+                {err && <p id="business-auth-error" role="alert" className="text-sm text-red-400">{err}</p>}
                 {info && <p className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">{info}</p>}
-                <button disabled={loading} className="w-full grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2 disabled:opacity-60">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Create account & continue <ArrowRight className="h-4 w-4" /></>}</button>
+                <button disabled={loading} className="w-full min-h-11 grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2 disabled:opacity-60">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Create account & continue <ArrowRight className="h-4 w-4" /></>}</button>
               </form>
             </>
           ) : (
@@ -283,33 +365,43 @@ export default function Welcome() {
                 {mode === 'register' ? 'Join Velora in seconds.' : `Sign in to your ${isAdmin ? 'business console' : 'account'}.`}
               </p>
 
-              {/* Supabase OAuth requires a configured and enabled Google provider. */}
               <button
                 type="button"
-                disabled={isDemoMode || loading}
-                onClick={googleSignIn}
-                title={isDemoMode ? 'Connect Supabase to enable Google sign-in' : 'Continue with Google'}
-                className="mt-6 w-full rounded-xl border border-app bg-[var(--surface)] py-3 text-sm font-semibold flex items-center justify-center gap-2.5 transition-all duration-200 hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[var(--color-brand-indigo)]/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]"
+                disabled
+                aria-disabled="true"
+                tabIndex={-1}
+                title="Google sign-in isn't connected in this build."
+                className="mt-6 w-full min-h-11 rounded-xl border border-app bg-[var(--surface)] py-3 text-sm font-semibold flex items-center justify-center gap-2.5 opacity-70 cursor-not-allowed"
               >
                 <GoogleLogo /> Continue with Google
               </button>
+              <p className="mt-2 text-center text-xs text-dim">Google sign-in isn&apos;t connected in this build.</p>
+              <p className="mt-2 text-center text-xs text-dim">Sample mode: demo customer, demo business and demo OTP work offline. Google needs OAuth; SMS and email need providers.</p>
 
               {err && !emailOpen && <p role="alert" className="text-sm text-red-400 mt-3">{err}</p>}
               <div className="my-4 flex items-center gap-3 text-xs text-dim">
                 <div className="flex-1 h-px bg-[var(--border)]" />
-                or
+                Choose a sign-in path
                 <div className="flex-1 h-px bg-[var(--border)]" />
               </div>
 
-              {/* Secondary: email (hollow) — reveals the email form */}
-              {mode === 'signin' && !emailOpen && (
-                <button
-                  onClick={() => setEmailOpen(true)}
-                  disabled={loading}
-                  className="w-full rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2.5 hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] transition-colors"
-                >
-                  <Mail className="h-4 w-4" /> Continue with Email
-                </button>
+              {mode === 'signin' && !emailOpen && authPath !== 'phone' && (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => { resetMsgs(); setEmailOpen(true); setAuthPath('email'); }}
+                    disabled={loading}
+                    className="min-h-11 rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]"
+                  >
+                    <Mail className="h-4 w-4 shrink-0" /> Continue with Email
+                  </button>
+                  <button
+                    onClick={() => { resetMsgs(); setAuthPath('phone'); }}
+                    disabled={loading}
+                    className="min-h-11 rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]"
+                  >
+                    <Phone className="h-4 w-4 shrink-0" /> Continue with Phone
+                  </button>
+                </div>
               )}
 
               {/* Secondary: create business account (hollow, business role) */}
@@ -327,14 +419,16 @@ export default function Welcome() {
               {mode === 'signin' && emailOpen && (
                 <form onSubmit={emailAuth} className="mt-5 space-y-3">
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
-                    <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required placeholder={isAdmin ? 'business@email.com' : 'you@email.com'} className={inputCls + ' pl-10'} />
+                    <label htmlFor="signin-email" className="sr-only">Email address</label>
+                    <Mail aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
+                    <input id="signin-email" value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="email" required aria-invalid={!!err} aria-describedby={err ? 'email-auth-error' : undefined} placeholder={isAdmin ? 'business@email.com' : 'you@email.com'} className={inputCls + ' pl-10 min-h-11 focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]'} />
                   </div>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
-                    <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required placeholder="Password" className={inputCls + ' pl-10'} />
+                    <label htmlFor="signin-password" className="sr-only">Password</label>
+                    <Lock aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
+                    <input id="signin-password" value={password} onChange={(e) => setPassword(e.target.value)} type="password" autoComplete="current-password" required aria-invalid={!!err} aria-describedby={err ? 'email-auth-error' : undefined} placeholder="Password" className={inputCls + ' pl-10 min-h-11 focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]'} />
                   </div>
-                  {err && <p className="text-sm text-red-400">{err}</p>}
+                  {err && <p id="email-auth-error" role="alert" className="text-sm text-red-400">{err}</p>}
                   {info && <p className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">{info}</p>}
                   <button disabled={loading} className="w-full grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2 disabled:opacity-60">
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Sign in <ArrowRight className="h-4 w-4" /></>}
@@ -348,21 +442,61 @@ export default function Welcome() {
                 </form>
               )}
 
+              {mode === 'signin' && authPath === 'phone' && (
+                <section aria-labelledby="phone-login-heading" className="mt-5 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 id="phone-login-heading" className="text-sm font-semibold">Phone verification</h3>
+                    <button type="button" onClick={() => { resetMsgs(); setAuthPath(null); setOtpRequested(false); setDemoOtp(''); }} className="min-h-11 px-2 text-xs text-[var(--color-brand-indigo)]">Other sign-in options</button>
+                  </div>
+                  {!otpRequested ? (
+                    <form onSubmit={(event) => { event.preventDefault(); void requestPhoneOtp(); }} className="space-y-3">
+                      <label htmlFor="phone-number" className="block text-xs text-dim">Indian mobile number</label>
+                      <div className="relative">
+                        <Phone aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
+                        <input id="phone-number" type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="98765 43210 or +91 98765 43210" aria-invalid={!!err} aria-describedby={err ? 'phone-auth-error' : 'phone-format-help'} className={inputCls + ' pl-10 min-h-11 focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]'} />
+                      </div>
+                      <p id="phone-format-help" className="text-xs text-dim">10 digits starting 6–9; +91 is added for provider verification.</p>
+                      {err && <p id="phone-auth-error" role="alert" className="text-sm text-red-400">{err}</p>}
+                      <button type="submit" disabled={loading} className="w-full min-h-11 grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2 disabled:opacity-60">
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Phone className="h-4 w-4" /> Request code</>}
+                      </button>
+                    </form>
+                  ) : (
+                    <form onSubmit={(event) => { void verifyPhoneOtp(event); }} className="space-y-3">
+                      {demoOtp && <p role="status" className="rounded-xl border-2 border-amber-400 bg-amber-500/15 p-3 text-sm font-semibold text-amber-200">Demo mode — no SMS is sent. Your code is <span className="font-mono text-lg tracking-widest">{demoOtp}</span>.</p>}
+                      {!demoOtp && info && <p role="status" className="rounded-xl border border-sky-400/30 bg-sky-500/10 p-3 text-sm text-sky-100">{info}</p>}
+                      <label htmlFor="phone-otp" className="block text-xs text-dim">6-digit verification code</label>
+                      <input id="phone-otp" type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="Enter 6-digit code" aria-invalid={!!err} aria-describedby={err ? 'otp-auth-error' : undefined} className={inputCls + ' min-h-11 tracking-[0.3em] focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]'} />
+                      {err && <p id="otp-auth-error" role="alert" aria-live="polite" className="text-sm text-red-400">{err}</p>}
+                      <button type="submit" disabled={loading || otp.length !== 6} className="w-full min-h-11 grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2 disabled:opacity-60">
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Verify code <ArrowRight className="h-4 w-4" /></>}
+                      </button>
+                      <button type="button" disabled={loading || resendCooldown > 0} onClick={() => void requestPhoneOtp()} className="w-full min-h-11 rounded-xl border border-app py-2 text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50">
+                        <RotateCw className="h-4 w-4" /> {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend code'}
+                      </button>
+                    </form>
+                  )}
+                </section>
+              )}
+
               {mode === 'register' && (
                 <form onSubmit={emailAuth} className="mt-5 space-y-3">
                   <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
-                    <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Full name" className={inputCls + ' pl-10'} />
+                    <label htmlFor="register-name" className="sr-only">Full name</label>
+                    <User aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
+                    <input id="register-name" value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" aria-invalid={!!err} aria-describedby={err ? 'register-auth-error' : undefined} placeholder="Full name" className={inputCls + ' pl-10 min-h-11 focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]'} />
                   </div>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
-                    <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required placeholder="you@email.com" className={inputCls + ' pl-10'} />
+                    <label htmlFor="register-email" className="sr-only">Email address</label>
+                    <Mail aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
+                    <input id="register-email" value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="email" required aria-invalid={!!err} aria-describedby={err ? 'register-auth-error' : undefined} placeholder="you@email.com" className={inputCls + ' pl-10 min-h-11 focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]'} />
                   </div>
                   <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
-                    <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required minLength={6} placeholder="Password (min 6 characters)" className={inputCls + ' pl-10'} />
+                    <label htmlFor="register-password" className="sr-only">Password</label>
+                    <Lock aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
+                    <input id="register-password" value={password} onChange={(e) => setPassword(e.target.value)} type="password" autoComplete="new-password" required minLength={6} aria-invalid={!!err} aria-describedby={err ? 'register-auth-error' : undefined} placeholder="Password (min 6 characters)" className={inputCls + ' pl-10 min-h-11 focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]'} />
                   </div>
-                  {err && <p className="text-sm text-red-400">{err}</p>}
+                  {err && <p id="register-auth-error" role="alert" className="text-sm text-red-400">{err}</p>}
                   {info && <p className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">{info}</p>}
                   <button disabled={loading} className="w-full grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2 disabled:opacity-60">
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Create account <ArrowRight className="h-4 w-4" /></>}
@@ -397,14 +531,15 @@ export default function Welcome() {
 }
 
 function RoleCard({ onClick, icon: Icon, title, sub, tint, delay }: { onClick: () => void; icon: LucideIcon; title: string; sub: string; tint: string; delay: number }) {
+  const reduceMotion = useReducedMotion();
   return (
     <motion.button
       onClick={onClick}
-      initial={{ opacity: 0, y: 16 }}
+      initial={reduceMotion ? false : { opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay }}
-      whileHover={{ y: -3, scale: 1.01 }}
-      whileTap={{ scale: 0.98 }}
+      transition={{ delay: reduceMotion ? 0 : delay, duration: 0.2 }}
+      whileHover={reduceMotion ? undefined : { y: -3, scale: 1.01 }}
+      whileTap={reduceMotion ? undefined : { scale: 0.98 }}
       className="group card p-5 flex items-center gap-4 text-left transition-colors hover:border-[var(--border-strong)]"
     >
       <div className="h-14 w-14 rounded-2xl grid place-items-center shrink-0" style={{ background: `${tint}1f` }}>

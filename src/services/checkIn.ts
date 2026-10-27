@@ -49,7 +49,7 @@ export async function checkInFromTicket(input: string, { bookings, apply }: Chec
 
   try {
     await apply(plan.booking, token);
-    return plan;
+    return { ...plan, booking: { ...plan.booking, status: 'checked_in' } };
   } catch (e: unknown) {
     return {
       ok: false, code: 'failed', booking: plan.booking, ref: plan.ref,
