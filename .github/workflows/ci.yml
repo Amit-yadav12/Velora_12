@@ -49,3 +49,20 @@ jobs:
 
       - name: Full app + API harness
         run: npm run verify:app
+
+      - name: Install Chromium for real-browser UX and accessibility checks
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser booking, QR check-in, responsive and axe checks
+        run: npm run verify:browser
+
+      - name: Save browser screenshots and diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: velora-browser-evidence
+          path: |
+            test-results/browser/
+            playwright-report/
+          if-no-files-found: warn
+          retention-days: 14

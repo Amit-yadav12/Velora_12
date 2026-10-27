@@ -161,7 +161,7 @@ export default function CheckInDialog({ open, onClose, bookings, onCheckedIn, on
             className={`${inputCls} font-mono text-xs resize-none`}
           />
           <div className="flex flex-wrap gap-2">
-            <button type="submit" disabled={busy || !input.trim()} className={btnPrimary + ' flex-1 min-w-[140px]'}>
+            <button type="submit" disabled={busy || !input.trim()} className={btnPrimary + ' min-h-11 flex-1 min-w-[140px]'}>
               {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Verifying…</> : <><ShieldAlert className="h-4 w-4" /> Verify &amp; check in</>}
             </button>
             {canScan && !scanning && (

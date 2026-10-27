@@ -508,7 +508,7 @@ export default function Welcome() {
               {/* Demo — clearly styled, honest about what it is */}
               {isDemoMode && <div className="mt-6 rounded-xl border border-dashed border-app p-3">
                 <p className="text-xs text-dim mb-2">Explore the full working demo — {isAdmin ? 'business console' : 'customer app'} with sample data stored on this device.</p>
-                <button onClick={demo} disabled={loading} className="w-full text-xs rounded-lg border border-app hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] py-2.5 font-medium flex items-center justify-center gap-1.5 transition-colors">
+                <button onClick={demo} disabled={loading} className="w-full min-h-11 text-xs rounded-lg border border-app hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] py-2.5 font-medium flex items-center justify-center gap-1.5 transition-colors">
                   {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><ShieldCheck className="h-3.5 w-3.5" /> Continue as demo {isAdmin ? 'business' : 'customer'}</>}
                 </button>
 
