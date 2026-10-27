@@ -1,5 +1,37 @@
 @import "tailwindcss";
 
+/* Self-hosted Inter (SIL OFL 1.1, public/fonts/OFL.txt). Ship the real brand
+   type with the app instead of depending on fonts.googleapis.com: an offline
+   demo venue must not fall back to a different face. */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/inter-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/inter-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/inter-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/inter-700.woff2') format('woff2');
+}
+
 /* Exclude the serverless api/ routes from class scanning. Their console.error
    strings like "[maps:error]" would otherwise be parsed by Tailwind v4 as
    arbitrary variants and pollute the CSS bundle. */
@@ -23,6 +55,9 @@
   --text: #f7f9fc;
   --text-muted: #c2c9d6;
   --text-dim: #97a0b2;
+  /* Accent text on dark surfaces: brand indigo at 15% alpha is too faint for
+     small labels (axe contrast), so links/chips use this lighter tint. */
+  --text-link-strong: #a5b4fc;
   --glass: rgba(13, 16, 26, 0.85);
   color-scheme: dark;
 }
@@ -37,6 +72,7 @@ html.light {
   --text: #0a0e1a;
   --text-muted: #3d4759;
   --text-dim: #5b6577;
+  --text-link-strong: #4338ca;
   --glass: rgba(255, 255, 255, 0.9);
   color-scheme: light;
 }

@@ -12,7 +12,7 @@ import {
   emitServicesChanged, emitStaffChanged,
 } from '../services/events';
 import { formatIndianAddress, istWallDate, istYmd } from './india';
-import { istTime } from './format';
+import { demoTax, istTime } from './format';
 import { ticketOrigin } from './site';
 import { CATEGORY_DEFS } from './synthetic';
 import type { LocalBooking, LocalInvoice } from './offlineStore';
@@ -385,9 +385,15 @@ export function ensureJaipurDirectory(): void {
  * services (and prices) the owner never listed, and those became bookable. Their
  * menu is exactly what they saved. */
 export function ensureFullMenus(): void {
+  // Fill a category menu only where the business has none of its own.
+  // Re-seeding every showcase business was prepending catalogue services at
+  // catalogue prices on top of the authored ₹ menu — Aurora Luxe ended up with
+  // two different haircut prices, which is exactly what a judge notices.
   try {
     for (const b of read<DemoBusiness>(K_BIZ)) {
       if (b.created_via === 'onboarding' || b.created_via === 'console') continue;
+      const own = read<DemoService>(K_SVC).filter((s) => s.business_id === b.id);
+      if (own.length > 0) continue;
       seedCatalogForBusiness(b.id, b.category);
     }
   } catch { /* ignore */ }
@@ -511,7 +517,7 @@ export function ensureDemoOps(): void {
       created_at: created,
       local: true,
     });
-    const tax = Math.round(price * 0.18 * 100) / 100;
+    const tax = demoTax(price);
     invoices.push({
       id: ref,
       number: `INV-${ref.slice(3)}`,

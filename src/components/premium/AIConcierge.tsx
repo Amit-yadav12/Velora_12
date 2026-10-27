@@ -53,6 +53,7 @@ export default function AIConcierge() {
       {/* Floating launcher */}
       <motion.button initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', delay: 0.5 }}
         onClick={() => setOpen(o => !o)} whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
+        aria-label={open ? 'Close the Velora concierge' : 'Open the Velora concierge'} aria-expanded={open}
         className="fixed bottom-24 lg:bottom-6 right-4 lg:right-6 z-[70] h-14 w-14 rounded-2xl grad-btn shadow-2xl grid place-items-center">
         <AnimatePresence mode="wait">
           {open ? <motion.span key="x" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ opacity: 0 }}><X className="h-6 w-6 text-white" /></motion.span>

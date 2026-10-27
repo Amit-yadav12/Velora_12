@@ -7,17 +7,19 @@ import { useAuth } from '../../contexts/AuthContext';
 import supabase, { isDemoMode } from '../../lib/supabase';
 import { useLocation } from '../../contexts/LocationContext';
 import { mapsDirections } from '../../lib/product';
-import { apiGet, apiSend } from '../../lib/api';
+import { apiGet, apiSend, hasLiveSession } from '../../lib/api';
 import { onBookingsChanged, toast } from '../../services/events';
 import ProgressTracker from '../../components/premium/ProgressTracker';
 import { inr, istTime, ist, istDate, istDateTimeLocal } from '../../lib/format';
 import QueueTracker from '../../components/premium/QueueTracker';
 import { listLocalBookings, transitionLocalBooking, updateLocalBooking } from '../../lib/offlineStore';
 import { localVerifyUrl } from '../../lib/demoStore';
+import { markDemoSeen } from '../../lib/demoJourney';
 import { isCancellable } from '../../lib/bookingStatus';
 import { googleCalendarUrl } from '../../lib/calendar';
 import { downloadBlob, svgBlob } from '../../lib/download';
 import { Modal } from '../../components/ui';
+import Portal from '../../components/Portal';
 import { errMsg, type ConsoleBooking, type TravelPlan } from '../../lib/types';
 
 function gcalLink(b: ConsoleBooking) {
@@ -72,7 +74,9 @@ export default function Appointments() {
   const load = useCallback(async () => {
     const email = profile?.email || user?.email || '';
     setLoadError('');
-    const d = await apiGet<ConsoleBooking[]>(`/api/my-bookings?email=${encodeURIComponent(email)}`).catch(() => { if (!isDemoMode) setLoadError('Your bookings could not be loaded. Please try again.'); return []; });
+    const d = hasLiveSession()
+      ? await apiGet<ConsoleBooking[]>(`/api/my-bookings?email=${encodeURIComponent(email)}`).catch(() => { setLoadError('Your bookings could not be loaded. Please try again.'); return []; })
+      : [];
     const server = Array.isArray(d) ? d : [];
     // Merge local/demo bookings (synthetic + offline continuity), de-duped by ref.
     // Always scoped to the SIGNED-IN customer's email — demo or production — so
@@ -109,6 +113,8 @@ export default function Appointments() {
 
   /** QR ticket modal — regenerate the payload for local bookings on demand. */
   const [ticket, setTicket] = useState<ConsoleBooking | null>(null);
+  // Demo-guide evidence: the ticket screen was actually opened for this tenant.
+  useEffect(() => { if (ticket) markDemoSeen('appointments'); }, [ticket]);
   const ticketQr = useMemo(() => {
     if (!ticket) return '';
     if (ticket.qr_payload) return ticket.qr_payload;
@@ -245,12 +251,12 @@ export default function Appointments() {
                 </div>
                 {!past && isCancellable(b.status) && (
                   <div className="mt-3 pt-3 border-t border-app flex flex-wrap gap-2 items-center">
-                    <button onClick={() => setTicket(b)} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><QrCode className="h-3.5 w-3.5" /> Ticket</button>
+                    <button onClick={() => setTicket(b)} data-appointment-action="ticket" className="inline-flex min-h-11 items-center gap-1.5 rounded-lg border border-[var(--color-brand-indigo)]/40 bg-[var(--color-brand-indigo)]/[0.08] px-3 py-1.5 text-xs font-medium hover:border-[var(--color-brand-indigo)]/70"><QrCode className="h-3.5 w-3.5" aria-hidden="true" /> QR ticket</button>
                     {!b.local && b.location && <a href={mapsDirections(b.location)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><Navigation className="h-3.5 w-3.5" /> Directions</a>}
                     {!b.local && <a href={gcalLink(b)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><CalendarPlus className="h-3.5 w-3.5" /> Calendar</a>}
                     <button onClick={() => { setResched(b); setNewTime(istDateTimeLocal(b.start_time)); }} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><CalendarClock className="h-3.5 w-3.5" /> Reschedule</button>
                     <button onClick={() => cancel(b.id)} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-red-400/50 hover:text-red-400"><X className="h-3.5 w-3.5" /> Cancel</button>
-                    <button onClick={() => setExpanded(e => e === b.id ? null : b.id)} className="ml-auto inline-flex items-center gap-1 text-xs text-[var(--color-brand-indigo)] font-medium">Track {expanded === b.id ? <ChevronDown className="h-3.5 w-3.5 rotate-180 transition-transform" /> : <ChevronDown className="h-3.5 w-3.5 transition-transform" />}</button>
+                    <button onClick={() => setExpanded(e => e === b.id ? null : b.id)} className="ml-auto inline-flex items-center gap-1 text-xs text-[var(--text-link-strong)] font-medium">Track {expanded === b.id ? <ChevronDown className="h-3.5 w-3.5 rotate-180 transition-transform" /> : <ChevronDown className="h-3.5 w-3.5 transition-transform" />}</button>
                   </div>
                 )}
                 {!past && b.status === 'pending' && (
@@ -272,6 +278,7 @@ export default function Appointments() {
         </div>
       )}
 
+      <Portal>
       <AnimatePresence>
         {resched && (
           <div className="fixed inset-0 z-50 grid place-items-center p-4"><div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setResched(null)} />
@@ -285,27 +292,38 @@ export default function Appointments() {
           </div>
         )}
       </AnimatePresence>
+      </Portal>
 
       {/* QR ticket — secure verification token, no personal data inside */}
       <Modal open={!!ticket} onClose={() => setTicket(null)} title="Your booking ticket">
         {ticket && (
           <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="p-2.5 rounded-2xl bg-white shrink-0" data-ticket-qr>
-                {ticketQr ? <QRCodeSVG value={ticketQr} size={110} level="M" /> : <QrCode className="h-16 w-16 text-dim" />}
+            <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
+              <div className="shrink-0 rounded-2xl bg-white p-3 shadow-sm" data-ticket-qr role="img" aria-label={`QR ticket for booking ${ticket.ref}`}>
+                {ticketQr ? <QRCodeSVG value={ticketQr} size={148} level="M" aria-hidden="true" /> : <QrCode className="h-16 w-16 text-dim" aria-hidden="true" />}
               </div>
-              <div className="min-w-0 text-sm space-y-1">
-                <p className="font-semibold text-base">{ticket.service_name}</p>
+              <div className="min-w-0 space-y-1 text-center text-sm sm:text-left">
+                <p className="text-[10px] font-semibold uppercase tracking-[.16em] text-[var(--text-link-strong)]">{ticket.local ? 'Sample ticket' : 'Signed ticket'}</p>
+                <p className="text-base font-semibold leading-tight">{ticket.service_name}</p>
                 <p className="text-dim">{ticket.resource_name}{ticket.employee_name ? ` · ${ticket.employee_name}` : ''}</p>
-                <p className="text-muted">{istDate(ticket.start_time)}, {istTime(ticket.start_time)}</p>
+                <p className="text-muted">{istDate(ticket.start_time)} · {istTime(ticket.start_time)} IST</p>
                 <p className="font-mono text-xs text-dim">{ticket.ref}</p>
+                <span className="inline-flex items-center gap-1 rounded-full border border-app px-2 py-0.5 text-[10px] capitalize text-muted">{ticket.status.replace('_', ' ')}</span>
               </div>
             </div>
-            <p className="text-xs text-dim">{!ticketQr ? 'Ticket unavailable. Refresh your bookings or contact support.' : ticket.local ? 'Sample ticket only — not valid for a real check-in.' : 'Show this signed QR at check-in. It contains no personal contact details.'}</p>
-            <div className="flex gap-2.5">
-              {ticketQr && <button onClick={downloadTicketQr} className="flex-1 rounded-xl border border-app py-2.5 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><Download className="h-4 w-4" /> Download PNG</button>}
-              {ticketQr.includes('/verify/') && <a href={ticketQr} target="_blank" rel="noreferrer" className="flex-1 rounded-xl border border-app py-2.5 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><ExternalLink className="h-4 w-4" /> Verify</a>}
+            <div className={`rounded-xl border p-3 text-xs leading-relaxed ${ticket.local ? 'border-amber-400/30 bg-amber-400/[0.08] text-amber-200' : 'border-app text-dim'}`}>
+              {!ticketQr
+                ? 'Ticket unavailable. Refresh your bookings or contact support.'
+                : ticket.local
+                  ? 'Demo tenant only: this QR verifies against the sample booking in this browser. It is not a real appointment and cannot be used for a real check-in.'
+                  : 'Show this signed QR at check-in. It contains no personal contact details.'}
             </div>
+            <div className="flex flex-wrap gap-2.5">
+              {ticketQr && <button onClick={downloadTicketQr} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-app px-3 py-2.5 text-sm font-medium hover:border-[var(--border-strong)]"><Download className="h-4 w-4" aria-hidden="true" /> Download PNG</button>}
+              {ticketQr && <button onClick={async () => { try { await navigator.clipboard.writeText(ticketQr); toast('Ticket link copied', 'success'); } catch { toast('Could not copy the link in this browser.', 'warning'); } }} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-app px-3 py-2.5 text-sm font-medium hover:border-[var(--border-strong)]"><QrCode className="h-4 w-4" aria-hidden="true" /> Copy link</button>}
+              {ticketQr.includes('/verify/') && <a href={ticketQr} target="_blank" rel="noreferrer" className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-app px-3 py-2.5 text-sm font-medium hover:border-[var(--border-strong)]"><ExternalLink className="h-4 w-4" aria-hidden="true" /> Verify page</a>}
+            </div>
+            <p className="text-[11px] text-dim">Presenting it? Open the business console, find this same booking and use “Check in with ticket”.</p>
           </div>
         )}
       </Modal>

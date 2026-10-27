@@ -7,8 +7,10 @@ import { useTheme } from '../lib/theme';
 import { LogoMark } from '../components/Logo';
 import PageTransition from '../components/premium/PageTransition';
 import ToastHost from '../components/premium/ToastHost';
+import SampleModeBar from '../components/premium/SampleModeBar';
+import ConsoleScopePicker from '../components/console/ConsoleScopePicker';
 import supabase, { isDemoMode } from '../lib/supabase';
-import { apiGet, apiSend } from '../lib/api';
+import { apiGet, apiSend, hasLiveSession } from '../lib/api';
 import { listLocalNotificationsFor, markAllLocalNotificationsRead, markLocalNotificationRead } from '../lib/offlineStore';
 import { onNotifsChanged, toast } from '../services/events';
 import { resetDemo } from '../lib/demoStore';
@@ -38,6 +40,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   const loadNotifs = () => {
     // Server notifications (role-scoped, authorization-checked) + demo tenant.
+    if (!hasLiveSession()) { setNotifs(listLocalNotificationsFor('admin')); return; }
     apiGet<NotificationRow[]>('/api/notifications').then((d) => {
       const server: NotificationRow[] = Array.isArray(d) ? d : [];
       const local = isDemoMode ? listLocalNotificationsFor('admin') : [];
@@ -88,7 +91,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         <div className="flex items-center gap-2.5 px-5 h-16 border-b border-app">
           <LogoMark size={32} />
           <span className="font-semibold tracking-tight">Velora</span>
-          <span className="ml-auto text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-indigo)]/15 text-[var(--color-brand-indigo)]">Admin</span>
+          <span className="ml-auto text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-indigo)]/15 text-[var(--text-link-strong)]">Admin</span>
         </div>
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {items.filter((it) => isDemoMode || profile?.is_operator || !['/admin/emails', '/admin/audit'].includes(it.to)).map(it => {
@@ -106,8 +109,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       <div className="flex-1 min-w-0 flex flex-col">
         <header className="h-16 border-b border-app flex items-center gap-3 px-5 sticky top-0 z-20 bg-elev/80 backdrop-blur">
           <button aria-label="Open menu" onClick={() => setOpen(true)} className="lg:hidden h-9 w-9 grid place-items-center rounded-lg border border-app"><Menu className="h-4 w-4" /></button>
-          <span className="text-sm font-medium">Business Console</span>
-          {isDemoMode && <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-violet)]/15 text-[var(--color-brand-violet)] border border-[var(--color-brand-violet)]/25">Demo tenant</span>}
+          <span className="hidden text-sm font-medium sm:inline">Business Console</span>
+          {isDemoMode && <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-violet)]/15 text-[var(--text-link-strong)] border border-[var(--color-brand-violet)]/25">Demo tenant · sample data</span>}
+          <span className="mx-1 hidden h-4 w-px bg-[var(--border)] sm:block" aria-hidden="true" />
+          <ConsoleScopePicker />
           <div className="ml-auto flex items-center gap-2">
             <Link to="/" className="text-sm text-dim hover:text-[var(--text)] hidden sm:block">Customer app ↗</Link>
             {/* Notifications */}
@@ -146,6 +151,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <button aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={toggle} className="h-9 w-9 grid place-items-center rounded-lg border border-app">{theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button>
           </div>
         </header>
+        <SampleModeBar surface="business" />
         <main className="flex-1 p-5 lg:p-8 max-w-7xl w-full mx-auto"><PageTransition>{children}</PageTransition></main>
         <ToastHost />
       </div>

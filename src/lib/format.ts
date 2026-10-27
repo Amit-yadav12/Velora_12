@@ -49,6 +49,26 @@ export function istToday(): string {
 }
 
 /**
+ * Demo-tenant invoice pricing (GST). The real reservation path stores tax = 0
+ * and a total equal to the service price (see the reserve_business_slot RPC), so
+ * this helper is only ever applied to sample bookings — the UI labels it
+ * "sample invoice" so the two can never be confused.
+ */
+export const DEMO_GST_RATE = 0.18;
+export function demoTax(amount: number | string | null | undefined): number {
+  return Math.round(Number(amount || 0) * DEMO_GST_RATE * 100) / 100;
+}
+export function demoTotal(amount: number | string | null | undefined): number {
+  return Math.round((Number(amount || 0) + demoTax(amount)) * 100) / 100;
+}
+
+/** Tomorrow's date in IST as YYYY-MM-DD (sample walkthrough books here). */
+export function istTomorrow(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: IST, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(new Date(Date.now() + 86_400_000));
+}
+
+/**
  * IST wall-clock primitives. `istWallDate` and `istYmd` live in india.ts (one
  * implementation, shared with phone/PIN validation) and are re-exported here so
  * time formatting has a single import surface. Slot grids are defined in

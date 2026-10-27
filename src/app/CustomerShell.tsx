@@ -1,4 +1,4 @@
-import { apiGet } from '../lib/api';
+import { apiGet, hasLiveSession } from '../lib/api';
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,6 +12,7 @@ import { LogoMark } from '../components/Logo';
 import AIConcierge from '../components/premium/AIConcierge';
 import InstallPrompt from '../components/premium/InstallPrompt';
 import ToastHost from '../components/premium/ToastHost';
+import SampleModeBar from '../components/premium/SampleModeBar';
 import { onNotifsChanged } from '../services/events';
 import type { NotificationRow } from '../lib/types';
 
@@ -40,6 +41,7 @@ export default function CustomerShell({ children }: { children: React.ReactNode 
         return Array.isArray(arr) ? arr.filter((n: NotificationRow) => !n.read && n.audience === 'customer').length : 0;
       } catch { return 0; }
     };
+    if (!hasLiveSession()) { setUnread(countLocal()); return; }
     apiGet<NotificationRow[]>('/api/notifications?audience=customer').then(d => {
       const server = Array.isArray(d) ? d.filter((n: NotificationRow) => !n.read && n.audience !== 'admin').length : 0;
       setUnread(server + countLocal());
@@ -64,11 +66,12 @@ export default function CustomerShell({ children }: { children: React.ReactNode 
   return (
     <div className="min-h-screen pb-24 lg:pb-0">
       <a href="#main-content" className="skip-link">Skip to content</a>
+      <SampleModeBar surface="customer" />
       {/* Floating top nav */}
       <motion.header initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         className="sticky top-0 z-40 px-4 pt-3">
         <div className="mx-auto max-w-6xl glass rounded-2xl px-4 py-2.5 flex items-center gap-3 shadow-lg">
-          <Link to="/" className="flex items-center gap-2">
+          <Link to="/" aria-label="Velora home" className="flex items-center gap-2">
             <LogoMark size={32} />
             <span className="font-semibold tracking-tight hidden sm:block">Velora</span>
           </Link>

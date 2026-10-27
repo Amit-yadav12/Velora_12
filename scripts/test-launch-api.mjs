@@ -240,6 +240,19 @@ supabase.from = (table) => {
 const unlogged=await sendEmail({to:'customer@example.com',subject:'Test',title:'Test',lines:[]});
 ok(unlogged.status==='not_recorded' && !unlogged.ok, 'an unlogged, unsent email is not reported as queued');
 supabase.from = ordinaryFrom;
+// ---- Tenant isolation of the business console (the "their own id" rule) ----
+// An owner's console is scoped by their businesses; a booking addressed to a
+// different business id must never be listed, confirmed or checked in.
+rows.bookings.push({id:303,ref:'VL-TENANT-B',customer_id:'someone-else',customer_email:'other@example.com',resource_id:102,resource_name:'Other',service_name:'Cut',start_time:start,end_time:start,status:'pending'});
+const listFor = async (token) => { const r = fakeRes(); await checkHandler(req('GET',token), r); return r; };
+const ownerList = await listFor('owner-token');
+ok(ownerList.statusCode === 200 && ownerList.body.some((b) => b.ref === 'VL-SECURE') && !ownerList.body.some((b) => b.ref === 'VL-TENANT-B'), 'owner console lists its own bookings and never another business’s rows');
+const outsiderList = await listFor('outsider-token');
+ok(outsiderList.statusCode === 200 && outsiderList.body.length === 0, 'an admin who owns no business sees no tenant bookings');
+res = fakeRes(); await checkHandler(req('PUT','owner-token',{id:303,action:'status',status:'confirmed'}), res);
+ok(res.statusCode === 403 && rows.bookings.find((b) => b.id === 303).status === 'pending', 'owner cannot confirm another business’s booking by id');
+rows.bookings.splice(rows.bookings.indexOf(rows.bookings.find((b) => b.id === 303)), 1);
+
 const { travelTimeMin } = await import('../api/_lib/maps.js');
 delete process.env.GOOGLE_MAPS_API_KEY;
 ok(await travelTimeMin({lat:26.9,lng:75.8},{lat:26.91,lng:75.81})===0, 'travel time is unavailable without a live provider instead of a fabricated estimate');

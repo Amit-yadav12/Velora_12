@@ -1,11 +1,16 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { X, type LucideIcon } from 'lucide-react';
+import Portal from './Portal';
 
-export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
+export function PageHeader({ title, subtitle, action, eyebrow }: { title: string; subtitle?: string; action?: ReactNode; eyebrow?: string }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
-      <div><h1 className="text-2xl font-semibold tracking-tight">{title}</h1>{subtitle && <p className="text-sm text-dim mt-1">{subtitle}</p>}</div>
+      <div className="min-w-0">
+        {eyebrow && <p className="text-[11px] font-semibold uppercase tracking-[.18em] text-[var(--color-brand-indigo)] mb-1">{eyebrow}</p>}
+        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+        {subtitle && <p className="text-sm text-dim mt-1">{subtitle}</p>}
+      </div>
       {action}
     </div>
   );
@@ -13,10 +18,12 @@ export function PageHeader({ title, subtitle, action }: { title: string; subtitl
 
 export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
-    pending: 'bg-amber-500/15 text-amber-400',
-    confirmed: 'bg-blue-500/15 text-blue-400', in_progress: 'bg-indigo-500/15 text-indigo-400', checked_in: 'bg-cyan-500/15 text-cyan-400',
-    completed: 'bg-emerald-500/15 text-emerald-400', cancelled: 'bg-red-500/15 text-red-400',
-    no_show: 'bg-amber-500/15 text-amber-400',
+    // -200/-300 shades only: these 11px chips sit on a 15% tint over a dark
+    // surface, where the 400 shades drop under WCAG AA (4.5:1).
+    pending: 'bg-amber-500/15 text-amber-200',
+    confirmed: 'bg-blue-500/15 text-blue-200', in_progress: 'bg-indigo-500/15 text-indigo-200', checked_in: 'bg-cyan-500/15 text-cyan-200',
+    completed: 'bg-emerald-500/15 text-emerald-200', cancelled: 'bg-red-500/15 text-red-200',
+    no_show: 'bg-amber-500/15 text-amber-200',
   };
   return <span className={`text-[11px] font-medium px-2 py-0.5 rounded-lg capitalize ${map[status] || 'bg-surface text-dim'}`}>{status.replace('_', ' ')}</span>;
 }
@@ -24,7 +31,7 @@ export function StatusBadge({ status }: { status: string }) {
 /** Small chip marking entities that belong to the isolated demo tenant. */
 export function DemoBadge({ label = 'Demo' }: { label?: string }) {
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-[var(--color-brand-violet)]/15 text-[var(--color-brand-violet)] border border-[var(--color-brand-violet)]/25">
+    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-[var(--color-brand-violet)]/15 text-[var(--text-link-strong)] border border-[var(--color-brand-violet)]/25">
       {label}
     </span>
   );
@@ -70,6 +77,7 @@ const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select
 export function Modal({ open, onClose, title, children, wide }: {
   open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean;
 }) {
+  const reduceMotion = useReducedMotion();
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   useEffect(() => {
@@ -97,6 +105,7 @@ export function Modal({ open, onClose, title, children, wide }: {
     };
   }, [open, onClose]);
   return (
+    <Portal>
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-[80] grid place-items-center p-4 overflow-y-auto">
@@ -106,8 +115,8 @@ export function Modal({ open, onClose, title, children, wide }: {
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            initial={{ scale: 0.95, opacity: 0, y: 12 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 12 }}
-            transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+            initial={reduceMotion ? false : { scale: 0.95, opacity: 0, y: 12 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={reduceMotion ? undefined : { scale: 0.95, opacity: 0, y: 12 }}
+            transition={reduceMotion ? { duration: 0 } : { type: 'spring', damping: 26, stiffness: 320 }}
             className={`relative glass rounded-2xl border border-app shadow-2xl w-full ${wide ? 'max-w-2xl' : 'max-w-md'} my-8`}
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-app sticky top-0 glass rounded-t-2xl z-10">
@@ -119,6 +128,7 @@ export function Modal({ open, onClose, title, children, wide }: {
         </div>
       )}
     </AnimatePresence>
+    </Portal>
   );
 }
 

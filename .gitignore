@@ -31,3 +31,7 @@ dist-ssr
 *.sw?
 .vite-source-tags.js
 .vercel
+
+# Browser test output (generated)
+test-results
+playwright-report

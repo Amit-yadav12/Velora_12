@@ -1,4 +1,4 @@
-import supabase from './supabase';
+import supabase, { isDemoMode } from './supabase';
 
 /**
  * API failure with the HTTP status attached. `errMsg()` still returns just the
@@ -7,6 +7,16 @@ import supabase from './supabase';
  * 503 = no credentials, 401/403 = bad key) can branch on `.status` instead of
  * pattern-matching prose.
  */
+/**
+ * Owner/customer-scoped endpoints need a real Supabase session. In the local
+ * sample tenant there is none, so those calls can only return 401 — the demo
+ * therefore reads its own tenant directly instead of firing request that are
+ * guaranteed to fail (and pollute the console).
+ */
+export function hasLiveSession(): boolean {
+  return !isDemoMode;
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly path: string;

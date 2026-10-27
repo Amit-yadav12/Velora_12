@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Search, Clock, Star, Compass } from 'lucide-react';
+import { Search, Clock, Star, Compass, ArrowRight, MapPin, ScanLine, Sparkles, Ticket } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLocation } from '../../contexts/LocationContext';
 import { Business, CATEGORIES } from '../../lib/product';
 import { BusinessCard, SectionTitle, Rating, Grid } from '../../components/product';
-import { apiGet } from '../../lib/api';
+import { apiGet, hasLiveSession } from '../../lib/api';
 import { BusinessCardSkeleton } from '../../components/premium/Skeleton';
 import { onBusinessesChanged, onDemoReset, onServicesChanged } from '../../services/events';
 import DiscoverCard from '../../components/premium/DiscoverCard';
@@ -17,6 +17,9 @@ import { prefetch } from '../../lib/smartCache';
 import { istHour } from '../../lib/format';
 import { isDemoMode } from '../../lib/supabase';
 import { isMiRoadElectricianSample, MI_ROAD_ELECTRICIAN_ALT } from '../../lib/miRoadElectrician';
+import { DEMO_SAMPLE_BUSINESS_ID, DEMO_SAMPLE_BUSINESS_NAME } from '../../lib/demoJourney';
+import { openDemoGuide } from '../../lib/demoGuideStore';
+import { istTomorrow } from '../../lib/format';
 
 const recentToCard = (r: RecentView): Business => ({
   id: r.id, name: r.name, category: r.category, city: r.city,
@@ -26,6 +29,7 @@ const recentToCard = (r: RecentView): Business => ({
 export default function Home() {
   const { profile, user } = useAuth();
   const { city, mapCenter } = useLocation();
+  const tomorrowYmd = useMemo(() => istTomorrow(), []);
   const origin = mapCenter;
   const nav = useNavigate();
   const [q, setQ] = useState('');
@@ -69,7 +73,7 @@ export default function Home() {
     // Instant local recents first, then server merge (city-pinned).
     const local = readRecentViews().filter((r) => !r.city || r.city === city.name);
     if (local.length) setRecent(local.map(recentToCard));
-    if (!user) return;
+    if (!user || !hasLiveSession()) return;
     apiGet<RecentView[]>(`/api/track-view?user_id=${user.id}`)
       .then((r) => {
         if (!Array.isArray(r)) return;
@@ -94,7 +98,10 @@ export default function Home() {
       {/* Hero + search */}
       <section>
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          <p className="text-sm text-dim">{(() => { const h = istHour(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; })()}, {profile?.full_name?.split(' ')[0] || 'there'} 👋</p>
+          <p className="text-sm text-dim">
+            {(() => { const h = istHour(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; })()}, {profile?.full_name?.split(' ')[0] || 'there'}
+            <span aria-hidden="true"> 👋</span>
+          </p>
           <h1 className="mt-1 text-3xl sm:text-4xl font-semibold tracking-tight">What would you like to <span className="grad-text">book</span> today?</h1>
         </motion.div>
         <div className="mt-4"><LocationBar /></div>
@@ -104,6 +111,54 @@ export default function Home() {
           <button className="absolute right-2 top-1/2 -translate-y-1/2 grad-btn text-white text-sm font-medium rounded-xl px-4 py-2.5">Search</button>
         </motion.form>
       </section>
+
+      {/* Presenter path — the exact five-screen demo, one click from landing.
+          Only exists in the local sample tenant, and says so. */}
+      {isDemoMode && (
+        <section aria-labelledby="sample-walkthrough-title" className="card relative overflow-hidden p-4 sm:p-5">
+          <div className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-[var(--color-brand-violet)]/20 blur-3xl" aria-hidden="true" />
+          <div className="relative flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-[.18em] text-[var(--text-link-strong)]">Sample walkthrough · Jaipur</p>
+              <h2 id="sample-walkthrough-title" className="mt-1 text-lg font-semibold tracking-tight">One booking, both sides of Velora</h2>
+              <p className="mt-1 max-w-xl text-sm text-muted">
+                Book a clearly-marked sample business, keep the QR ticket, then confirm and check it in at the demo business console.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                to={`/business/${DEMO_SAMPLE_BUSINESS_ID}?date=${tomorrowYmd}&focus=booking`}
+                data-demo-cta="sample-business"
+                className="grad-btn inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2.5 text-sm font-medium text-white"
+              >
+                Start with {DEMO_SAMPLE_BUSINESS_NAME.split(' ')[0]} <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+              <button
+                type="button"
+                onClick={openDemoGuide}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-app px-3.5 py-2.5 text-sm font-medium hover:border-[var(--border-strong)]"
+              >
+                <Compass className="h-4 w-4" aria-hidden="true" /> Demo guide
+              </button>
+            </div>
+          </div>
+          <ol className="relative mt-4 grid gap-2 sm:grid-cols-3">
+            {[
+              { icon: MapPin, title: '1 · Jaipur sample business', detail: 'Marked “Sample listing” everywhere — prices and availability are synthetic.' },
+              { icon: Ticket, title: '2 · Service, slot, ₹ total', detail: 'Review subtotal, 18% GST and total before submitting the sample request.' },
+              { icon: ScanLine, title: '3 · QR ticket → check-in', detail: 'Find it in Bookings, then verify it in the Demo business console.' },
+            ].map((step) => (
+              <li key={step.title} className="rounded-xl border border-app bg-[var(--surface)] p-3">
+                <p className="flex items-center gap-1.5 text-xs font-semibold"><step.icon className="h-3.5 w-3.5 text-[var(--text-link-strong)]" aria-hidden="true" />{step.title}</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-dim">{step.detail}</p>
+              </li>
+            ))}
+          </ol>
+          <p className="relative mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-dim">
+            <span className="inline-flex items-center gap-1"><Sparkles className="h-3 w-3" aria-hidden="true" /> Location works without GPS or map tiles — Jaipur is selected explicitly.</span>
+          </p>
+        </section>
+      )}
 
       {/* NOTE: the business demo entry lives in the BUSINESS sign-in path
           (Welcome → Business → "Continue as demo business" → /admin). The
