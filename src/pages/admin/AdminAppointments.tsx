@@ -57,7 +57,7 @@ export default function AdminAppointments() {
   if (loading) return <Spinner />;
 
   return (
-    <div data-checkin-open={String(checkInOpen)}>
+    <div>
       <PageHeader
         title="Appointments"
         subtitle="Every booking across all businesses — updated in real time."
