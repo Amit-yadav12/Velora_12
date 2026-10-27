@@ -53,14 +53,14 @@ export default function LocationBar() {
   return (
     <div ref={boxRef} className="relative">
       <button onClick={() => setOpen(o => !o)} className="flex items-center gap-2 rounded-xl border border-app bg-elev px-3 py-2 text-sm hover:border-[var(--border-strong)] transition-colors max-w-full">
-        <MapPin className="h-4 w-4 text-[var(--color-brand-indigo)] shrink-0" />
+        <MapPin className="h-4 w-4 text-[var(--text-link-strong)] shrink-0" />
         <span className="truncate max-w-[160px]">{status === 'prompting' ? 'Locating…' : `${label}${sub}`}</span>
       </button>
       <AnimatePresence>
         {open && (
           <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="absolute left-0 mt-2 w-80 glass rounded-2xl shadow-2xl overflow-hidden z-50 p-2">
             <button onClick={() => { requestLocation(); setOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-[var(--surface-hover)] text-sm">
-              <Crosshair className="h-4 w-4 text-[var(--color-brand-indigo)]" /> Use my current location
+              <Crosshair className="h-4 w-4 text-[var(--text-link-strong)]" /> Use my current location
             </button>
             {status === 'denied' && <p className="px-3 py-1.5 text-[11px] text-amber-400">Location blocked — search a city below.</p>}
             <div className="relative mt-1">

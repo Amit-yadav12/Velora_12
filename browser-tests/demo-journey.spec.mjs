@@ -404,3 +404,65 @@ test('the business console lists the same booking on a phone-sized screen', asyn
   await expectNoHorizontalOverflow(page, '/admin/appointments (phone)');
   await expectAxeClean(page, '/admin/appointments (phone)');
 });
+
+test('demo OTP can be entered and submitted from the keyboard', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/welcome?role=customer');
+  await page.getByRole('button', { name: /Continue with Phone/i }).click();
+  await page.getByLabel('Indian mobile number').fill('98765 43210');
+  await page.getByRole('button', { name: 'Request code' }).click();
+  // The demo code is shown on screen — it never claims an SMS was delivered.
+  await expect(page.getByText(/no SMS is sent/i).first()).toBeVisible();
+  const code = (await page.locator('body').innerText()).match(/Your code is (\d{6})/)?.[1];
+  expect(code, 'a demo OTP is surfaced on screen').toMatch(/^\d{6}$/);
+  const otp = page.getByLabel('6-digit verification code');
+  await otp.focus();
+  await otp.pressSequentially(code);
+  await otp.press('Enter');
+  await expect(page).toHaveURL(/\/$/, { timeout: 15_000 });
+  await expect(page.getByText('What would you like to', { exact: false })).toBeVisible();
+});
+
+for (const viewport of SIZES) {
+  test(`customer routes stay readable, AA and overflow-free @${viewport.width}px`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    const shot = async (name) => {
+      await page.screenshot({ path: `test-results/browser/${viewport.label}/${name}.png`, fullPage: true, animations: 'disabled' });
+    };
+
+    await page.goto('/welcome');
+    await expect(page.getByRole('heading', { name: /how would you like to continue/i })).toBeVisible();
+    await expectNoHorizontalOverflow(page, '/welcome');
+    await expectAxeClean(page, '/welcome');
+    await shot('welcome');
+
+    await page.goto('/onboard');
+    await expectNoHorizontalOverflow(page, '/onboard');
+    await expectAxeClean(page, '/onboard');
+    await shot('onboard');
+
+    await page.goto('/welcome');
+    await page.locator('[data-demo-cta="start-journey"]').click();
+    await expect(page.getByRole('heading', { name: SAMPLE_BUSINESS })).toBeVisible();
+    await page.goto('/');
+    await expect(page.getByText('What would you like to', { exact: false })).toBeVisible();
+    await expectNoHorizontalOverflow(page, '/');
+    await expectAxeClean(page, '/');
+    await shot('home');
+
+    await page.goto('/explore');
+    await expect(page.getByRole('group', { name: 'Categories' })).toBeVisible();
+    await expectNoHorizontalOverflow(page, '/explore');
+    await expectAxeClean(page, '/explore');
+    await shot('explore');
+
+    const tomorrow = await page.evaluate(() => new Date(Date.now() + 5.5 * 3600 * 1000 + 86_400_000).toISOString().slice(0, 10));
+    await page.goto(`/business/demo-biz-aurora?date=${tomorrow}`);
+    await expect(page.getByText('Choose a service')).toBeVisible();
+    await expect(page.getByText('Sample listing', { exact: true })).toBeVisible();
+    await expectNoHorizontalOverflow(page, '/business');
+    await expectAxeClean(page, '/business');
+    await shot('business');
+  });
+}

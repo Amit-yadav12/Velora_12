@@ -52,7 +52,7 @@ export default function Settings() {
 function Setting({ icon: Icon, title, sub, children }: { icon: LucideIcon; title: string; sub: string; children: ReactNode }) {
   return (
     <div className="p-4 flex items-center gap-3">
-      <div className="h-9 w-9 rounded-xl bg-surface grid place-items-center shrink-0"><Icon className="h-4 w-4 text-[var(--color-brand-indigo)]" /></div>
+      <div className="h-9 w-9 rounded-xl bg-surface grid place-items-center shrink-0"><Icon className="h-4 w-4 text-[var(--text-link-strong)]" /></div>
       <div className="flex-1 min-w-0"><p className="text-sm font-medium">{title}</p><p className="text-xs text-dim">{sub}</p></div>
       {children}
     </div>

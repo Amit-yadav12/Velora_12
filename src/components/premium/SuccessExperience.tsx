@@ -222,7 +222,10 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {demo ? (
-                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-200"><Clock className="h-3 w-3" /> Awaiting confirmation in the demo console · no payment taken</span>
+                <>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] text-amber-200"><Clock className="h-3 w-3" aria-hidden="true" /> Sample only · no business notification sent</span>
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-2.5 py-1 text-[11px] text-amber-200"><Clock className="h-3 w-3" aria-hidden="true" /> No payment taken · confirm it in the demo console</span>
+                </>
               ) : isPending ? (
                 <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400"><Clock className="h-3 w-3" /> Awaiting business confirmation</span>
               ) : emailSent ? (

@@ -11,6 +11,7 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
+  // One worker: every spec drives the same demo tenant in one browser profile.
   workers: 1,
   reporter: process.env.CI ? [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]] : 'list',
   outputDir: 'test-results/browser',

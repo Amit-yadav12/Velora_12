@@ -42,7 +42,7 @@ export default function ImageUploader({ label, images, onChange, userId, max = 8
         </div>
       </div>)}
       {preview && <div className="relative rounded-2xl overflow-hidden border border-app"><img src={preview} alt="Uploading preview" className="h-32 w-full object-cover opacity-50" /><span className="absolute inset-0 grid place-items-center"><Loader2 className="h-6 w-6 animate-spin" /></span></div>}
-      {images.length < max && <button type="button" disabled={busy} onClick={() => input.current?.click()} className="min-h-32 rounded-2xl border border-dashed border-[var(--color-brand-indigo)]/40 bg-[var(--color-brand-indigo)]/5 hover:bg-[var(--color-brand-indigo)]/10 transition flex flex-col items-center justify-center gap-2 text-sm text-muted disabled:opacity-50"><ImagePlus className="h-6 w-6 text-[var(--color-brand-indigo)]" />{busy ? 'Uploading…' : 'Add a photo'}</button>}
+      {images.length < max && <button type="button" disabled={busy} onClick={() => input.current?.click()} className="min-h-32 rounded-2xl border border-dashed border-[var(--color-brand-indigo)]/40 bg-[var(--color-brand-indigo)]/5 hover:bg-[var(--color-brand-indigo)]/10 transition flex flex-col items-center justify-center gap-2 text-sm text-muted disabled:opacity-50"><ImagePlus className="h-6 w-6 text-[var(--text-link-strong)]" />{busy ? 'Uploading…' : 'Add a photo'}</button>}
       <input ref={input} type="file" accept="image/jpeg,image/png,image/webp" multiple={max > 1} className="sr-only" aria-label={`Upload ${label}`} onChange={(e) => void add(e.target.files)} />
     </div>
     {error && <p role="alert" className="text-sm text-red-400">{error}</p>}

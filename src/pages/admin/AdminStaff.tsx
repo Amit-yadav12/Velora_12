@@ -131,7 +131,7 @@ export default function AdminStaff() {
                 <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
                   <span className="px-2 py-0.5 rounded-lg bg-surface text-dim">{svcCount} service{svcCount === 1 ? '' : 's'}</span>
                   {s.demo ? <><span className="px-2 py-0.5 rounded-lg bg-surface text-dim">{(Array.isArray(s.days) ? s.days : ALL_DAYS).length} days/wk</span><span className="px-2 py-0.5 rounded-lg bg-surface text-dim">{s.start || '10:00'}–{s.end || '19:00'}</span></> : <span className="px-2 py-0.5 rounded-lg bg-surface text-dim">Uses business hours</span>}
-                  <span className={`px-2 py-0.5 rounded-lg inline-flex items-center gap-1 ${upcoming > 0 ? 'bg-[var(--color-brand-indigo)]/15 text-[var(--color-brand-indigo)]' : 'bg-surface text-dim'}`}>
+                  <span className={`px-2 py-0.5 rounded-lg inline-flex items-center gap-1 ${upcoming > 0 ? 'bg-[var(--color-brand-indigo)]/15 text-[var(--text-link-strong)]' : 'bg-surface text-dim'}`}>
                     <CalendarClock className="h-3 w-3" /> {upcoming} upcoming
                   </span>
                   {s.active === false && <span className="px-2 py-0.5 rounded-lg bg-red-500/15 text-red-400">Inactive</span>}

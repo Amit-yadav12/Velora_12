@@ -311,7 +311,7 @@ export default function BusinessDetail() {
             )}
             {biz.ai_popularity != null && (
               <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted"
-                title="Relative demand score for this sample listing (0–100). It is a deterministic estimate over sample data, not measured footfall."><Sparkles className="h-3.5 w-3.5 text-[var(--color-brand-indigo)]" /> Estimated demand {biz.ai_popularity}/100</span>
+                title="Relative demand score for this sample listing (0–100). It is a deterministic estimate over sample data, not measured footfall."><Sparkles className="h-3.5 w-3.5 text-[var(--text-link-strong)]" /> Estimated demand {biz.ai_popularity}/100</span>
             )}
             {biz.website && (
               <a href={biz.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted hover:text-[var(--text)]"><Globe className="h-3.5 w-3.5" /> Website</a>

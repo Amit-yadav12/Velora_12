@@ -52,7 +52,7 @@ export default function Profile() {
         <h1 className="mt-3 text-xl font-semibold">{profile?.full_name}</h1>
         <p className="text-sm text-dim">{profile?.email}</p>
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <div className="rounded-xl bg-surface p-3"><CalendarCheck className="h-4 w-4 text-[var(--color-brand-indigo)] mx-auto" /><p className="text-xl font-semibold mt-1">{stats?.total ?? '—'}</p><p className="text-xs text-dim">Total bookings</p></div>
+          <div className="rounded-xl bg-surface p-3"><CalendarCheck className="h-4 w-4 text-[var(--text-link-strong)] mx-auto" /><p className="text-xl font-semibold mt-1">{stats?.total ?? '—'}</p><p className="text-xs text-dim">Total bookings</p></div>
           <div className="rounded-xl bg-surface p-3"><Clock className="h-4 w-4 text-emerald-400 mx-auto" /><p className="text-xl font-semibold mt-1">{stats?.upcoming ?? '—'}</p><p className="text-xs text-dim">Upcoming</p></div>
         </div>
       </motion.div>

@@ -110,7 +110,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         <header className="h-16 border-b border-app flex items-center gap-3 px-5 sticky top-0 z-20 bg-elev/80 backdrop-blur">
           <button aria-label="Open menu" onClick={() => setOpen(true)} className="lg:hidden h-9 w-9 grid place-items-center rounded-lg border border-app"><Menu className="h-4 w-4" /></button>
           <span className="hidden text-sm font-medium sm:inline">Business Console</span>
-          {isDemoMode && <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-violet)]/15 text-[var(--text-link-strong)] border border-[var(--color-brand-violet)]/25">Demo tenant · sample data</span>}
+          {isDemoMode && <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-violet)]/15 text-[var(--text-link-strong)] border border-[var(--color-brand-violet)]/25">Demo tenant</span>}
           <span className="mx-1 hidden h-4 w-px bg-[var(--border)] sm:block" aria-hidden="true" />
           <ConsoleScopePicker />
           <div className="ml-auto flex items-center gap-2">
@@ -126,7 +126,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                   <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="absolute right-0 mt-2 w-80 glass rounded-2xl shadow-2xl overflow-hidden z-50">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-app">
                       <p className="text-sm font-semibold">Notifications</p>
-                      {unread > 0 && <button onClick={markAll} className="text-xs text-[var(--color-brand-indigo)] font-medium inline-flex items-center gap-1"><CheckCheck className="h-3.5 w-3.5" /> Mark all read</button>}
+                      {unread > 0 && <button onClick={markAll} className="text-xs text-[var(--text-link-strong)] font-medium inline-flex items-center gap-1"><CheckCheck className="h-3.5 w-3.5" /> Mark all read</button>}
                     </div>
                     <div className="max-h-96 overflow-y-auto p-1.5">
                       {notifs.length === 0 ? (

@@ -59,8 +59,9 @@ export function EmptyState({ title, sub, action }: { title: string; sub?: string
 export function StatCard({ label, value, icon: Icon, color = '#818cf8', sub, delay = 0 }: {
   label: string; value: ReactNode; icon: LucideIcon; color?: string; sub?: string; delay?: number;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
-    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay }} className="card p-5 group hover:border-[var(--border-strong)] transition-colors">
+    <motion.div initial={{ opacity: 1, y: reduceMotion ? 0 : 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reduceMotion ? 0 : delay }} className="card p-5 group hover:border-[var(--border-strong)] transition-colors">
       <div className="h-9 w-9 rounded-xl grid place-items-center mb-3" style={{ background: `${color}22` }}>
         <Icon className="h-4 w-4" style={{ color }} />
       </div>

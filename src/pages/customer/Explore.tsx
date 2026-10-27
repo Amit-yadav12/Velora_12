@@ -177,9 +177,9 @@ export default function Explore() {
                 {!q && <p className="px-3 pt-1.5 pb-1 text-[10px] uppercase tracking-wide text-dim">Trending in {city.name}</p>}
                 {suggestions.map((s, i) => (
                   <button key={i} onClick={() => pickSuggestion(s)} className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-[var(--surface-hover)] text-left">
-                    {s.kind === 'trending' ? <TrendingUp className="h-3.5 w-3.5 text-[var(--color-brand-indigo)] shrink-0" />
+                    {s.kind === 'trending' ? <TrendingUp className="h-3.5 w-3.5 text-[var(--text-link-strong)] shrink-0" />
                       : s.kind === 'history' ? <History className="h-3.5 w-3.5 text-dim shrink-0" />
-                      : s.kind === 'category' ? <Sparkles className="h-3.5 w-3.5 text-[var(--color-brand-indigo)] shrink-0" />
+                      : s.kind === 'category' ? <Sparkles className="h-3.5 w-3.5 text-[var(--text-link-strong)] shrink-0" />
                       : <Search className="h-3.5 w-3.5 text-dim shrink-0" />}
                     <span className="flex-1 min-w-0"><span className="block text-sm truncate">{s.text}</span>{s.sub && <span className="block text-[11px] text-dim truncate">{s.sub}</span>}</span>
                   </button>
@@ -188,7 +188,7 @@ export default function Explore() {
             )}
           </AnimatePresence>
         </div>
-        <button onClick={() => setShowFilters(s => !s)} aria-expanded={showFilters} aria-controls="explore-filters" className={`relative flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm ${activeFilters ? 'border-[var(--color-brand-indigo)] text-[var(--color-brand-indigo)]' : 'border-app'}`}>
+        <button onClick={() => setShowFilters(s => !s)} aria-expanded={showFilters} aria-controls="explore-filters" className={`relative flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm ${activeFilters ? 'border-[var(--color-brand-indigo)] text-[var(--text-link-strong)]' : 'border-app'}`}>
           <SlidersHorizontal className="h-4 w-4" /> Filters
           {activeFilters > 0 && <span className="h-4 w-4 rounded-full grad-btn text-white text-[9px] grid place-items-center">{activeFilters}</span>}
         </button>
@@ -246,7 +246,7 @@ export default function Explore() {
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-xl grad-btn grid place-items-center shrink-0"><Sparkles className="h-5 w-5 text-white" /></div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-[var(--color-brand-indigo)] font-medium">Top match in {city.name}</p>
+              <p className="text-xs text-[var(--text-link-strong)] font-medium">Top match in {city.name}</p>
               <p className="font-semibold truncate">{topPick.name} <span className="text-dim font-normal text-sm" title="Velora match score (0–100), ranked on rating, distance, opening hours and featured status — a transparent heuristic, not a trained model.">{topPick.ai_score != null ? `· match ${topPick.ai_score}/100` : ''}</span></p>
               {(() => { const r = Array.isArray(topPick.ai_reason) ? topPick.ai_reason : topPick.ai_reason ? [topPick.ai_reason] : []; return r.length > 0 ? <p className="text-xs text-dim">Ranked highest because it is {r.join(', ')} — rating, distance and opening hours, nothing hidden.</p> : null; })()}
             </div>
@@ -292,7 +292,7 @@ export default function Explore() {
             aria-label="Price comparison shortlist"
           >
             <div className="glass border border-app rounded-2xl shadow-xl px-3 py-2.5 flex items-center gap-2 flex-wrap">
-              <ArrowLeftRight className="h-4 w-4 text-[var(--color-brand-indigo)] shrink-0" aria-hidden="true" />
+              <ArrowLeftRight className="h-4 w-4 text-[var(--text-link-strong)] shrink-0" aria-hidden="true" />
               <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
                 {compared.map((b) => (
                   <button

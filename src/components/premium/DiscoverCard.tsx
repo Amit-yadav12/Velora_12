@@ -34,7 +34,7 @@ export default function DiscoverCard({ b, active, onHover, compact, onCompare, c
       <div className="flex gap-3 p-3">
         <div className="relative shrink-0">
           <div className={`rounded-xl bg-gradient-to-br from-indigo-900 to-emerald-950 overflow-hidden ${compact ? 'h-20 w-20' : 'h-24 w-24'}`}>{b.image_url && <img src={b.image_url} alt={isIllustratedSample ? MI_ROAD_ELECTRICIAN_ALT : b.name} onError={e => { e.currentTarget.style.display = 'none'; }} className={`h-full w-full object-cover ${isIllustratedSample ? 'object-left' : ''}`} loading="lazy" />}</div>
-          {(b.ai_score ?? 0) >= 75 && <div title={`Velora match score ${b.ai_score}/100 — a heuristic using rating, straight-line distance, opening hours and featured status`} aria-label={`Velora match score ${b.ai_score} out of 100`} className="absolute -top-1.5 -left-1.5 grad-btn text-white text-[9px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5"><Sparkles className="h-2.5 w-2.5" aria-hidden="true" /><span aria-hidden="true">{b.ai_score}<span className="opacity-70">/100</span></span></div>}
+          {(b.ai_score ?? 0) >= 75 && <div title={`Velora match score ${b.ai_score}/100 — a heuristic using rating, straight-line distance, opening hours and featured status`} role="img" aria-label={`Velora match score ${b.ai_score} out of 100`} className="absolute -top-1.5 -left-1.5 grad-btn text-white text-[9px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5"><Sparkles className="h-2.5 w-2.5" aria-hidden="true" /><span aria-hidden="true">{b.ai_score}<span className="opacity-70">/100</span></span></div>}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
@@ -50,7 +50,7 @@ export default function DiscoverCard({ b, active, onHover, compact, onCompare, c
                   aria-pressed={!!compared}
                   aria-label={`${compared ? 'Remove' : 'Add'} ${b.name} ${compared ? 'from' : 'to'} price comparison`}
                   title="Compare prices"
-                  className={`h-7 w-7 grid place-items-center rounded-lg hover:bg-[var(--surface-hover)] ${compared ? 'text-[var(--color-brand-indigo)]' : 'text-dim'}`}
+                  className={`h-7 w-7 grid place-items-center rounded-lg hover:bg-[var(--surface-hover)] ${compared ? 'text-[var(--text-link-strong)]' : 'text-dim'}`}
                 >
                   {compared ? <Check className="h-4 w-4" aria-hidden="true" /> : <ArrowLeftRight className="h-4 w-4" aria-hidden="true" />}
                 </button>
@@ -73,12 +73,12 @@ export default function DiscoverCard({ b, active, onHover, compact, onCompare, c
       {(() => {
         const reasons = Array.isArray(b.ai_reason) ? b.ai_reason : b.ai_reason ? [b.ai_reason] : [];
         return reasons.length > 0 ? (
-          <div className="px-3 pb-2 -mt-1"><p className="text-[11px] text-[var(--color-brand-indigo)] flex items-center gap-1"><Sparkles className="h-3 w-3" /> {reasons.join(' · ')}</p></div>
+          <div className="px-3 pb-2 -mt-1"><p className="text-[11px] text-[var(--text-link-strong)] flex items-center gap-1"><Sparkles className="h-3 w-3" /> {reasons.join(' · ')}</p></div>
         ) : null;
       })()}
       <div className="flex border-t border-app">
         <button onClick={(e) => { e.stopPropagation(); nav(`/business/${b.id}`); }} className="flex-1 py-2.5 text-xs font-medium grad-btn text-white flex items-center justify-center gap-1">{b.live || b.synthetic ? 'View listing' : b.demo ? 'Try demo' : 'Book now'} <ChevronRight className="h-3.5 w-3.5" /></button>
-        {!b.synthetic && !b.demo && <button onClick={directions} title="Directions" className="px-3.5 border-l border-app hover:bg-[var(--surface-hover)]"><Navigation className="h-4 w-4 text-[var(--color-brand-indigo)]" /></button>}
+        {!b.synthetic && !b.demo && <button onClick={directions} title="Directions" className="px-3.5 border-l border-app hover:bg-[var(--surface-hover)]"><Navigation className="h-4 w-4 text-[var(--text-link-strong)]" /></button>}
         {!b.synthetic && !b.demo && b.phone && <button onClick={call} title="Call" className="px-3.5 border-l border-app hover:bg-[var(--surface-hover)]"><Phone className="h-4 w-4 text-emerald-400" /></button>}
       </div>
     </motion.div>

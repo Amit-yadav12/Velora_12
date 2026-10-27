@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Star, MapPin, Clock } from 'lucide-react';
 import { Business, categoryIcon, categoryColor } from '../lib/product';
 import { fadeUp } from '../lib/motion';
@@ -60,7 +60,7 @@ export function BusinessCard({ b }: { b: Business; index?: number }) {
         </div>
         <div className="p-4">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="font-semibold leading-tight group-hover:text-[var(--color-brand-indigo)] transition-colors">{b.name}</h3>
+            <h3 className="font-semibold leading-tight group-hover:text-[var(--text-link-strong)] transition-colors">{b.name}</h3>
             <Rating value={b.rating} sm />
           </div>
           <p className="text-sm text-dim mt-0.5 line-clamp-1">{b.tagline}</p>
@@ -79,10 +79,11 @@ export function BusinessCard({ b }: { b: Business; index?: number }) {
  * reveal is orchestrated once (cheap) rather than per item.
  */
 export function Grid({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  const reduceMotion = useReducedMotion();
   return (
     <motion.div
-      initial="hidden"
-      whileInView="show"
+      initial={reduceMotion ? false : 'hidden'}
+      whileInView={reduceMotion ? undefined : 'show'}
       viewport={{ once: true, amount: 0.1 }}
       variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}
       className={className}
@@ -96,7 +97,7 @@ export function SectionTitle({ title, action, to }: { title: string; action?: st
   return (
     <div className="flex items-end justify-between mb-3">
       <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-      {action && to && <Link to={to} className="text-sm text-[var(--color-brand-indigo)] font-medium">{action}</Link>}
+      {action && to && <Link to={to} className="text-sm text-[var(--text-link-strong)] font-medium">{action}</Link>}
     </div>
   );
 }
