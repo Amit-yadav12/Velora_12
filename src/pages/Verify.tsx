@@ -48,7 +48,7 @@ export default function Verify() {
         <div className="glass rounded-3xl border border-app p-6 text-center">
           {state.loading && (
             <div className="py-10 flex flex-col items-center gap-3">
-              <Loader2 className="h-8 w-8 animate-spin text-[var(--color-brand-indigo)]" />
+              <Loader2 className="h-8 w-8 animate-spin text-[var(--text-link-strong)]" />
               <p className="text-sm text-muted">Verifying ticket…</p>
             </div>
           )}

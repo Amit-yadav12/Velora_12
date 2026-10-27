@@ -50,7 +50,7 @@ export default function DiscoverCard({ b, active, onHover, compact, onCompare, c
                   aria-pressed={!!compared}
                   aria-label={`${compared ? 'Remove' : 'Add'} ${b.name} ${compared ? 'from' : 'to'} price comparison`}
                   title="Compare prices"
-                  className={`h-7 w-7 grid place-items-center rounded-lg hover:bg-[var(--surface-hover)] ${compared ? 'text-[var(--color-brand-indigo)]' : 'text-dim'}`}
+                  className={`h-7 w-7 grid place-items-center rounded-lg hover:bg-[var(--surface-hover)] ${compared ? 'text-[var(--text-link-strong)]' : 'text-dim'}`}
                 >
                   {compared ? <Check className="h-4 w-4" aria-hidden="true" /> : <ArrowLeftRight className="h-4 w-4" aria-hidden="true" />}
                 </button>
@@ -78,7 +78,7 @@ export default function DiscoverCard({ b, active, onHover, compact, onCompare, c
       })()}
       <div className="flex border-t border-app">
         <button onClick={(e) => { e.stopPropagation(); nav(`/business/${b.id}`); }} className="flex-1 py-2.5 text-xs font-medium grad-btn text-white flex items-center justify-center gap-1">{b.live || b.synthetic ? 'View listing' : b.demo ? 'Try demo' : 'Book now'} <ChevronRight className="h-3.5 w-3.5" /></button>
-        {!b.synthetic && !b.demo && <button onClick={directions} title="Directions" className="px-3.5 border-l border-app hover:bg-[var(--surface-hover)]"><Navigation className="h-4 w-4 text-[var(--color-brand-indigo)]" /></button>}
+        {!b.synthetic && !b.demo && <button onClick={directions} title="Directions" className="px-3.5 border-l border-app hover:bg-[var(--surface-hover)]"><Navigation className="h-4 w-4 text-[var(--text-link-strong)]" /></button>}
         {!b.synthetic && !b.demo && b.phone && <button onClick={call} title="Call" className="px-3.5 border-l border-app hover:bg-[var(--surface-hover)]"><Phone className="h-4 w-4 text-emerald-400" /></button>}
       </div>
     </motion.div>

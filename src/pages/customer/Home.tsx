@@ -136,10 +136,10 @@ export default function Home() {
               <motion.div key={b.id} initial={reduceMotion ? false : { opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reduceMotion ? 0 : i * 0.05, duration: reduceMotion ? 0 : 0.2 }}>
                 <Link to={`/business/${b.id}`} className="card p-4 block group h-full">
                   <div className="flex items-center gap-2 text-xs text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 pulse-dot" /> {isDemoMode ? 'Sample listing' : 'Open now'}</div>
-                  <p className="mt-2 font-medium leading-tight group-hover:text-[var(--color-brand-indigo)] transition-colors line-clamp-1">{b.name}</p>
+                  <p className="mt-2 font-medium leading-tight group-hover:text-[var(--text-link-strong)] transition-colors line-clamp-1">{b.name}</p>
                   <p className="text-sm text-dim truncate">{b.category}</p>
                   <div className="mt-3 flex items-center justify-between">
-                    <span className="inline-flex items-center gap-1 text-sm font-medium"><Clock className="h-3.5 w-3.5 text-[var(--color-brand-indigo)]" /> {b.next_available_label}</span>
+                    <span className="inline-flex items-center gap-1 text-sm font-medium"><Clock className="h-3.5 w-3.5 text-[var(--text-link-strong)]" /> {b.next_available_label}</span>
                     <span className="inline-flex items-center gap-1 text-xs text-amber-400"><Star className="h-3 w-3 fill-amber-400" />{Number(b.rating).toFixed(1)}</span>
                   </div>
                 </Link>
@@ -163,7 +163,7 @@ export default function Home() {
       <section>
         <div className="flex items-center justify-between mb-3">
           <div><h2 className="text-lg font-semibold tracking-tight">Nearby in {city.name}</h2><p className="text-xs text-dim">Sorted by distance from {origin.label || city.name}</p></div>
-          <Link to="/explore?view=map" className="text-sm text-[var(--color-brand-indigo)] font-medium">Open map</Link>
+          <Link to="/explore?view=map" className="text-sm text-[var(--text-link-strong)] font-medium">Open map</Link>
         </div>
         <Grid className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {(loading ? Array.from({ length: 8 }, () => null) : nearby).map((b, i) => b ? <DiscoverCard key={b.id} b={b} /> : <BusinessCardSkeleton key={i} />)}

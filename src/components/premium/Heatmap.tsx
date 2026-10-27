@@ -28,7 +28,7 @@ export default function Heatmap({ businessId, onPickDate }: { businessId?: numbe
   return (
     <div className="card p-5">
       <div className="flex items-center justify-between mb-4">
-        <div><p className="font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4 text-[var(--color-brand-indigo)]" /> Availability forecast</p><p className="text-xs text-dim mt-0.5">Sample forecast · illustrative data</p></div>
+        <div><p className="font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4 text-[var(--text-link-strong)]" /> Availability forecast</p><p className="text-xs text-dim mt-0.5">Sample forecast · illustrative data</p></div>
       </div>
       <div className="grid grid-cols-7 gap-1.5">
         {days.map((d, i: number) => (

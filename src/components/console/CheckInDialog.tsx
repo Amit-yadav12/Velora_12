@@ -222,7 +222,7 @@ export default function CheckInDialog({ open, onClose, bookings, onCheckedIn, on
                     <button
                       type="button"
                       onClick={() => { onOpenBooking(plan.booking as ConsoleBooking); stopScan(); onClose(); }}
-                      className="mt-2 text-xs font-medium text-[var(--color-brand-indigo)]"
+                      className="mt-2 text-xs font-medium text-[var(--text-link-strong)]"
                     >
                       Open appointment
                     </button>

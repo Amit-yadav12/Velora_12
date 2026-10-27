@@ -60,7 +60,7 @@ export function BusinessCard({ b }: { b: Business; index?: number }) {
         </div>
         <div className="p-4">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="font-semibold leading-tight group-hover:text-[var(--color-brand-indigo)] transition-colors">{b.name}</h3>
+            <h3 className="font-semibold leading-tight group-hover:text-[var(--text-link-strong)] transition-colors">{b.name}</h3>
             <Rating value={b.rating} sm />
           </div>
           <p className="text-sm text-dim mt-0.5 line-clamp-1">{b.tagline}</p>
@@ -97,7 +97,7 @@ export function SectionTitle({ title, action, to }: { title: string; action?: st
   return (
     <div className="flex items-end justify-between mb-3">
       <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-      {action && to && <Link to={to} className="text-sm text-[var(--color-brand-indigo)] font-medium">{action}</Link>}
+      {action && to && <Link to={to} className="text-sm text-[var(--text-link-strong)] font-medium">{action}</Link>}
     </div>
   );
 }

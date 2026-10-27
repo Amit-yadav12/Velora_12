@@ -436,7 +436,7 @@ export default function Welcome() {
                   <div className="flex items-center justify-between text-xs">
                     <button type="button" onClick={forgotPassword} className="text-dim hover:text-[var(--text)] inline-flex items-center gap-1"><KeyRound className="h-3 w-3" /> Reset password</button>
                     {!isAdmin && (
-                      <button type="button" onClick={() => switchMode('register', true)} className="text-[var(--color-brand-indigo)] font-medium">Create account</button>
+                      <button type="button" onClick={() => switchMode('register', true)} className="text-[var(--text-link-strong)] font-medium">Create account</button>
                     )}
                   </div>
                 </form>
@@ -446,7 +446,7 @@ export default function Welcome() {
                 <section aria-labelledby="phone-login-heading" className="mt-5 space-y-3">
                   <div className="flex items-center justify-between gap-2">
                     <h3 id="phone-login-heading" className="text-sm font-semibold">Phone verification</h3>
-                    <button type="button" onClick={() => { resetMsgs(); setAuthPath(null); setOtpRequested(false); setDemoOtp(''); }} className="min-h-11 px-2 text-xs text-[var(--color-brand-indigo)]">Other sign-in options</button>
+                    <button type="button" onClick={() => { resetMsgs(); setAuthPath(null); setOtpRequested(false); setDemoOtp(''); }} className="min-h-11 px-2 text-xs text-[var(--text-link-strong)]">Other sign-in options</button>
                   </div>
                   {!otpRequested ? (
                     <form onSubmit={(event) => { event.preventDefault(); void requestPhoneOtp(); }} className="space-y-3">
@@ -501,7 +501,7 @@ export default function Welcome() {
                   <button disabled={loading} className="w-full grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2 disabled:opacity-60">
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Create account <ArrowRight className="h-4 w-4" /></>}
                   </button>
-                  <p className="text-center text-xs text-dim">Already have an account? <button type="button" onClick={() => switchMode('signin', true)} className="text-[var(--color-brand-indigo)] font-medium">Sign in</button></p>
+                  <p className="text-center text-xs text-dim">Already have an account? <button type="button" onClick={() => switchMode('signin', true)} className="text-[var(--text-link-strong)] font-medium">Sign in</button></p>
                 </form>
               )}
 
@@ -516,7 +516,7 @@ export default function Welcome() {
 
               {!isAdmin && (
                 <p className="mt-4 text-center text-sm text-dim">
-                  Have a business? <button onClick={() => { setRole('admin'); switchMode('bizreg'); }} className="text-[var(--color-brand-indigo)] font-medium">Create a business account</button>
+                  Have a business? <button onClick={() => { setRole('admin'); switchMode('bizreg'); }} className="text-[var(--text-link-strong)] font-medium">Create a business account</button>
                 </p>
               )}
             </>

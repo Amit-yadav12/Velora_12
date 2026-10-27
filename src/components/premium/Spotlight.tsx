@@ -69,9 +69,9 @@ export default function Spotlight({ open, onClose }: { open: boolean; onClose: (
   }, [open]);
 
   const iconFor = (s: Suggestion) => {
-    if (s.kind === 'trending') return <TrendingUp className="h-4 w-4 text-[var(--color-brand-indigo)]" />;
+    if (s.kind === 'trending') return <TrendingUp className="h-4 w-4 text-[var(--text-link-strong)]" />;
     if (s.kind === 'history') return <History className="h-4 w-4 text-dim" />;
-    if (s.kind === 'category') return <Sparkles className="h-4 w-4 text-[var(--color-brand-indigo)]" />;
+    if (s.kind === 'category') return <Sparkles className="h-4 w-4 text-[var(--text-link-strong)]" />;
     return <Search className="h-4 w-4 text-dim" />;
   };
 

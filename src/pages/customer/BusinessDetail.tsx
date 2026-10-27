@@ -275,7 +275,7 @@ export default function BusinessDetail() {
             {Number(biz.rating) > 0 ? <span className="inline-flex items-center gap-1.5"><Star className="h-4 w-4 fill-amber-400 text-amber-400" /><span className="font-medium">{Number(biz.rating).toFixed(1)}</span><span className="text-dim">({biz.review_count})</span></span> : <span className="text-dim">Not rated</span>}
             <span className="inline-flex items-center gap-1.5 text-muted"><MapPin className="h-4 w-4" /> {biz.address}{biz.pin && !String(biz.address).includes(biz.pin) ? ` ${biz.pin}` : ''}</span>
             {todayHours(biz) && <span className="inline-flex items-center gap-1.5 text-muted"><Clock className="h-4 w-4" /> {todayHours(biz)}</span>}
-            {!biz.synthetic && !biz.demo && biz.phone && <a href={`tel:${biz.phone}`} className="inline-flex items-center gap-1.5 text-[var(--color-brand-indigo)]"><Phone className="h-4 w-4" /> {biz.phone}</a>}
+            {!biz.synthetic && !biz.demo && biz.phone && <a href={`tel:${biz.phone}`} className="inline-flex items-center gap-1.5 text-[var(--text-link-strong)]"><Phone className="h-4 w-4" /> {biz.phone}</a>}
           </div>
           {/* Live Google signals + queue snapshot */}
           <div className="flex flex-wrap gap-2">
@@ -292,7 +292,7 @@ export default function BusinessDetail() {
             )}
             {biz.ai_popularity != null && (
               <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted"
-                title="Relative demand score for this sample listing (0–100). It is a deterministic estimate over sample data, not measured footfall."><Sparkles className="h-3.5 w-3.5 text-[var(--color-brand-indigo)]" /> Estimated demand {biz.ai_popularity}/100</span>
+                title="Relative demand score for this sample listing (0–100). It is a deterministic estimate over sample data, not measured footfall."><Sparkles className="h-3.5 w-3.5 text-[var(--text-link-strong)]" /> Estimated demand {biz.ai_popularity}/100</span>
             )}
             {biz.website && (
               <a href={biz.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted hover:text-[var(--text)]"><Globe className="h-3.5 w-3.5" /> Website</a>
@@ -313,7 +313,7 @@ export default function BusinessDetail() {
                     <div className="min-w-0">
                       <p className="text-sm font-medium">{o.title}</p>
                       <p className="text-xs text-dim">{o.desc}</p>
-                      <p className="mt-1 text-[11px] font-mono text-[var(--color-brand-indigo)]">Use code {o.code}</p>
+                      <p className="mt-1 text-[11px] font-mono text-[var(--text-link-strong)]">Use code {o.code}</p>
                     </div>
                   </div>
                 ))}
@@ -410,8 +410,8 @@ export default function BusinessDetail() {
               <h2 className="font-semibold mb-3">Location & directions</h2>
               <div className="rounded-2xl overflow-hidden border border-app h-56"><iframe title="location" src={mapSrc} className="w-full h-full border-0" loading="lazy" /></div>
               <div className="mt-3 flex flex-wrap items-center gap-3">
-                <a href={googleSearchUrl(`${biz.name}, ${biz.address || biz.city || ''}`)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-[var(--color-brand-indigo)] font-medium"><ExternalLink className="h-4 w-4" /> View on Map</a>
-                <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz.lat != null && biz.lng != null ? `${biz.lat},${biz.lng}` : biz.address || biz.name)}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-[var(--color-brand-indigo)] font-medium"><Navigation className="h-4 w-4" /> Get directions</a>
+                <a href={googleSearchUrl(`${biz.name}, ${biz.address || biz.city || ''}`)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-[var(--text-link-strong)] font-medium"><ExternalLink className="h-4 w-4" /> View on Map</a>
+                <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz.lat != null && biz.lng != null ? `${biz.lat},${biz.lng}` : biz.address || biz.name)}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-[var(--text-link-strong)] font-medium"><Navigation className="h-4 w-4" /> Get directions</a>
                 {travel > 0 && <span className="inline-flex items-center gap-1.5 text-sm text-dim"><Car className="h-4 w-4" /> ~{travel} min away</span>}
               </div>
             </div>
@@ -420,14 +420,14 @@ export default function BusinessDetail() {
 
         {/* Booking panel */}
         <div id="booking-panel" className="lg:sticky lg:top-24 h-fit scroll-mt-24">
-          {biz.live || biz.synthetic ? <div className="card p-5"><h2 className="font-semibold">{biz.live ? 'Listed on Google Maps' : 'Sample listing'}</h2><p className="text-sm text-muted mt-2">{biz.live ? 'This business has not enabled booking through Velora. Contact them directly for availability.' : 'This is an illustrative listing, not a real bookable business.'}</p>{biz.live && <a className="inline-flex text-sm text-[var(--color-brand-indigo)] mt-4" href={biz.maps_url || googleSearchUrl(biz.name)} target="_blank" rel="noreferrer">Open in Google Maps <ExternalLink className="h-4 w-4 ml-1" /></a>}</div> : <div className="card p-5">
+          {biz.live || biz.synthetic ? <div className="card p-5"><h2 className="font-semibold">{biz.live ? 'Listed on Google Maps' : 'Sample listing'}</h2><p className="text-sm text-muted mt-2">{biz.live ? 'This business has not enabled booking through Velora. Contact them directly for availability.' : 'This is an illustrative listing, not a real bookable business.'}</p>{biz.live && <a className="inline-flex text-sm text-[var(--text-link-strong)] mt-4" href={biz.maps_url || googleSearchUrl(biz.name)} target="_blank" rel="noreferrer">Open in Google Maps <ExternalLink className="h-4 w-4 ml-1" /></a>}</div> : <div className="card p-5">
             <h2 className="font-semibold">Book your appointment</h2>
             <div className="mt-4">
               <label htmlFor="booking-date" className="text-xs text-dim">Date (IST)</label>
               <input id="booking-date" type="date" value={date} min={istToday()} onChange={e => setDate(e.target.value)} className="mt-1 w-full rounded-xl bg-elev border border-app px-3 py-2.5 text-sm outline-none focus:border-[var(--color-brand-indigo)]" />
             </div>
             <div className="mt-4">
-              <div className="flex items-center justify-between mb-2"><label className="text-xs text-dim">Pick a time</label>{recommended[0] && <span className="text-[10px] text-[var(--color-brand-indigo)] inline-flex items-center gap-1" title="Earliest well-rated free slot: ranked on availability, crowding and time of day."><Zap className="h-3 w-3" /> Best time · {recommended[0].label}</span>}</div>
+              <div className="flex items-center justify-between mb-2"><label className="text-xs text-dim">Pick a time</label>{recommended[0] && <span className="text-[10px] text-[var(--text-link-strong)] inline-flex items-center gap-1" title="Earliest well-rated free slot: ranked on availability, crowding and time of day."><Zap className="h-3 w-3" /> Best time · {recommended[0].label}</span>}</div>
               {loadingSlots ? <SlotSkeleton /> : slotError ? <div className="text-sm text-red-400 py-3">{slotError} <button onClick={() => setSlotRetry((n) => n + 1)} className="underline">Retry</button></div> : slots.filter(s => s.available).length === 0 ? <p className="text-sm text-dim py-4 text-center">No open slots. Try another date.</p> : (
                 <BookingTimeline slots={slots} selected={slot} onSelect={setSlot} recommended={recommended} />
               )}

@@ -250,7 +250,7 @@ export default function Appointments() {
                     {!b.local && <a href={gcalLink(b)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><CalendarPlus className="h-3.5 w-3.5" /> Calendar</a>}
                     <button onClick={() => { setResched(b); setNewTime(istDateTimeLocal(b.start_time)); }} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><CalendarClock className="h-3.5 w-3.5" /> Reschedule</button>
                     <button onClick={() => cancel(b.id)} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-red-400/50 hover:text-red-400"><X className="h-3.5 w-3.5" /> Cancel</button>
-                    <button onClick={() => setExpanded(e => e === b.id ? null : b.id)} className="ml-auto inline-flex items-center gap-1 text-xs text-[var(--color-brand-indigo)] font-medium">Track {expanded === b.id ? <ChevronDown className="h-3.5 w-3.5 rotate-180 transition-transform" /> : <ChevronDown className="h-3.5 w-3.5 transition-transform" />}</button>
+                    <button onClick={() => setExpanded(e => e === b.id ? null : b.id)} className="ml-auto inline-flex items-center gap-1 text-xs text-[var(--text-link-strong)] font-medium">Track {expanded === b.id ? <ChevronDown className="h-3.5 w-3.5 rotate-180 transition-transform" /> : <ChevronDown className="h-3.5 w-3.5 transition-transform" />}</button>
                   </div>
                 )}
                 {!past && b.status === 'pending' && (

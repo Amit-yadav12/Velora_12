@@ -88,7 +88,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         <div className="flex items-center gap-2.5 px-5 h-16 border-b border-app">
           <LogoMark size={32} />
           <span className="font-semibold tracking-tight">Velora</span>
-          <span className="ml-auto text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-indigo)]/15 text-[var(--color-brand-indigo)]">Admin</span>
+          <span className="ml-auto text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-indigo)]/15 text-[var(--text-link-strong)]">Admin</span>
         </div>
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {items.filter((it) => isDemoMode || profile?.is_operator || !['/admin/emails', '/admin/audit'].includes(it.to)).map(it => {
@@ -121,7 +121,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                   <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="absolute right-0 mt-2 w-80 glass rounded-2xl shadow-2xl overflow-hidden z-50">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-app">
                       <p className="text-sm font-semibold">Notifications</p>
-                      {unread > 0 && <button onClick={markAll} className="text-xs text-[var(--color-brand-indigo)] font-medium inline-flex items-center gap-1"><CheckCheck className="h-3.5 w-3.5" /> Mark all read</button>}
+                      {unread > 0 && <button onClick={markAll} className="text-xs text-[var(--text-link-strong)] font-medium inline-flex items-center gap-1"><CheckCheck className="h-3.5 w-3.5" /> Mark all read</button>}
                     </div>
                     <div className="max-h-96 overflow-y-auto p-1.5">
                       {notifs.length === 0 ? (

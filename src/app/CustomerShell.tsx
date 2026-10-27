@@ -134,7 +134,7 @@ export default function CustomerShell({ children }: { children: React.ReactNode 
             return (
               <Link key={t.to} to={t.to} className="relative flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl">
                 {active && <motion.span layoutId="tab-bg" className="absolute inset-0 rounded-xl bg-[var(--surface-hover)]" />}
-                <span className="relative"><t.icon className={`h-5 w-5 ${active ? 'text-[var(--color-brand-indigo)]' : 'text-muted'}`} />
+                <span className="relative"><t.icon className={`h-5 w-5 ${active ? 'text-[var(--text-link-strong)]' : 'text-muted'}`} />
                   {t.to === '/notifications' && unread > 0 && <span className="absolute -top-1 -right-1 h-3.5 min-w-3.5 px-0.5 rounded-full bg-red-500 text-white text-[8px] grid place-items-center">{unread}</span>}
                 </span>
                 <span className={`relative text-[10px] ${active ? 'text-[var(--text)] font-medium' : 'text-dim'}`}>{t.label}</span>

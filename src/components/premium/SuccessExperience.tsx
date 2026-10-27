@@ -176,7 +176,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
             <div className="flex gap-4">
               <div className="flex-1 space-y-2.5 text-sm">
                 <p className="font-semibold text-base">{booking.service_name}</p>
-                <p className="flex items-center gap-2 text-muted"><Sparkles className="h-4 w-4 text-[var(--color-brand-indigo)]" />{business.name}</p>
+                <p className="flex items-center gap-2 text-muted"><Sparkles className="h-4 w-4 text-[var(--text-link-strong)]" />{business.name}</p>
                 {booking.employee_name && <p className="flex items-center gap-2 text-muted"><User className="h-4 w-4" />{booking.employee_name}</p>}
                 <p className="flex items-center gap-2 text-muted"><Clock className="h-4 w-4" />{istDateTime(booking.start_time)}</p>
                 <p className="flex items-center gap-2 text-muted"><MapPin className="h-4 w-4" /><span className="truncate">{business.address}</span></p>
@@ -184,7 +184,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
               {qrData && <div className="shrink-0 text-center">
                 <div className="p-2 rounded-xl bg-white" data-qr>{qrData ? <QRCodeSVG value={qrData} size={92} level="M" /> : <QrCode className="h-16 w-16 text-dim" />}</div>
                 <p className="text-[10px] text-dim mt-1.5">{demo ? 'Demo QR only' : 'Scan at check-in'}</p>
-                {qrData.startsWith('http') && <a href={qrData} target="_blank" rel="noreferrer" className="text-[10px] text-[var(--color-brand-indigo)] underline underline-offset-2">Verify ticket</a>}
+                {qrData.startsWith('http') && <a href={qrData} target="_blank" rel="noreferrer" className="text-[10px] text-[var(--text-link-strong)] underline underline-offset-2">Verify ticket</a>}
               </div>}
             </div>
             <div className="mt-4 pt-4 border-t border-app flex items-center justify-between">
