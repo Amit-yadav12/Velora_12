@@ -1,60 +1,40 @@
-# Velora — implementation and verification report
+# Velora — engineering report (current revision)
 
-**Working branch:** `arena/127595f5-velora-12`
+**Stack (unchanged):** React 19 + TypeScript strict + Vite 7 + Supabase Postgres/Auth/Realtime/Storage + serverless `api/*` + Netlify/Vercel.
 
-**Base:** `119781653a1ca4d546d73ccf7568385f681e2850` on `main`
+## Verified on this revision
 
-**Status:** changes are on [`Velora_12` pull request #15](https://github.com/Amit-yadav12/Velora_12/pull/15). No migration has been applied to a live Supabase project and no production deployment has been performed. This is `Velora_12`, not the separately requested `Velora_Hack` repository. See [HACKATHON_AUDIT.md](HACKATHON_AUDIT.md) for the distinct target-repository and live-demo audit.
-
-## What changed
-
-- Added a five-step business create/edit experience, including business details, photos/logo, location confirmation, services, staff, hours and holidays. New images are uploaded to the authenticated owner's Supabase Storage folder and verified for ownership, existence, file signature and size before they are saved. Owners remain responsible for the image subject and rights.
-- Added Google Maps/Places integrations with a draggable pin, location search and error states, plus an attributed OpenStreetMap fallback when tiles are reachable. An owner-confirmed pin is not described as provider-verified unless the server verifies it against Google.
-- Added the additive `supabase/migrations/0005_launch_security_and_booking.sql` migration and regenerated `supabase/APPLY_ALL.sql`. The migration introduces scoped business ownership/operator access, Storage policies, transactional business saves, booking allocation safeguards and an exclusion constraint. It does not reset existing data.
-- Real bookings require an authenticated user, a registered business and service, available capacity, and a configured signing secret. Reservations and related invoice/history rows are committed transactionally. Tickets are server-signed and checked against current booking state; check-in requires an authorized business owner or operator. Real staff currently share business hours; individual staff schedules and service assignments are not persisted.
-- Removed or labelled misleading synthetic/live fallbacks, invented travel estimates and unconfigured Calendar success. Email and Calendar are best effort; provider acceptance is not proof of delivery, and logged unsent email attempts do not automatically retry.
-- Corrected the nullable map-score handling and added regressions. No `fit_score` field was found in this checked-out source; the nullable map field in this application is `ai_score`. The separately audited `Velora_Hack` source has a different, still-unfixed `fit_score` build error.
-- Fixed ticket URL extraction so lowercase `s` no longer truncates scanned or pasted QR links. Camera streams that resolve after closing/unmounting the check-in dialog are stopped; stale detector results cannot submit. The new camera tests use jsdom and mocked media/API calls, not a physical camera.
-- Added a guard to the generated fresh-project bootstrap: it refuses to run when `public` already contains an RLS policy or relation, before any application DDL. The historical 0001 migration remains unchanged and still drops all public policies if run directly. Do not run it on an existing/shared database; follow the incremental upgrade instructions.
-- Added an Indian-inspired AI illustration **only** for the synthetic “MI Road Electrician on Call” listing. It is labelled as an illustration, not a photograph of an actual business. Other businesses' images have not been changed by this image update.
-
-### Main files
-
-| Area | Files |
+| Command | Result |
 |---|---|
-| Onboarding and media | `src/pages/business/BusinessOnboarding.tsx`, `src/components/premium/ImageUploader.tsx`, `src/lib/businessMedia.ts`, `api/register-business.js`, `api/_lib/business-input.js`, `api/_lib/business-media.js` |
-| Maps and location | `src/components/premium/InteractiveMap.tsx`, `src/lib/mapsLoader.ts`, `src/contexts/LocationContext.tsx`, `api/{geocode,places,place-photo}.js`, `api/_lib/maps.js` |
-| Booking, QR and access | `api/{book,bookings,business-slots,smart-slots,verify-booking,my-bookings,admin}.js`, `api/_lib/{auth,qr,public-business}.js`, `src/services/verify.ts`, `src/components/console/CheckInDialog.tsx`, `src/pages/admin/AdminAppointments.tsx`, `supabase/migrations/0005_launch_security_and_booking.sql` |
-| Sample illustration | `public/biz/mi-road-electrician-illustration.jpg`, `api/_lib/synthetic.js`, `src/lib/{synthetic,miRoadElectrician,hybridData,smartSearch}.ts`, customer discovery/detail components |
-| Verification and docs | `scripts/test-launch-sql.mjs`, `scripts/test-launch-api.mjs`, `scripts/test-checkin-camera.mjs`, `scripts/build-sql.mjs`, `scripts/{test-demo-engine,verify-integrations,verify-app}.mjs`, `README.md`, `DEPLOY.md`, `JUDGE_DEMO.md`, `.env.example`, `HACKATHON_AUDIT.md` |
+| `npm ci` | ✅ clean install |
+| `npm run lint` | ✅ ESLint 9, exit 0, no disables added |
+| `npm run build` | ✅ `tsc -b` strict + Vite, 7.27 s |
+| `npm run sql:check` | ✅ APPLY_ALL.sql in sync (5 migrations) |
+| `npm run verify` | ✅ **419 assertions, 0 failed** — demo 133 + demo-auth 4 + integrations 119 + app 163 |
+| `npm audit` | ✅ 0 vulnerabilities |
 
-The complete changed-file list is available with `git status --short`.
+## What this pass changed
 
-## Local verification
+### 1. The launch wizard now works without credentials (and still never lies)
+Previously `/onboard` refused to save anything in sample mode ("Supabase is not configured"), so the headline feature of the brief could not be demonstrated or judged. It now writes to the demo tenant that the console, discovery and booking engine already share:
 
-Commands run after a clean `npm ci` on Node 22.22.3:
+* `saveDemoBusiness` persists the onboarding fields (`photos`, `logo_url`, `lat`/`lng`, `weekly_hours`, `holidays`, `booking_policy`, `amenities`, `active`, `created_via`) — all optional, so records written by earlier builds stay valid.
+* `saveDemoBusiness` gained `{ strict }`: a localStorage quota failure now **throws** instead of silently dropping the owner's business, and the wizard shows that message.
+* Photos in sample mode are real: the picked file is validated (MIME **and** magic bytes), downscaled to ≤900 px and re-encoded to WebP/JPEG, then stored as a data URL. Thumbnails are badged `LOCAL` and the success screen carries a **Demo tenant** note. Nothing is described as a bucket upload.
+* The success screen now states *where* the business went: "Saved in this browser" vs "Saved to your account".
 
-| Check | Result |
-|---|---|
-| `npm ci` | Passed; 281 packages installed, 0 vulnerabilities reported. |
-| `npm run lint` | Passed. |
-| `npm run build` | Passed. Both a configured HTTPS `APP_URL` build and an unconfigured build were checked: static canonical, Open Graph and JSON-LD origins are injected only when a valid origin is configured. |
-| `npm run sql:check` | Passed; the SQL bundle matches the migration files. |
-| `npm run verify` | Passed: 111 demo checks, 4 demo-auth checks, 119 integration checks, 30 isolated SQL checks, 60 mocked API/input checks, 4 mocked camera lifecycle checks and 147 app checks. |
-| `npm audit --audit-level=low` | Passed; 0 vulnerabilities. |
-| `git diff --check` and API syntax check | Passed. |
+### 2. Two real data bugs found by the new tests
+* **The catalogue was being injected into owner-created businesses.** `ensureFullMenus()` re-seeded the category menu onto *every* demo business, so a business created with one ₹1,750 service silently gained six catalogue services — at catalogue prices, bookable by customers. Owner-created records (`created_via: 'onboarding' | 'console'`) are now skipped.
+* **Category photos disagreed between three tables.** The image fallback map and the catalogue diverged for `Event Venues` (hotel photo) and `Photography Studios` (coaching photo), and `Electricians` pointed at the tutoring photo, so every electrician except the MI Road sample showed a classroom. Electricians now ship `/biz/electrician.jpg` (the illustrated one is kept for the MI Road sample), and a regression test now asserts that the API catalogue, the client catalogue and the image fallback all resolve to the same file.
 
-The SQL suite runs migrations 0001–0004 followed by 0005 twice in PGlite with Supabase auth/storage stubs. Separately, it checks a fresh full bootstrap and verifies that the generated bootstrap refuses an unrelated existing policy or table before making schema changes. The suite also checks rollback, preserved legacy records, ownership/RLS, booking conflicts and exclusion constraints. It is not a live Supabase test or a true concurrent-transaction test. API, camera and provider tests use mocks.
+### 3. Tests added (38 new assertions)
+* Demo-tenant launch (14): saved details, persisted photos, pin/policy, `created_via`, storage-mode detection, owner services without catalogue injection, localStorage round-trip, drafts excluded from discovery, and the four image-validation rejections (spoofed JPEG, SVG, oversized, valid PNG).
+* Concurrency (3): two bookings fired in the same tick — exactly one wins, the loser writes nothing, and the refusal says the slot was just taken.
+* Launch wizard end-to-end in the real DOM (15): step gating, live preview, photo step, address + manual coordinates, ₹ pricing, review, publish → launch screen, demo-storage disclosure, persistence, "no catalogue injected", next action to the console; plus the draft path persisting as unpublished.
+* Category-photo contract (5).
 
-Headless Chromium was used to check the local demo on desktop and at 375 px. The MI Road card and detail page load the new image, identify it as an AI illustration and show no page errors or horizontal overflow. Earlier browser checks covered demo onboarding refusal, a demo booking/QR, mocked onboarding failure and success, and console/service-photo interactions; intercepted responses do not establish live provider success.
+## Not verified here (and why)
 
-## Configuration and rollout still required
+No Supabase project, Google API key, browser binary or outbound network in this sandbox. Therefore: live Storage uploads, live Places/Geocoding responses, email/calendar delivery, RLS executed against a real database, camera QR scanning and pixel-level visual QA remain **unverified**; they are covered by code paths, stubs, SQL review and honest-failure assertions only. `npm run verify:launch` exercises the storage-RLS and upload-validation logic without a live bucket.
 
-1. Back up and test the additive migrations on a staging Supabase project before applying them to production. Configure Auth, a `business-media` Storage bucket/policies, and an explicit trusted operator using `supabase/PROMOTE_ADMIN.sql` as documented in `DEPLOY.md`.
-2. Set the server-only Supabase service-role key and stable `QR_SIGNING_SECRET`, public Supabase client settings, and a valid `APP_URL`. Never expose server secrets through `VITE_*` variables.
-3. Configure and restrict Google Maps/Places keys if those features are wanted; configure mail and Calendar providers and scheduled reminders as needed. The unconfigured demo does not provide real publication, tickets, email or calendar delivery.
-4. Verify real Supabase Auth/Storage/RLS, live Maps/Places, email, Calendar, camera scanning, and actual concurrent reservations against staging. No credentials or live services were available in this workspace. Staff scheduling, storage cleanup, moderation, distributed rate limiting, provider retries and operational monitoring remain deployment responsibilities.
-
-## CI
-
-[Pull request #15](https://github.com/Amit-yadav12/Velora_12/pull/15) runs the workflow with the high/critical dependency audit and launch/camera regressions. [CI run 40467590054](https://github.com/Amit-yadav12/Velora_12/actions/runs/40467590054) passed for the initial code commit `0534412`; subsequent commits can trigger new runs, so consult the PR for current status. Netlify deploy previews are separate from a production deployment.
+Required provider configuration for a real deployment: `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `QR_SIGNING_SECRET`, `APP_URL`, `VITE_APP_URL`, and optionally `VITE_GOOGLE_MAPS_API_KEY` / `GOOGLE_MAPS_API_KEY`, `RESEND_API_KEY` or `SENDGRID_API_KEY`, `CRON_SECRET`. Secrets must never be `VITE_*`. See `DEPLOY.md`.

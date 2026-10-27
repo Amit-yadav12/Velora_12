@@ -663,7 +663,7 @@ export const CATEGORY_DEFS: CategoryDef[] = [
     facilities: ['Verified Pros', 'Upfront Pricing', 'Warranty', 'UPI Payments'],
   },
   {
-    name: 'Electricians', singular: 'Electrician', img: IMG('education.jpg'), open: '08:00', close: '22:00',
+    name: 'Electricians', singular: 'Electrician', img: IMG('electrician.jpg'), open: '08:00', close: '22:00',
     brands: ['VoltFix', 'BijliMistri', 'WireWizard', 'CurrentCrew', 'SparkSquad', 'PowerPlug Pros'],
     suffixes: ['Electrical Services', 'Electrician on Call', 'Wiring Experts'],
     taglines: ['Same-day visits', 'Safety certified', 'All brands'],

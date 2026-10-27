@@ -78,6 +78,16 @@ export interface DemoBusiness {
   offers: { title: string; desc: string; code: string; pct: number }[];
   facilities: string[];
   amenities: string[];
+  /* Fields captured by the onboarding wizard. Optional so every record written
+     by an earlier build stays valid. */
+  photos?: string[];
+  logo_url?: string | null;
+  lat?: number;
+  lng?: number;
+  booking_policy?: string;
+  holidays?: string[];
+  weekly_hours?: Record<string, { open: string; close: string; closed: boolean }>;
+  created_via?: 'onboarding' | 'console' | 'seed';
   active: boolean;
   seeded: boolean; // part of the clean demo state (restored on reset)
   tenant_id: typeof DEMO_TENANT_ID;
@@ -119,10 +129,16 @@ function read<T>(key: string): T[] {
   }
 }
 
-function write<T>(key: string, arr: T[]): void {
+function write<T>(key: string, arr: T[], opts?: { strict?: boolean }): void {
   try {
     localStorage.setItem(key, JSON.stringify(arr.slice(0, 800)));
-  } catch { /* non-fatal (private mode) */ }
+  } catch {
+    // Private mode / quota. Silently losing an owner's business would be worse
+    // than failing, so callers that persist real user input ask for strict mode.
+    if (opts?.strict) {
+      throw new Error('Demo storage is full or unavailable. Remove a photo (or connect Supabase Storage) and try again.');
+    }
+  }
 }
 
 export function isDemoId(id: number | string | null | undefined): boolean {
@@ -362,10 +378,18 @@ export function ensureJaipurDirectory(): void {
   } catch { /* ignore */ }
 }
 
-/** Merge the full category menu onto every demo business (idempotent). */
+/** Merge the full category menu onto generated demo businesses (idempotent).
+ *
+ * Businesses an owner created — through the console or the onboarding wizard —
+ * are deliberately skipped: seeding the catalogue on top of them silently added
+ * services (and prices) the owner never listed, and those became bookable. Their
+ * menu is exactly what they saved. */
 export function ensureFullMenus(): void {
   try {
-    for (const b of read<DemoBusiness>(K_BIZ)) seedCatalogForBusiness(b.id, b.category);
+    for (const b of read<DemoBusiness>(K_BIZ)) {
+      if (b.created_via === 'onboarding' || b.created_via === 'console') continue;
+      seedCatalogForBusiness(b.id, b.category);
+    }
   } catch { /* ignore */ }
 }
 
@@ -562,7 +586,10 @@ export function getDemoBusiness(id: number | string): DemoBusinessDetails | null
   return { ...b, demo: true, tenant_id: DEMO_TENANT_ID, services, staff };
 }
 
-export function saveDemoBusiness(input: Partial<DemoBusiness> & { name: string; category: string }): DemoBusiness {
+export function saveDemoBusiness(
+  input: Partial<DemoBusiness> & { name: string; category: string },
+  opts?: { strict?: boolean; seedCatalog?: boolean },
+): DemoBusiness {
   const list = read<DemoBusiness>(K_BIZ);
   const id = input.id || `demo-biz-${Date.now().toString(36)}${Math.floor(Math.random() * 1e3).toString(36)}`;
   const biz: DemoBusiness = {
@@ -587,14 +614,25 @@ export function saveDemoBusiness(input: Partial<DemoBusiness> & { name: string; 
     featured: input.featured ?? true,
     offers: input.offers || [],
     facilities: input.facilities || catalogFacilities(input.category),
-    amenities: [],
-    active: true,
+    amenities: input.amenities || [],
+    active: input.active !== false,
     seeded: false,
     tenant_id: DEMO_TENANT_ID,
-    created_at: new Date().toISOString(),
+    created_at: input.created_at || new Date().toISOString(),
+    // Onboarding fields — persisted so a refresh keeps the owner's real work.
+    ...(input.photos ? { photos: input.photos } : {}),
+    ...(input.logo_url !== undefined ? { logo_url: input.logo_url } : {}),
+    ...(typeof input.lat === 'number' ? { lat: input.lat } : {}),
+    ...(typeof input.lng === 'number' ? { lng: input.lng } : {}),
+    ...(input.booking_policy !== undefined ? { booking_policy: input.booking_policy } : {}),
+    ...(input.holidays ? { holidays: input.holidays } : {}),
+    ...(input.weekly_hours ? { weekly_hours: input.weekly_hours } : {}),
+    created_via: input.created_via || 'console',
   };
-  write(K_BIZ, [biz, ...list.filter((b) => b.id !== biz.id)]);
-  seedCatalogForBusiness(biz.id, biz.category);
+  write(K_BIZ, [biz, ...list.filter((b) => b.id !== biz.id)], opts);
+  // Onboarding supplies its own services; seeding the catalogue on top would
+  // silently add services the owner never listed.
+  if (opts?.seedCatalog !== false) seedCatalogForBusiness(biz.id, biz.category);
   emitBusinessesChanged();
   emitServicesChanged();
   emitStaffChanged();

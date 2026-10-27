@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, ImagePlus, Loader2, Trash2 } from 'lucide-react';
-import { uploadBusinessImage } from '../../lib/businessMedia';
+import { uploadBusinessImage, isBrowserStoredImage } from '../../lib/businessMedia';
+import { isDemoMode } from '../../lib/supabase';
 import { errMsg } from '../../lib/types';
 
 export default function ImageUploader({ label, images, onChange, userId, max = 8, onBusy }: {
@@ -29,11 +30,12 @@ export default function ImageUploader({ label, images, onChange, userId, max = 8
   };
   const swap = (i: number, j: number) => { const next = [...images]; [next[i], next[j]] = [next[j], next[i]]; onChange(next); };
   return <div className="space-y-3">
-    <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold">{label}</p><p className="text-xs text-dim mt-1">JPEG, PNG or WebP · up to 5 MB each{max > 1 ? ' · first image is your cover' : ''}</p></div><span className="text-xs text-dim">{images.length}/{max}</span></div>
+    <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold">{label}</p><p className="text-xs text-dim mt-1">JPEG, PNG or WebP · up to 5 MB each{max > 1 ? ' · first image is your cover' : ''}</p>{isDemoMode && <p className="text-[11px] text-amber-400/90 mt-1">Demo mode: photos are compressed and stored in this browser, not in a bucket.</p>}</div><span className="text-xs text-dim">{images.length}/{max}</span></div>
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
       {images.map((url, i) => <div className="relative group overflow-hidden rounded-2xl border border-app bg-surface" key={url}>
         <img src={url} alt={`${label} ${i + 1}`} className="h-32 w-full object-cover" loading="lazy" />
         {i === 0 && max > 1 && <span className="absolute top-2 left-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-medium text-white">COVER</span>}
+        {isBrowserStoredImage(url) && <span className="absolute top-2 right-2 rounded-full bg-amber-400/90 px-2 py-1 text-[10px] font-semibold text-black" title="Compressed and kept in this browser for the demo tenant">LOCAL</span>}
         <div className="flex items-center justify-end gap-1 p-1.5">
           {max > 1 && <><button type="button" disabled={busy || i === 0} aria-label={`Move image ${i + 1} left`} onClick={() => swap(i, i - 1)} className="image-action"><ArrowLeft className="h-3.5 w-3.5" /></button><button type="button" disabled={busy || i === images.length - 1} aria-label={`Move image ${i + 1} right`} onClick={() => swap(i, i + 1)} className="image-action"><ArrowRight className="h-3.5 w-3.5" /></button></>}
           <button type="button" disabled={busy} aria-label={`Remove image ${i + 1}`} onClick={() => onChange(images.filter((_, x) => x !== i))} className="image-action text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>

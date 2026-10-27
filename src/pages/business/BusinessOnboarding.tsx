@@ -12,6 +12,8 @@ import { CITIES, getCity } from '../../lib/cities';
 import { apiGet, apiSend } from '../../lib/api';
 import { cacheInvalidate } from '../../lib/smartCache';
 import { isDemoMode } from '../../lib/supabase';
+import { saveDemoBusiness, saveDemoService, saveDemoStaff } from '../../lib/demoStore';
+import { emitServicesChanged, emitStaffChanged } from '../../services/events';
 import { errMsg } from '../../lib/types';
 import { inr } from '../../lib/format';
 import { onBusinessesChanged, emitBusinessesChanged } from '../../services/events';
@@ -161,7 +163,6 @@ export default function BusinessOnboarding() {
   const save = async (publish: boolean) => {
     setError('');
     if (busyUploads) { setError('Wait for the image uploads to finish.'); return; }
-    if (isDemoMode) { setError('Supabase is not configured. This is a preview only; no business or images have been saved.'); return; }
     if (!form.name.trim() || !form.category) { setError('Add your business name and category.'); setStep(0); return; }
     const services = form.services.filter((s) => s.name.trim());
     if (publish && (!form.address.trim() || !form.city.trim() || !form.state.trim() || !/^[1-9]\d{5}$/.test(form.pin))) { setError('Add your full address, city, state and 6-digit PIN before publishing.'); setStep(2); return; }
@@ -172,6 +173,34 @@ export default function BusinessOnboarding() {
     if (holidays.some((d) => !/^\d{4}-\d{2}-\d{2}$/.test(d))) { setError('Use YYYY-MM-DD for holiday dates.'); setStep(3); return; }
     setSaving(true);
     try {
+      if (isDemoMode) {
+        // Local preview: write to the demo tenant that the console, discovery
+        // and the booking engine already read. This is real persistence in this
+        // browser (survives refresh) and is labelled as demo everywhere — it is
+        // never presented as a database write.
+        const biz = saveDemoBusiness({
+          ...(id ? { id } : {}),
+          name: form.name.trim(), category: form.category, description: form.description,
+          line1: form.address, street: form.address, area: form.area || form.city, city: form.city,
+          state: form.state, pin: form.pin, phone: form.phone, email: form.email,
+          open_time: form.open_time, close_time: form.close_time,
+          photos: form.photos, logo_url: form.logo_url, lat: form.lat ?? undefined, lng: form.lng ?? undefined,
+          booking_policy: form.booking_policy, holidays, weekly_hours: form.weekly_hours,
+          amenities: amenityText.split(',').map((x) => x.trim()).filter(Boolean),
+          active: publish, rating: 4.6, created_via: 'onboarding',
+        }, { strict: true, seedCatalog: services.length === 0 });
+        for (const s of services) {
+          saveDemoService({ business_id: biz.id, name: s.name.trim(), description: s.description, duration_min: s.duration_min, price: s.price });
+        }
+        for (const st of form.staff.filter((x) => x.name.trim())) {
+          saveDemoStaff({ business_id: biz.id, name: st.name.trim(), role: st.role });
+        }
+        cacheInvalidate('discover:'); cacheInvalidate('/api/discover'); cacheInvalidate('business:');
+        emitBusinessesChanged(); emitServicesChanged(); emitStaffChanged();
+        setSaved({ ...biz, demo: true } as Business);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
       const response = await apiSend<{ ok: boolean; business: Business }>('/api/register-business', id ? 'PUT' : 'POST', {
         ...form, id: id ? Number(id) : undefined, owner_name: profile?.full_name, active: publish,
         services, staff: form.staff.filter((s) => s.name.trim()), holidays,
@@ -190,7 +219,8 @@ export default function BusinessOnboarding() {
   if (saved) return <div className="min-h-screen px-4 py-8 sm:py-12">
     <div className="max-w-5xl mx-auto"><Logo size={36} /><motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45 }} className="mt-10 grid lg:grid-cols-2 gap-10 items-center">
       <div><div className="h-14 w-14 rounded-2xl bg-emerald-400/15 border border-emerald-400/25 grid place-items-center text-emerald-400"><CheckCircle2 className="h-7 w-7" /></div><p className="uppercase tracking-[.2em] text-[11px] text-emerald-400 font-semibold mt-6">{saved.active ? 'Your launch is live' : 'Saved as a draft'}</p><h1 className="text-4xl sm:text-5xl font-semibold tracking-tight leading-[1.08] mt-3">{saved.active ? 'A new chapter starts here.' : 'A beautiful start.'}</h1><p className="text-muted leading-relaxed mt-4 max-w-md">{saved.active ? `${saved.name} is saved and visible in customer discovery. Your services are listed on your profile.` : `${saved.name} is safely saved to your account. Publish when your location and services are ready.`}</p>
-        <div className="mt-6 flex flex-wrap gap-2"><span className="rounded-full border border-app px-3 py-1.5 text-xs text-muted flex gap-1.5 items-center"><ShieldCheck className="h-3.5 w-3.5 text-emerald-400" /> Saved to your account</span><span className="rounded-full border border-app px-3 py-1.5 text-xs text-muted flex gap-1.5 items-center"><MapPin className="h-3.5 w-3.5 text-indigo-400" />{saved.location_status === 'verified' ? 'Google-verified pin' : saved.location_status === 'owner_confirmed' ? 'Owner-confirmed pin' : 'Location not verified'}</span></div>
+        <div className="mt-6 flex flex-wrap gap-2"><span className="rounded-full border border-app px-3 py-1.5 text-xs text-muted flex gap-1.5 items-center"><ShieldCheck className="h-3.5 w-3.5 text-emerald-400" /> {saved.demo ? 'Saved in this browser' : 'Saved to your account'}</span><span className="rounded-full border border-app px-3 py-1.5 text-xs text-muted flex gap-1.5 items-center"><MapPin className="h-3.5 w-3.5 text-indigo-400" />{saved.location_status === 'verified' ? 'Google-verified pin' : saved.location_status === 'owner_confirmed' ? 'Owner-confirmed pin' : 'Location not verified'}</span></div>
+        {saved.demo && <p className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-xs leading-relaxed text-amber-300 max-w-md" data-demo-save="true"><strong className="font-semibold">Demo tenant.</strong> This business and its photos are stored in this browser only, and appear in the demo console and demo discovery. Nothing was written to a database — connect Supabase (and Storage) to publish for real.</p>}
         <div className="mt-8 flex flex-wrap gap-3"><Link to="/admin/businesses" className="grad-btn rounded-xl px-5 py-3 text-sm text-white font-semibold inline-flex gap-2 items-center">Go to business dashboard <ArrowRight className="h-4 w-4" /></Link>{saved.active && <Link to={`/business/${saved.id}`} className="rounded-xl border border-app px-5 py-3 text-sm font-medium inline-flex gap-2 items-center">View your profile <ExternalLink className="h-4 w-4" /></Link>}</div>
       </div>
       <div className="space-y-4"><Preview form={form} /><div className="launch-panel p-5"><p className="text-sm font-semibold">{form.address || saved.address || 'Address not added'}</p><p className="text-xs text-dim mt-1">{form.city}{form.state ? `, ${form.state}` : ''} {form.pin}</p>{selected && <div className="mt-4 h-48"><InteractiveMap center={selected} selected={selected} /></div>}{form.services.filter((s) => s.name).slice(0, 3).map((s, i) => <div key={i} className="flex justify-between text-sm border-t border-app pt-3 mt-3"><span>{s.name} <span className="text-dim">· {s.duration_min} min</span></span><strong>{inr(s.price)}</strong></div>)}</div></div>

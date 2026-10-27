@@ -201,11 +201,11 @@ export function categoryFallbackImage(cat: string): string {
     'Car Service Centers': '/biz/car-service.jpg',
     'EV Charging Stations': '/biz/car.jpg',
     'Home Services': '/biz/education.jpg',
-    Electricians: '/biz/education.jpg',
+    Electricians: '/biz/electrician.jpg',
     Plumbers: '/biz/education.jpg',
     Cleaners: '/biz/education.jpg',
-    'Event Venues': '/biz/hotel.jpg',
-    'Photography Studios': '/biz/coaching.jpg',
+    'Event Venues': '/biz/event.jpg',
+    'Photography Studios': '/biz/photography.jpg',
     'Travel Agencies': '/biz/hotel.jpg',
   };
   return map[cat] || '/biz/clinic.jpg';
