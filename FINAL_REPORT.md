@@ -4,7 +4,7 @@
 
 **Base:** `119781653a1ca4d546d73ccf7568385f681e2850` on `main`
 
-**Status:** changes are local to this workspace; no migration has been applied to a live Supabase project, and no pull request has been opened for this branch. This is `Velora_12`, not the separately requested `Velora_Hack` repository. See [HACKATHON_AUDIT.md](HACKATHON_AUDIT.md) for the distinct target-repository and live-demo audit.
+**Status:** changes are on [`Velora_12` pull request #15](https://github.com/Amit-yadav12/Velora_12/pull/15). No migration has been applied to a live Supabase project and no production deployment has been performed. This is `Velora_12`, not the separately requested `Velora_Hack` repository. See [HACKATHON_AUDIT.md](HACKATHON_AUDIT.md) for the distinct target-repository and live-demo audit.
 
 ## What changed
 
@@ -57,4 +57,4 @@ Headless Chromium was used to check the local demo on desktop and at 375 px. The
 
 ## CI
 
-There is no GitHub pull request or CI run for the current uncommitted branch changes. The local workflow now includes a high/critical dependency audit and the launch/camera regressions, but that workflow has not run remotely for these changes. The latest previously queried `main` run, [40455166775](https://github.com/Amit-yadav12/Velora_12/actions/runs/40455166775), succeeded for the base commit; it does **not** test this working tree.
+[Pull request #15](https://github.com/Amit-yadav12/Velora_12/pull/15) runs the workflow with the high/critical dependency audit and launch/camera regressions. [CI run 40467590054](https://github.com/Amit-yadav12/Velora_12/actions/runs/40467590054) passed for the initial code commit `0534412`; subsequent commits can trigger new runs, so consult the PR for current status. Netlify deploy previews are separate from a production deployment.
