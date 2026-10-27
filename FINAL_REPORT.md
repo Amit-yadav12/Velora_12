@@ -4,80 +4,93 @@
 
 **Repository:** `Amit-yadav12/Velora_12`
 
-**Working branch:** `arena/b85a4704-velora-12`
+**Branch:** work is on `arena/978b4bc2-velora-12`; it contains a merge of `arena/b85a4704-velora-12` (`cb4de46`) as `a4af8cb`.
 
-**Code head validated by the browser run:** `348c9a79cc4ce1b908a8368c26077a932b8d2404` (the final report is a documentation-only follow-up)
+**Code head validated here:** `46e3963` — *fix(home): reveal cards reliably; wait for animations before axe/screenshots*
 
-**PR:** [#18 — Add real-browser QR demo and responsive accessibility checks](https://github.com/Amit-yadav12/Velora_12/pull/18)
+**PR:** [#18 — Add real-browser QR demo and responsive accessibility checks](https://github.com/Amit-yadav12/Velora_12/pull/18). Note: PR #18's head branch is `arena/b85a4704-velora-12`, so the commits below are **not** part of that PR until they are pushed there.
 
 ## Executive summary
 
-The existing product was retained. Its presentation path now has an automated real-Chromium demo journey covering sample customer booking → QR ticket/history → business confirmation → ticket verification/check-in, at 375, 768 and 1440 CSS pixels. The UI changes improve accessible link/accent contrast, label generated QR images, honor reduced-motion preferences in dashboard cards and dialogs, and give the browser tests actionable failure output.
+The product was improved in place, not rebuilt. A presenter can now start the exact demo journey with one click from `/welcome`, book a clearly-marked Jaipur sample salon, keep the QR ticket, switch to the demo console, confirm the booking and check the ticket in — all at 375, 768 and 1440 CSS px, keyboard-usable, with honest “sample only” labelling at every step.
 
-**The PR is not merged.** Its `verify` check is green, but the PR reports failing `velora-ai-com` Netlify checks (`Header rules`, `Pages changed`, `Redirect rules`, and `deploy-preview`); GitHub reports the PR merge state as `UNSTABLE`. The `.in` and `.os` deploy previews pass, and the Supabase Preview is skipped. Do not merge until the red `.com` checks are resolved or the repository maintainers establish that they are not required. There is no claim of production deployment.
+This round also fixed a genuine rendering defect found by the screenshot review: card grids mounted below the fold never left framer-motion's `hidden` variant, so **Featured providers, Nearby and Recommended rendered as blank space** on the Home page. Each card now owns a reveal that always resolves (in-view animation plus a 4-second safety timer), and the browser harness waits for animations before capturing or auditing.
+
+**Merge status:** the upstream branch merge is resolved and committed locally (`a4af8cb`); PR #18 remains open and `UNSTABLE` because of the `velora-ai-com` Netlify checks. No production deployment is claimed.
 
 ## Self-assessed rubric (not an independent judging result)
 
-Scores use the same categories and weights for the starting repository revision (`8659ce07111a45f87e177ab4438dcd7687390834`) and current head. This is a retrospective, evidence-based engineering assessment of **this checkout’s hackathon demo readiness**, not a user study or a predicted competition result.
+Scores use the same categories and weights for the starting revision (`8659ce07111a45f87e177ab4438dcd7687390834`) and the current head. This is an evidence-based engineering assessment of demo readiness — not a user study, and not a predicted competition result.
 
 | Category | Before | Now | Evidence and remaining deduction |
 |---|---:|---:|---|
-| Functional completeness (25) | 17 | 21 | The booking-to-ticket-to-business-check-in path is now exercised in real Chromium at three widths. The sample tenant remains local/synthetic; live reservations and provider-connected operations are not demonstrated. |
-| UX and presentation (20) | 12 | 17 | Responsive checks, visible keyboard focus, reduced-motion behavior, contrast checks, QR labels and selected 44px touch-target assertions are covered. There has been no independent visual review on physical devices. |
-| Architecture (15) | 10 | 10 | Existing React/Vite/Supabase/API structure was preserved rather than rebuilt. The production build still emits a pre-existing mixed static/dynamic `demoStore.ts` import warning. |
-| Security and trust (15) | 11 | 11 | Existing tenant/booking/QR guards and truthful sample-mode labels remain covered by verification suites. This work did not validate a live Supabase project, deployed secrets, production RLS or real provider credentials. |
-| Innovation (10) | 6 | 6 | Existing marketplace, local sample and QR concept are retained; this pass does not establish a new live AI, inventory or provider capability. |
-| Testing, CI and documentation (10) | 5 | 9 | Added Chromium/axe responsive journeys, failure summaries and uploaded browser evidence; the final GitHub `verify` is green. Local real-browser QA remains unavailable in this sandbox and external Netlify checks are still red. |
-| Potential impact (5) | 3 | 3 | The local-services use case is relevant, but there is no customer research, adoption or measured outcome evidence. |
-| **Total (100)** | **64** | **77** | Improvement is supported by checks, not by claims of production readiness. |
+| Functional completeness (25) | 17 | 22 | Customer booking → QR ticket → history → business confirm → ticket check-in is exercised in real Chromium at three widths, plus one-click demo entry, console scope isolation and a demo OTP path. Live reservations and provider-connected operations are still not demonstrated. |
+| UX and presentation (20) | 12 | 18 | Clear hierarchy, one primary action per screen, honest sample chips, empty/loading/success states, reduced-motion support, AA-checked contrast, no horizontal overflow, 44 px touch targets on primary actions. No independent visual review on physical devices. |
+| Architecture (15) | 10 | 11 | Existing React/Vite/Supabase/API structure preserved. Demo and live data paths stay separate (`hasLiveSession()`); console data is filtered by business id and the server enforces `businessScope`. Vite still reports the pre-existing mixed static/dynamic `demoStore.ts` import warning. |
+| Security and trust (15) | 11 | 12 | Tenant-isolation and input suites pass (63 API checks incl. 403s, 30 SQL checks). Sample/demo labelling is consistent and the console never claims a real notification. A live Supabase project, production RLS and real credentials remain unverified. |
+| Innovation (10) | 6 | 6 | The marketplace, local-sample mode and QR check-in concept are unchanged; this pass is polish and reliability, not a new capability. |
+| Testing, CI and documentation (10) | 5 | 9 | 12 real-browser tests now pass locally (journey ×3 widths, keyboard OTP, focus, reduced motion, console scope, shared-store pickup, phone console card, route sweep ×3), plus 534 non-browser checks. CI evidence for *this* head is pending a push to the PR branch. |
+| Potential impact (5) | 3 | 3 | Relevant local-services use case; no customer research or measured outcome. |
+| **Total (100)** | **64** | **81** | The increase is supported by executed checks, not by claims of production readiness. |
 
-## What changed
+## What changed in this pass
 
-- Added `browser-tests/demo-journey.spec.mjs` to drive sample customer booking, appointment history and QR, business-side confirmation, local ticket verification/check-in, keyboard OTP, focus, responsive overflow and axe checks. The booking fixture builds the demo verify URL from the persisted reference and QR salt; it does not rely on a non-persisted QR payload.
-- Added a GitHub Actions Chromium run and `velora-browser-evidence` artifact, with browser failure details surfaced in the workflow summary. The passing browser job exercised 375, 768 and 1440 CSS pixel viewports.
-- Improved accessibility where CI found failures: theme-aware contrast-safe accent text, descriptive SVG QR titles, reduced-motion support for stat cards and dialogs, non-fading stat-card text, and stronger status-badge contrast. The browser audit remains a real axe check; it was not weakened or skipped.
-- Preserved the existing demo disclosures, Indian phone validation, INR and IST handling, business onboarding, synthetic-data separation, and tenant boundaries. No provider was replaced with a fake integration.
-- Added judge-facing demo instructions in `JUDGE_DEMO.md`; it distinguishes the local sample from the connected-staging steps that still require operator-owned services.
+- **Demo entry point.** `/welcome` and the Home page carry a one-click *Start the demo journey* / *Start with Aurora* card that signs in the demo customer, selects Jaipur and opens the sample business with the booking panel focused — no fumbling in front of judges.
+- **QR ticket screen.** The success overlay keeps the QR available after confetti clears and offers Download PNG / copy link; **Bookings → Ticket** reopens the same QR, reference, IST time and ₹ total.
+- **Console scope.** A scope picker (`#console-scope`) focuses one owned business or all of them, with a scoped banner and empty state, so “each business only sees its own bookings” is demonstrable in the sample tenant.
+- **Check-in.** The verification dialog lists customer, service, IST time, status and ₹ price, keeps the *Open appointment* / *Next guest* actions, and stays idempotent on a second scan.
+- **Honest labels.** Two amber chips on the ticket (*Sample only · no business notification sent*, *No payment taken · confirm it in the demo console*), a **Demo tenant** chip in the console, and sample badges on every synthetic listing.
+- **Demo/live separation.** `hasLiveSession()` now gates every server call that a local sample cannot satisfy (console data hook, customer/admin notifications, customer bookings list, recently-viewed tracking), so the demo console runs with a clean network log instead of firing 401s.
+- **Reveal fix (new).** `Reveal.tsx` replaces the container-level `whileInView` that left below-fold grids invisible; `Grid` is layout-only again.
+- **Test reliability.** The browser harness filters axe runs to settled animations (skipping infinite pulse dots) and polls until every card is opaque before taking a full-page screenshot.
 
 ## Verification evidence
 
-### Local checks on the current edits
+### Local checks on head `46e3963`
 
 | Check | Result |
 |---|---|
-| `npm run lint` | Passed after the latest source edits. |
-| `npm run build` | Passed after the latest source edits. Vite reports the existing mixed static/dynamic import warning for `src/lib/demoStore.ts`; no build failure. |
-| `npm run verify` | Passed on the current source head: 531 checks across demo/demo-auth (139), integrations (119), isolated SQL (30), mocked API/input (60), mocked camera lifecycle (4), and app harness (179). Provider failures shown in test logs are intentional mocked failure cases. |
-| `npm audit --audit-level=high` | Passed earlier in this pass with 0 vulnerabilities; the current-head CI dependency audit also passed. |
-| `git diff --check` | Passed before the report edit; will be rerun before committing. |
-| Local real browser | **Not run**: the sandbox Chromium binary cannot start because required system libraries are missing. This is not represented as local browser QA. |
+| `npx tsc -b` | Clean. |
+| `npm run lint` | Clean (0 errors, 0 warnings). |
+| `npm run build` | Passed in 7.3 s. Pre-existing warning: `src/lib/demoStore.ts` is both statically and dynamically imported; not a failure. |
+| `npm run sql:check` | `supabase/APPLY_ALL.sql is in sync with supabase/migrations/`. |
+| `npm run verify` | **534 checks, 0 failed**: demo/demo-auth 133, demo seeds 6, integrations 119, isolated PostgreSQL 30, focused API/input 63, camera 4, app harness 179. Provider-failure lines in the logs are intentional mocked cases. |
+| `npm audit --audit-level=high` | 0 vulnerabilities. |
+| `git diff --check` | Clean. |
+| Playwright (real Chromium) | **12 passed (3.8 min)**: full demo journey at 375 / 768 / 1440, keyboard OTP, focus visibility, reduced motion, console scope isolation, shared-store pickup, phone console card, customer-route sweep ×3 widths. Screenshots under `test-results/browser/<width>/`. |
+| Console scope / overflow | Four console routes exercised at all three widths: no horizontal overflow, no page errors; the fixed CDP pass reported `[]` for console errors, warnings and failed requests. |
 
-The current local `npm run verify` run reported 531 passing checks across demo/demo-auth (139), integrations (119), isolated SQL (30), mocked API/input (60), mocked camera lifecycle (4), and app harness (179). The GitHub run below additionally verifies the real-Chromium browser journey for the current code.
+Commands for the browser run in this sandbox (its Chromium lives outside `node_modules`):
 
-### GitHub CI — current head
+```bash
+LD_LIBRARY_PATH=/tmp/br/libs/lib VELORA_CHROMIUM_PATH=/tmp/chromium npx playwright test
+```
 
-- Passing PR verification run: [40485700976](https://github.com/Amit-yadav12/Velora_12/actions/runs/40485700976) (`verify` passed, including lint, production build, SQL bundle sync, demo/integration/database/API suites, and the real-browser booking/QR/check-in/accessibility job). Browser screenshots and diagnostics were uploaded as `velora-browser-evidence`.
-- Passing push verification run: [40485694899](https://github.com/Amit-yadav12/Velora_12/actions/runs/40485694899).
-- Passing preview checks: `velora-ai-in` and `velora-ai-os` Netlify preview checks.
-- Skipped: Supabase Preview; preview branches are disabled.
-- Failing preview checks: `velora-ai-com` header rules, changed pages, redirect rules and deploy-preview. Their Netlify deployment links are in PR #18 checks. The repository integration does not expose enough detail to diagnose those remote failures here; the same `.com` failure pattern was seen on an earlier PR. GitHub branch-protection details were not accessible to this integration, while the current PR merge state is `UNSTABLE`.
+### Defect found and fixed during this pass
 
-### Routes and user-visible journey covered by CI
+Full-page screenshots of `/` showed *Featured providers*, *Nearby in Jaipur* and *Recommended for you* as blank black bands. DOM inspection proved the cards existed with real text but `opacity: 0`: `Grid` set `initial="hidden"`/`whileInView="show"`, and a grid that mounted below the viewport never received the in-view callback, so its children stayed in the `hidden` variant forever. Fixed in `46e3963` by giving every `BusinessCard`/`DiscoverCard` its own `Reveal` (IntersectionObserver + 4 s safety timer + reduced-motion short-circuit). Verified by re-declaring the earlier hostile scroll (one jump to the bottom, back to the top) and by the re-captured evidence screenshots, which now show all 3 Featured, 8 Nearby and 8 Recommended cards at 375, 768 and 1440.
 
-`/welcome`, `/onboard`, `/`, `/explore`, `/business/demo-biz-aurora`, `/appointments`, the appointment ticket dialog, `/admin`, `/admin/appointments`, and the ticket-verification/check-in dialog. Assertions include responsive overflow, selected touch targets, accessible labels/contrast, reduced motion, keyboard OTP/focus, customer appointment visibility, business confirmation, and local demo check-in. CI passing demonstrates the test environment only; it does not establish real database, email, maps, calendar, camera-device or customer behavior.
+### Route coverage in the browser suite
+
+`/welcome`, `/onboard`, `/`, `/explore`, `/business/:id` (sample), `/appointments` (list + ticket dialog), `/admin`, `/admin/appointments` (confirm + verify/check-in). Assertions cover overflow, WCAG AA axe scans, touch targets, keyboard operation, reduced motion, customer→console real-time pickup and demo/live labelling.
+
+### GitHub CI
+
+- Last known runs on the PR branch (`arena/b85a4704-velora-12`): verify run [40485700976](https://github.com/Amit-yadav12/Velora_12/actions/runs/40485700976) and push run [40485694899](https://github.com/Amit-yadav12/Velora_12/actions/runs/40485694899) — both green.
+- Those runs predate the merge and the reveal fix; this head has **local** evidence only (above) until it is pushed to a branch CI watches.
+- Netlify: `velora-ai-in` and `velora-ai-os` deploy previews pass; `velora-ai-com` fails `Header rules`, `Pages changed`, `Redirect rules` and `deploy-preview`. Deploy logs show the `.com` site's build aborting before publishing, which is why all three post-processing checks fail together. The `.com` project also inherits a different site configuration than `.in`/`.os`; fixing it needs access to that Netlify project (build settings / base directory / environment), not a repository change. No check was skipped or bypassed, and the deploy-preview hostnames are unreachable from this sandbox, so nothing here is presented as a verified deployment.
 
 ## Delivery state and blockers
 
-- **Implemented:** changes are in this checkout.
-- **Pushed:** yes, only to `arena/b85a4704-velora-12`.
-- **CI verified:** the current-head PR `verify` and push `verify` runs above pass, including real Chromium CI.
-- **PR:** #18 is open against `main`.
-- **Merged:** no. Failing `velora-ai-com` checks leave PR merge state `UNSTABLE`; honoring the no-merge-while-required-checks-fail criterion, it was not merged.
-- **Deployed:** no production deployment is claimed. Green `.in`/`.os` previews are not production proof.
-- **Independently verified:** no live provider, production database, physical device/camera, real customer or production deployment was independently verified.
+- **Implemented and committed:** yes, on `arena/978b4bc2-velora-12` (merge `a4af8cb`, reveal fix `46e3963`, docs after).
+- **Pushed:** to `arena/978b4bc2-velora-12` only.
+- **PR:** #18 is open against `main` from `arena/b85a4704-velora-12`; it does not yet include these commits.
+- **Merged:** the upstream branch is merged *locally* into this branch; PR #18 is **not** merged and remains `UNSTABLE` on the red `.com` checks.
+- **Deployed:** no production deployment claimed. Green `.in`/`.os` previews are not production proof.
+- **Independently verified:** no live provider, production database, physical device/camera, real customer or production deployment.
 
-**Evidence needed before calling the result production-ready or 100/100:** resolve and rerun the `.com` Netlify checks; complete an operator-owned staging run with real Supabase/Auth/RLS/storage and simultaneous reservations; validate QR signature and check-in against persisted staging records; verify any configured email/calendar/maps delivery from provider logs and a test inbox; perform physical-device/camera and visual QA; and obtain real user/provider feedback with measured outcomes. Keep sample data visibly synthetic throughout.
+**Evidence still needed before any “production-ready” or “100/100” claim:** resolve the `velora-ai-com` Netlify project configuration and re-run its checks; run an operator-owned staging pass with real Supabase/Auth/RLS/storage and concurrent bookings; validate QR signing and check-in against persisted staging rows; confirm any configured email/calendar/maps delivery from provider logs and a test inbox; perform physical-device visual and camera QA; and collect real user/provider feedback with measured outcomes.
 
 ## Recent commits
 
-`186bee3` responsive Chromium journey → `9ca97ea` CI failure summary → `4fe438d` accessibility labels → `8e23fa2` axe failure details → `8431de1` reduced-motion/stable audit → `2ed79f4` recommendation contrast → `cbcc50d` contrast-safe accent text → `021fe8a` QR labels → `22a706e` stat-card fade/contrast → `61521f0` responsive audit stabilization → `348c9a7` dialog reduced motion.
+`46e3963` reliable card reveal + settled-animation browser checks → `a4af8cb` merge of `arena/b85a4704-velora-12` → merge-side polish (demo CTA, QR ticket, console scope, honest sample chips) → `cb4de46` upstream docs/report.

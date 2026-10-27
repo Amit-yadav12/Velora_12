@@ -1,15 +1,53 @@
 # Judge walkthrough
 
-## Local sample mode — no credentials (about 3 minutes)
+## Start the sample (no credentials needed)
 
-1. Run `npm ci` and `npm run dev -- --host 0.0.0.0 --port 5173`; open the printed URL. With no Supabase variables this is an **isolated local sample**, not a connected production environment.
-2. Open `/welcome?role=customer` and choose **Continue as demo customer**. Browse `/explore`, choose a sample business and service, pick an offered sample slot and confirm the **demo request**. The generated QR appears immediately. It is a sample ticket stored in this browser profile; it does not reserve a real provider or act as a production-signed ticket.
-3. Visit **Appointments** (or `/appointments`) and open **Ticket**. Show the QR, service, appointment date/time and booking reference. The list labels this as a sample request; no real directions, calendar event, email or business notification is claimed.
-4. Open the **Account menu → Sign out**, then visit `/welcome?role=business` and choose **Continue as demo business**. In **Business Console → Appointments**, confirm the pending sample request first. Choose **Verify ticket**, scan the customer's QR when camera/BarcodeDetector permissions are available, or paste the ticket URL/token. The local demo returns the sample appointment details (customer, service, time, status and ₹ price); a second check-in is idempotent. The paste path works when camera access is unsupported. For a physical scan, display the customer QR on another screen/device in the same demo browser profile. This validates the demo workflow only; use the connected-staging walkthrough below for server-side signature and tenant authorization evidence.
-5. **Launch a business.** Open `/onboard`. Fill **Your business** — the live preview updates as you type; press Continue with an empty name to see validation. Skip photos or add one (in sample mode it is compressed and badged `LOCAL`). On **Location**, enter an address and confirm the pin (manual coordinates are available; a live geocode/Places result needs a configured server Maps key). On **Services & hours**, enter the service's ₹ price. **Review → Publish business** shows the saved profile, address, coordinates, hours and services, plus an amber **Demo tenant** disclosure that it is browser storage, not a database. Reload: the business remains in this browser and appears in `/admin/businesses` and demo discovery only after publishing.
-6. Resize to 375, 768 and 1440 CSS px. CI's Playwright browser run exercises the customer booking-to-QR-to-business-check-in journey and saves screenshots as the `velora-browser-evidence` workflow artifact. A local screenshot/pixel review requires a browser binary; the current sandbox does not ship one.
+```bash
+npm ci
+npm run dev -- --host 0.0.0.0 --port 5173
+```
 
-Map tiles require network access; an unavailable tile provider is reported. Address search and live Google Places need a server Maps key. A local sample cannot establish that any external provider is working.
+Open the printed URL. With no Supabase variables this is an **isolated local sample**: businesses, prices, slots, reviews and tickets are synthetic, stored in this browser, and never sent to a provider. The banner at the top of every screen says so; keep it visible when you present.
+
+The whole journey below takes about three minutes and needs one browser and no network services.
+
+## The three-minute demo, in clicks
+
+1. **Welcome → “Start the demo journey”.** `/welcome` carries a card labelled *Judge demo · about 3 minutes* with a single button. It signs in as the demo customer, selects **Jaipur**, and opens the clearly-marked sample salon **Aurora Luxe Salon & Spa** with the booking panel already in view. (Manual route: *Continue as demo customer* → location chip **Jaipur** → open the sample business. Both paths are equivalent; the one-click path just avoids fumbling in front of judges.)
+2. **Book.** In the booking panel choose **Signature Haircut & Styling**, tomorrow’s date and an offered slot. The details step itemises service, staff, 18% GST and the ₹ total before you submit. Press **Confirm demo booking**. Nothing is charged and no SMS or email is sent — the button and the summary both say so.
+3. **Ticket.** The success screen shows the QR ticket, the booking reference (`VL-…`), the IST date/time and the ₹ total, plus two amber chips: *Sample only · no business notification sent* and *No payment taken · confirm it in the demo console*. **Download PNG** saves the QR. Close and open **Bookings → Ticket** to show the ticket is retrievable later; the ticket dialog re-renders the same QR at a scannable size.
+4. **Switch sides.** Open `/welcome?role=business` → **Continue as demo business**. The console (`/admin`) lists that same booking within about a second — the customer and business views read one local store and notify each other over a same-browser event bus, so no refresh is needed. The header shows a **Demo tenant** chip and the console scope picker.
+5. **Confirm and check in.** In **Appointments**, the newest booking is first. Press **Confirm booking**, then **Verify ticket** and paste the ticket link or token (camera scanning is optional and needs a permission prompt). The verdict lists the customer, service, IST appointment time, status and ₹ price; a second scan returns the already-checked-in state instead of double-counting.
+6. **Show the isolation.** Use the scope picker to switch between **this business only** and **all my businesses**. Every list is filtered by business id, and a booking made against one business never appears under another. In live mode the same boundary is enforced server-side (`businessScope`), not in the UI.
+7. **Reset between rehearsals.** Demo guide → **Reset sample data**, or the **Reset demo** button on the console dashboard. This clears only `velora-*` browser keys; it cannot touch a database.
+
+## What is real, and what to call sample (say this out loud)
+
+| Shown in the demo | What it actually is |
+|---|---|
+| Businesses, prices, availability, reviews | Synthetic sample data; every card carries a **Sample** label |
+| Booking, QR ticket, check-in | Real app logic running on the local store; the ticket is a demo token, not a provider-signed pass |
+| “Live” map tiles / address search | Only with a configured Google key; otherwise the page states the map is unavailable and Jaipur is selected explicitly |
+| SMS, email, calendar invites, payments | **Not sent.** The UI says so; no provider is contacted |
+| The AI concierge | Rule-based; it may say a model is not configured. It never invents a booking |
+
+Anything above can be demonstrated honestly by pointing at the label on screen. Do not claim a real provider was contacted.
+
+## Presenter tips
+
+- The floating **Demo guide** panel (bottom-left) tracks the five steps (sample business → service + slot + ₹ total → QR ticket → check-in) and links straight to the next action, including a `?focus=<reference>` deep link into the console.
+- The **Home** page carries the same one-click **Start with Aurora** card, so a refresh mid-demo does not lose your place.
+- The QR is stable per booking: the same ticket renders in the success overlay, in **Bookings → Ticket**, and in the console verification dialog.
+- Resize to 375, 768 and 1440 CSS px while presenting; the layouts reflow without horizontal scrolling.
+
+## Browser checks (repeatable)
+
+```bash
+npm run lint && npx tsc -b && npm run verify   # 179 app checks + suite totals
+LD_LIBRARY_PATH=/tmp/br/libs/lib VELORA_CHROMIUM_PATH=/tmp/chromium npx playwright test
+```
+
+The Playwright project drives the same journey at 375, 768 and 1440 CSS px, plus keyboard-only OTP entry, visible focus, reduced motion, axe WCAG AA scans, overflow checks and a per-width sweep of the customer routes. Where a browser binary is unavailable, run the CI job described in [FINAL_REPORT.md](FINAL_REPORT.md) — do not describe local browser QA that did not happen.
 
 ## Connected staging walkthrough (requires an operator-owned test project)
 
