@@ -54,7 +54,13 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Browser booking, QR check-in, responsive and axe checks
-        run: npm run verify:browser
+        run: npm run verify:browser -- --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/browser/playwright-results.json
+
+      - name: Surface browser failure details in the check summary
+        if: failure()
+        run: node scripts/summarize-browser-failures.mjs
 
       - name: Save browser screenshots and diagnostics
         if: always()
