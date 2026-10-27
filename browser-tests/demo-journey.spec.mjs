@@ -23,7 +23,7 @@ async function checkA11y(page, route) {
     runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] },
   }));
   const summary = result.violations.map((violation) =>
-    `${violation.id} (${violation.impact}): ${violation.nodes.map((node) => node.target.join(' ')).join(', ')}`,
+    `${violation.id} (${violation.impact}): ${violation.nodes.map((node) => `${node.target.join(' ')} — ${node.failureSummary || node.html}`).join('; ')}`,
   );
   expect(summary, `axe accessibility violations on ${route}`).toEqual([]);
 }
@@ -118,7 +118,7 @@ for (const viewport of sizes) {
     const emailInput = page.getByPlaceholder('you@email.com');
     if (await emailInput.count()) await emailInput.fill('customer@velora.ai');
     await page.getByRole('button', { name: 'Confirm booking' }).click();
-    await expect(page.getByText('Demo request saved')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: 'Demo request saved', exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(page.locator('[data-qr] svg')).toBeVisible();
     const appointment = await page.evaluate(() => {
       const list = JSON.parse(localStorage.getItem('velora-local-bookings') || '[]');
