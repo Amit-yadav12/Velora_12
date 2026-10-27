@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LayoutGrid, CalendarDays, Store, Sparkles, Users, UserCog, Shield, Sun, Moon, LogOut, Menu, Mail, Bell, CheckCheck, Activity } from 'lucide-react';
+import { LayoutGrid, CalendarDays, Store, Sparkles, Users, UserCog, Shield, Sun, Moon, LogOut, Menu, Mail, Bell, CheckCheck, Activity, ExternalLink } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../lib/theme';
 import { LogoMark } from '../components/Logo';
@@ -9,6 +9,7 @@ import PageTransition from '../components/premium/PageTransition';
 import ToastHost from '../components/premium/ToastHost';
 import SampleModeBar from '../components/premium/SampleModeBar';
 import ConsoleScopePicker from '../components/console/ConsoleScopePicker';
+import LiveSyncBadge from '../components/console/LiveSyncBadge';
 import supabase, { isDemoMode } from '../lib/supabase';
 import { apiGet, apiSend, hasLiveSession } from '../lib/api';
 import { listLocalNotificationsFor, markAllLocalNotificationsRead, markLocalNotificationRead } from '../lib/offlineStore';
@@ -113,7 +114,19 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           {isDemoMode && <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-violet)]/15 text-[var(--text-link-strong)] border border-[var(--color-brand-violet)]/25">Demo tenant</span>}
           <span className="mx-1 hidden h-4 w-px bg-[var(--border)] sm:block" aria-hidden="true" />
           <ConsoleScopePicker />
+          <LiveSyncBadge />
           <div className="ml-auto flex items-center gap-2">
+            {isDemoMode && (
+              <button
+                type="button"
+                onClick={() => window.open('/?demoRole=customer', 'velora-demo-customer', 'noopener,width=430,height=900')}
+                title="Opens a second window signed in as the demo customer. Both windows share the sample store, so a booking you make there appears here within a second — no reload."
+                data-demo-window="customer"
+                className="hidden items-center gap-1.5 rounded-lg border border-app px-2.5 py-1.5 text-xs text-muted transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text)] lg:inline-flex"
+              >
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /> Open customer window
+              </button>
+            )}
             <Link to="/" className="text-sm text-dim hover:text-[var(--text)] hidden sm:block">Customer app ↗</Link>
             {/* Notifications */}
             <div className="relative" ref={bellRef}>

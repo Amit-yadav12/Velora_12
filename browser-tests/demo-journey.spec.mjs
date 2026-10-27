@@ -22,6 +22,7 @@ const SIZES = [
 ];
 
 const SAMPLE_BUSINESS = 'Aurora Luxe Salon & Spa';
+const SAMPLE_BUSINESS_ID = 'demo-biz-aurora';
 const SAMPLE_SERVICE = 'Signature Haircut & Styling';
 
 async function box(viewport) {
@@ -76,10 +77,19 @@ async function expectTouchTarget(locator, label, minimum = 44) {
   expect(bounds.height, `${label}: touch target height`).toBeGreaterThanOrEqual(minimum);
 }
 
-/** Book the flagship sample business exactly like a presenter does. */
-async function createSampleBooking(page) {
-  await page.goto('/welcome');
-  await page.locator('[data-demo-cta="start-journey"]').click();
+/**
+ * Book the flagship sample business exactly like a presenter does.
+ * `signedIn: true` skips the welcome CTA — a second demo window is already the
+ * customer, and /welcome would redirect it straight to the home page.
+ */
+async function createSampleBooking(page, { signedIn = false } = {}) {
+  if (signedIn) {
+    const tomorrow = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(Date.now() + 86_400_000));
+    await page.goto(`/business/${SAMPLE_BUSINESS_ID}?date=${tomorrow}&focus=booking`);
+  } else {
+    await page.goto('/welcome');
+    await page.locator('[data-demo-cta="start-journey"]').click();
+  }
   await expect(page.getByRole('heading', { name: SAMPLE_BUSINESS })).toBeVisible();
   const slot = page.locator('#booking-panel button:not(:disabled)').filter({ hasText: /^\d{1,2}:\d{2}\s?(AM|PM)/i }).first();
   await expect(slot).toBeVisible({ timeout: 20_000 });
@@ -401,6 +411,50 @@ test('the console picks up a booking written to the shared sample store without 
     localStorage.setItem('velora-local-bookings', JSON.stringify(rows));
     window.dispatchEvent(new CustomEvent('velora:bookings-changed'));
   });
+});
+
+test('a booking made in a second customer window lands in the open console without a reload', async ({ page, context }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+
+  // Window 1: the presenter's console, signed in as the demo business.
+  await page.goto('/welcome');
+  await page.locator('[data-demo-cta="start-journey"]').click();
+  await expect(page.getByRole('heading', { name: SAMPLE_BUSINESS })).toBeVisible();
+  await enterBusinessConsole(page);
+  const before = await page.locator('[data-booking-ref]:visible').count();
+
+  // The console offers a second window that keeps its own demo identity, so the
+  // customer side can stay open beside it (localStorage stays admin-only here).
+  await page.evaluate(() => {
+    window.__openedDemoWindow = null;
+    window.open = (url) => { window.__openedDemoWindow = url; return null; };
+  });
+  await page.locator('[data-demo-window="customer"]').click();
+  expect(await page.evaluate(() => window.__openedDemoWindow)).toBe('/?demoRole=customer');
+
+  // Window 2: a pinned demo customer — booking here must not sign out window 1.
+  const customer = await context.newPage();
+  await customer.goto('/?demoRole=customer');
+  await expect(customer.getByText(/What would you like to/i)).toBeVisible();
+  const booking = await createSampleBooking(customer, { signedIn: true });
+  expect(booking?.ref).toBeTruthy();
+
+  // Window 1 updates from the shared store via the cross-tab bus event: no
+  // navigation and no reload happen between the two counts.
+  await expect(page.locator('[data-booking-ref="' + booking.ref + '"]:visible').first()).toBeVisible({ timeout: 15_000 });
+  expect(await page.locator('[data-booking-ref]:visible').count()).toBeGreaterThan(before);
+  await expect(page.locator('[data-live-sync="fresh"]')).toBeVisible();
+  expect(await page.evaluate(() => document.querySelectorAll('[data-booking-ref]').length)).toBeGreaterThan(0);
+
+  // Same data, scoped per business: another tenant's scope must not show it.
+  const scope = page.locator('#console-scope');
+  await scope.selectOption('demo-biz-apex');
+  await expect(page.locator('[data-booking-ref="' + booking.ref + '"]:visible')).toHaveCount(0);
+  await scope.selectOption('demo-biz-aurora');
+  await expect(page.locator('[data-booking-ref="' + booking.ref + '"]:visible').first()).toBeVisible();
+
+  await customer.close();
 });
 
 test('the business console lists the same booking on a phone-sized screen', async ({ page }) => {
