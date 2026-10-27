@@ -40,14 +40,14 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     // Server notifications (role-scoped, authorization-checked) + demo tenant.
     apiGet<NotificationRow[]>('/api/notifications').then((d) => {
       const server: NotificationRow[] = Array.isArray(d) ? d : [];
-      const local = listLocalNotificationsFor('admin');
+      const local = isDemoMode ? listLocalNotificationsFor('admin') : [];
       const ids = new Set(server.map((n) => String(n.id)));
       const merged: NotificationRow[] = [...server, ...local.filter((n) => !ids.has(String(n.id)))]
         .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
         .slice(0, 30);
       setNotifs(merged);
     }).catch(() => {
-      setNotifs(listLocalNotificationsFor('admin'));
+      setNotifs(isDemoMode ? listLocalNotificationsFor('admin') : []);
     });
   };
 
@@ -66,7 +66,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     loadNotifs();
   };
   const markAll = async () => {
-    markAllLocalNotificationsRead('admin');
+    if (isDemoMode) markAllLocalNotificationsRead('admin');
     for (const n of notifs.filter((x) => !x.read && !x.local)) {
       try { await apiSend('/api/notifications', 'PUT', { id: n.id }); } catch { /* non-fatal */ }
     }
@@ -91,13 +91,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           <span className="ml-auto text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-indigo)]/15 text-[var(--color-brand-indigo)]">Admin</span>
         </div>
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {items.map(it => {
+          {items.filter((it) => isDemoMode || profile?.is_operator || !['/admin/emails', '/admin/audit'].includes(it.to)).map(it => {
             const active = loc.pathname === it.to;
             return <Link key={it.to} to={it.to} onClick={() => setOpen(false)} className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${active ? 'grad-btn text-white' : 'text-muted hover:bg-[var(--surface-hover)]'}`}><it.icon className="h-4 w-4" />{it.label}</Link>;
           })}
         </nav>
         <div className="p-3 border-t border-app">
-          <button onClick={doResetDemo} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-muted hover:bg-[var(--surface-hover)]" title="Restore the clean demo state (demo tenant only — production data is never touched)"><Activity className="h-4 w-4" /> Reset demo data</button>
+          {isDemoMode && <button onClick={doResetDemo} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-muted hover:bg-[var(--surface-hover)]" title="Restore the clean demo state (demo tenant only — production data is never touched)"><Activity className="h-4 w-4" /> Reset demo data</button>}
           <div className="flex items-center gap-3 px-2 py-2"><div className="h-9 w-9 rounded-full grad-btn grid place-items-center text-white text-sm font-semibold">{(profile?.full_name || 'A').split(' ').map(n => n[0]).join('').slice(0, 2)}</div><div className="min-w-0"><p className="text-sm font-medium truncate">{profile?.full_name}</p><p className="text-xs text-dim truncate">{profile?.email}</p></div></div>
           <button onClick={doSignOut} className="mt-1 w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-muted hover:bg-[var(--surface-hover)]"><LogOut className="h-4 w-4" /> Sign out</button>
         </div>

@@ -7,6 +7,7 @@ import { useLocation } from '../../contexts/LocationContext';
 import { fetchDiscover } from '../../lib/hybridData';
 import { buildSuggestions, pushSearchHistory, readRecentViews, type Suggestion, type RecentView } from '../../lib/smartSearch';
 import type { Business } from '../../lib/product';
+import { isMiRoadElectricianSample, MI_ROAD_ELECTRICIAN_ALT } from '../../lib/miRoadElectrician';
 
 type Item = { type: 'suggest'; data: Suggestion } | { type: 'recent'; data: RecentView };
 
@@ -98,8 +99,8 @@ export default function Spotlight({ open, onClose }: { open: boolean; onClose: (
                     <div key={`r-${b.id}`}>
                       {i === suggestions.length && <p className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wide text-dim">Recently viewed</p>}
                       <button onMouseEnter={() => setActive(i)} onClick={() => select(item)} className={`flex w-full items-center gap-3 px-3 py-2.5 rounded-2xl ${isActive ? 'bg-[var(--surface-hover)]' : ''}`}>
-                        {b.image_url ? <img src={b.image_url} alt={b.name} onError={imgOnError(b.category)} className="h-10 w-10 rounded-xl object-cover" /> : <div className="h-10 w-10 rounded-xl grid place-items-center bg-surface"><Icon className="h-4 w-4" style={{ color: categoryColor(b.category) }} /></div>}
-                        <div className="flex-1 text-left min-w-0"><p className="text-sm font-medium truncate">{b.name}</p><p className="text-xs text-dim flex items-center gap-1.5"><Icon className="h-3 w-3" style={{ color: categoryColor(b.category) }} />{b.category} · {b.city}</p></div>
+                        {b.image_url ? <img src={b.image_url} alt={isMiRoadElectricianSample(b) ? MI_ROAD_ELECTRICIAN_ALT : b.name} onError={imgOnError(b.category)} className={`h-10 w-10 rounded-xl object-cover ${isMiRoadElectricianSample(b) ? 'object-left' : ''}`} /> : <div className="h-10 w-10 rounded-xl grid place-items-center bg-surface"><Icon className="h-4 w-4" style={{ color: categoryColor(b.category) }} /></div>}
+                        <div className="flex-1 text-left min-w-0"><p className="text-sm font-medium truncate">{b.name}</p><p className="text-xs text-dim flex items-center gap-1.5"><Icon className="h-3 w-3" style={{ color: categoryColor(b.category) }} />{b.category} · {b.city}{isMiRoadElectricianSample(b) ? ' · Sample AI illustration' : ''}</p></div>
                         {b.rating != null && <span className="text-xs flex items-center gap-1 shrink-0"><Star className="h-3 w-3 fill-amber-400 text-amber-400" />{Number(b.rating).toFixed(1)}</span>}
                         {isActive && <CornerDownLeft className="h-3.5 w-3.5 text-dim shrink-0" />}
                       </button>

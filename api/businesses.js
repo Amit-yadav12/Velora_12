@@ -1,4 +1,5 @@
-import supabase from './db-client.js';
+import { publicBusiness } from './_lib/public-business.js';
+import supabase, { isDatabaseConfigured } from './db-client.js';
 import { cors, sanitizeText, enforceRateLimit, safeError } from './_lib/security.js';
 import { cityBusinesses, syntheticBusiness, isSyntheticId } from './_lib/synthetic.js';
 
@@ -16,23 +17,26 @@ export default async function handler(req, res) {
       // Single business with nested services + staff
       if (id) {
         // Synthetic id — resolve deterministically (instant, no DB needed)
-        if (isSyntheticId(id)) {
+        if (isSyntheticId(id) && !isDatabaseConfigured()) {
           const biz = syntheticBusiness(id);
           if (!biz) return res.status(404).json({ error: 'Business not found' });
           return res.status(200).json(biz);
         }
         // DB row first, then synthetic lookup by numeric id as fallback
         try {
-          const [{ data: biz }, { data: services }, { data: staff }] = await Promise.all([
-            supabase.from('businesses').select('*').eq('id', id).single(),
+          const [businessResult, serviceResult, staffResult] = await Promise.all([
+            supabase.from('businesses').select('*').eq('id', id).eq('active', true).maybeSingle(),
             supabase.from('business_services').select('*').eq('business_id', id).eq('active', true).order('id'),
             supabase.from('business_staff').select('*').eq('business_id', id).eq('active', true).order('id'),
           ]);
-          if (biz) return res.status(200).json({ ...biz, services: services || [], staff: staff || [] });
+          const error = businessResult.error || serviceResult.error || staffResult.error;
+          if (error && isDatabaseConfigured()) throw error;
+          if (businessResult.data) return res.status(200).json({ ...publicBusiness(businessResult.data), services: serviceResult.data || [], staff: staffResult.data || [] });
         } catch (e) {
           console.error('[businesses:db-single]', e.message);
+          if (isDatabaseConfigured()) throw e;
         }
-        const synth = syntheticBusiness(id);
+        const synth = !isDatabaseConfigured() ? syntheticBusiness(id) : null;
         if (synth) return res.status(200).json(synth);
         return res.status(404).json({ error: 'Business not found' });
       }
@@ -44,14 +48,16 @@ export default async function handler(req, res) {
         if (category && category !== 'All') query = query.eq('category', category);
         if (featured === 'true') query = query.eq('featured', true);
         const { data, error } = await query.order('rating', { ascending: false });
-        if (!error && Array.isArray(data)) dbRows = data;
+        if (error && isDatabaseConfigured()) throw error;
+        if (!error && Array.isArray(data)) dbRows = data.map(publicBusiness);
       } catch (e) {
         console.error('[businesses:db-list]', e.message);
+        if (isDatabaseConfigured()) throw e;
       }
 
       let synth = [];
       try {
-        synth = cityBusinesses(cityName || 'Jaipur', {
+        synth = isDatabaseConfigured() ? [] : cityBusinesses(cityName || 'Jaipur', {
           category: category && category !== 'All' ? category : undefined,
         });
         if (featured === 'true') synth = synth.filter((b) => b.featured);

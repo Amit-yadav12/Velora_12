@@ -1,3 +1,4 @@
+import { apiGet } from '../lib/api';
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -39,7 +40,7 @@ export default function CustomerShell({ children }: { children: React.ReactNode 
         return Array.isArray(arr) ? arr.filter((n: NotificationRow) => !n.read && n.audience === 'customer').length : 0;
       } catch { return 0; }
     };
-    fetch('/api/notifications?audience=customer').then(r => r.json()).then(d => {
+    apiGet<NotificationRow[]>('/api/notifications?audience=customer').then(d => {
       const server = Array.isArray(d) ? d.filter((n: NotificationRow) => !n.read && n.audience !== 'admin').length : 0;
       setUnread(server + countLocal());
     }).catch(() => setUnread(countLocal()));

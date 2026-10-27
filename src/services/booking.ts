@@ -31,8 +31,8 @@ function friendlyError(message: string): string {
   const m = (message || '').toLowerCase();
   if (m.includes('slot') && (m.includes('taken') || m.includes('past'))) return message;
   if (m.includes('too many requests')) return 'Too many attempts — please wait a moment and try again.';
-  if (m.includes('failed to fetch') || m.includes('network')) {
-    return "We couldn't reach Velora right now. Check your connection and try again.";
+  if (m.includes('failed to fetch') || m.includes('network') || m.includes('abort') || m.includes('timeout')) {
+    return "We couldn't confirm the response. Check My bookings before retrying; your retry is protected.";
   }
   if (!message || m.includes('request failed') || m.includes('internal')) {
     return "We couldn't complete your booking right now. Please try again.";
@@ -43,7 +43,7 @@ function friendlyError(message: string): string {
 export async function submitBooking(payload: BookingPayload): Promise<BookingConfirmation> {
   const body = { ...payload, idempotency_key: payload.idempotency_key || newIdempotencyKey() };
   try {
-    return await apiSend<BookingConfirmation>('/api/book', 'POST', body);
+    return await apiSend<BookingConfirmation>('/api/book', 'POST', body, { timeout: 30000 });
   } catch (e: unknown) {
     throw new Error(friendlyError(errMsg(e)));
   }

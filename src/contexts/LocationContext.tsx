@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Coords, saveLocation, loadLocation } from '../lib/geo';
 import { CITIES, getCity, cityFromLabel, DEFAULT_CITY_NAME, type City } from '../lib/cities';
 
@@ -51,19 +51,23 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<Status>('idle');
   const [city, setCityState] = useState<City>(() => loadCity());
   const [live, setLive] = useState<Coords | null>(null);
+  const requestVersion = useRef(0);
 
   // Core fetch. `silent` avoids setting the "prompting" UI state when we already
   // know permission is granted (no visible prompt will appear).
   const doFetch = useCallback((silent = false) => {
     if (!('geolocation' in navigator)) { setStatus('unavailable'); return; }
     if (!silent) setStatus('prompting');
+    const version = ++requestVersion.current;
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        if (version !== requestVersion.current) return;
         const c: Coords = { lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'Current location' };
         setLocation(c); setLive(c); saveLocation(c); setStatus('granted');
         try { localStorage.setItem(ASKED_KEY, 'granted'); } catch { /* non-fatal */ }
       },
       (err) => {
+        if (version !== requestVersion.current) return;
         const denied = err.code === err.PERMISSION_DENIED;
         setStatus(denied ? 'denied' : 'unavailable');
         try { localStorage.setItem(ASKED_KEY, denied ? 'denied' : 'unavailable'); } catch { /* non-fatal */ }
@@ -74,16 +78,15 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
 
   // Explicit, user-initiated request (button tap). Won't nag if already denied.
   const requestLocation = useCallback(() => {
-    try {
-      if (localStorage.getItem(ASKED_KEY) === 'denied') { setStatus('denied'); return; }
-    } catch { /* storage unavailable */ }
     doFetch(false);
   }, [doFetch]);
 
   const setCity = useCallback((name: string) => {
     const c = getCity(name);
     if (!c) return;
+    requestVersion.current++;
     setCityState(c);
+    setLive(null);
     try { localStorage.setItem(CITY_KEY, c.name); } catch { /* non-fatal */ }
     // Keep the legacy `location` in sync so existing pages keep working.
     const coords: Coords = { lat: c.lat, lng: c.lng, label: c.name };
@@ -92,11 +95,11 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const setManual = useCallback((c: Coords) => {
-    setLocation(c); saveLocation(c); setStatus('granted');
-    try { localStorage.setItem(ASKED_KEY, 'granted'); } catch { /* non-fatal */ }
+    requestVersion.current++;
+    setLocation(c); setLive(null); saveLocation(c); // manual search is not GPS permission
     // If the manual pick matches a known city, pin it as the active city.
-    const match = cityFromLabel(c.label);
-    if (match && c.label && match.name.toLowerCase() === c.label.split(',')[0].trim().toLowerCase()) {
+    const match = (c.city && getCity(c.city)) || (c.label && getCity(c.label.split(',')[0].trim()));
+    if (match) {
       setCityState(match);
       try { localStorage.setItem(CITY_KEY, match.name); } catch { /* non-fatal */ }
     }
@@ -107,7 +110,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   // - denied/prompt    -> do nothing; user taps the location button to allow.
   // This prevents the browser from re-asking on every screen.
   useEffect(() => {
-    if (location) { setStatus('granted'); return; }
+    if (location && location.label !== 'Current location') return;
     if (typeof navigator !== 'undefined' && 'permissions' in navigator) {
       navigator.permissions.query({ name: 'geolocation' as PermissionName }).then((res) => {
         if (res.state === 'granted') doFetch(true);
@@ -119,8 +122,9 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
 
   const mapCenter: Coords = useMemo(() => {
     if (live) return live;
+    if (location && location.label !== 'Current location') return location;
     return { lat: city.lat, lng: city.lng, label: city.name };
-  }, [live, city]);
+  }, [live, location, city]);
 
   const value = useMemo(() => ({
     location: location || { lat: city.lat, lng: city.lng, label: city.name },

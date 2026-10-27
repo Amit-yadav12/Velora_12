@@ -1,123 +1,123 @@
 import supabase from './db-client.js';
 import { cors, sanitizeText, assert, clientIp, safeError } from './_lib/security.js';
-import { getAuth, requireRole } from './_lib/auth.js';
+import { getAuth, requireRole, businessScope, canAccessBusiness } from './_lib/auth.js';
 import { istYmd } from './_lib/ist.js';
+import { verifyMediaUrls } from './_lib/business-media.js';
 
-// Secure admin operations. Requires an authenticated ADMIN.
 async function audit(actor, action, entity, entityId, metadata, ip) {
-  try { await supabase.from('audit_logs').insert({ actor, action, entity, entity_id: String(entityId), metadata, ip }); }
-  catch (e) { console.error('[audit]', e.message); }
+  try { const { error } = await supabase.from('audit_logs').insert({ actor, action, entity, entity_id: String(entityId), metadata, ip }); if (error) console.error('[admin:audit]', error.message); }
+  catch (e) { console.error('[admin:audit]', e.message); }
+}
+function numericServiceFields(body, clean) {
+  if (body.duration_min != null) {
+    const n = Number(body.duration_min);
+    assert(Number.isInteger(n) && n >= 5 && n <= 600, 'Duration must be between 5 and 600 minutes.');
+    clean.duration_min = n;
+  }
+  if (body.price != null) {
+    const n = Number(body.price);
+    assert(Number.isFinite(n) && n >= 0 && n <= 10000000 && Math.abs(n * 100 - Math.round(n * 100)) < 1e-6, 'Enter a valid price in ₹.');
+    clean.price = n;
+  }
+}
+async function rows(query) {
+  const { data, error } = await query;
+  if (error) throw error;
+  return data || [];
 }
 
 export default async function handler(req, res) {
   cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
-  const ip = clientIp(req);
   try {
     const auth = await getAuth(req);
     const gate = requireRole(auth, ['admin']);
     if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
-    const actor = auth.user.email;
-
+    const scope = await businessScope(auth);
     const resource = req.query.resource || req.body?.resource;
     assert(['services', 'staff', 'business', 'customers', 'overview', 'emails'].includes(resource), 'Unknown resource.');
+    const tableFor = { services: 'business_services', staff: 'business_staff', business: 'businesses' };
+    const actor = auth.user.email;
 
-    // ---- READ ----
     if (req.method === 'GET') {
-      if (resource === 'overview') {
-        const [{ data: bookings }, { data: businesses }, { data: profiles }] = await Promise.all([
-          supabase.from('bookings').select('*'),
-          supabase.from('businesses').select('*'),
-          supabase.from('profiles').select('id,email,full_name,role,created_at'),
-        ]);
-        const active = (bookings || []).filter(b => b.status !== 'cancelled');
-        return res.status(200).json({
-          bookings: bookings || [], businesses: businesses || [],
-          customers: (profiles || []).filter(p => p.role === 'customer'),
-          stats: {
-            total: active.length, revenue: Math.round(active.reduce((s, b) => s + Number(b.price || 0), 0)),
-            // "Today" means today in IST, not in the (UTC) runtime zone.
-            today: active.filter(b => istYmd(new Date(b.start_time)) === istYmd()).length,
-            businesses: (businesses || []).length,
-          },
-        });
-      }
-      if (resource === 'customers') {
-        const { data } = await supabase.from('profiles').select('id,email,full_name,role,phone,created_at').eq('role', 'customer').order('created_at', { ascending: false });
-        return res.status(200).json(data || []);
-      }
       if (resource === 'emails') {
-        const { data } = await supabase.from('email_log').select('*').order('created_at', { ascending: false }).limit(50);
-        return res.status(200).json(data || []);
+        assert(scope.operator, 'Only the platform operator can view delivery logs.', 403);
+        return res.status(200).json(await rows(supabase.from('email_log').select('*').order('created_at', { ascending: false }).limit(50)));
       }
-      if (resource === 'services') {
-        const { data } = await supabase.from('business_services').select('*').order('id');
-        return res.status(200).json(data || []);
+      if (!scope.operator && scope.ids.length === 0) return res.status(200).json(resource === 'overview' ? { bookings: [], businesses: [], customers: [], stats: { total: 0, revenue: 0, today: 0, businesses: 0 } } : []);
+      if (resource === 'overview' || resource === 'customers') {
+        let query = supabase.from('bookings').select('*');
+        if (!scope.operator) query = query.in('resource_id', scope.ids);
+        const bookings = await rows(query);
+        const byEmail = new Map();
+        for (const b of bookings) if (b.customer_email) byEmail.set(b.customer_email.toLowerCase(), { id: b.customer_id, email: b.customer_email, full_name: b.customer_name, role: 'customer' });
+        const customers = [...byEmail.values()];
+        if (resource === 'customers') return res.status(200).json(customers);
+        let bq = supabase.from('businesses').select('*');
+        if (!scope.operator) bq = bq.in('id', scope.ids);
+        const businesses = await rows(bq);
+        const active = bookings.filter((b) => b.status !== 'cancelled');
+        return res.status(200).json({ bookings, businesses, customers, stats: { total: active.length, revenue: Math.round(active.reduce((n, b) => n + Number(b.price || 0), 0)), today: active.filter((b) => istYmd(new Date(b.start_time)) === istYmd()).length, businesses: businesses.length } });
       }
-      if (resource === 'staff') {
-        const { data } = await supabase.from('business_staff').select('*').order('id');
-        return res.status(200).json(data || []);
-      }
-      if (resource === 'business') {
-        const { data } = await supabase.from('businesses').select('*').order('id');
-        return res.status(200).json(data || []);
-      }
+      let query = supabase.from(tableFor[resource]).select('*').order('id');
+      if (!scope.operator) query = query.in(resource === 'business' ? 'id' : 'business_id', scope.ids);
+      return res.status(200).json(await rows(query));
     }
 
-    // ---- CREATE ----
+    assert(['services', 'staff'].includes(resource), 'Manage business profiles via the business editor.', 400);
+    const table = tableFor[resource];
+    const body = req.body || {};
     if (req.method === 'POST') {
-      const body = req.body || {};
+      assert(canAccessBusiness(scope, body.business_id), 'This business is not owned by your account.', 403);
+      const name = sanitizeText(body.name, 120);
+      assert(name, 'A name is required.');
+      const clean = { business_id: body.business_id, name };
       if (resource === 'services') {
-        assert(body.business_id && body.name, 'business_id and name are required.');
-        const { data, error } = await supabase.from('business_services').insert({
-          business_id: body.business_id, name: sanitizeText(body.name, 120),
-          description: sanitizeText(body.description, 300), duration_min: Number(body.duration_min) || 30, price: Number(body.price) || 0,
-        }).select().single();
-        if (error) throw error;
-        await audit(actor, 'service.create', 'service', data.id, { name: data.name }, ip);
-        return res.status(201).json(data);
-      }
-      if (resource === 'staff') {
-        assert(body.business_id && body.name, 'business_id and name are required.');
-        const { data, error } = await supabase.from('business_staff').insert({
-          business_id: body.business_id, name: sanitizeText(body.name, 120), role: sanitizeText(body.role, 80),
-        }).select().single();
-        if (error) throw error;
-        await audit(actor, 'staff.create', 'staff', data.id, { name: data.name }, ip);
-        return res.status(201).json(data);
-      }
-    }
-
-    // ---- UPDATE ----
-    if (req.method === 'PUT') {
-      const { id, ...rest } = req.body || {};
-      assert(id, 'id is required.');
-      const table = resource === 'services' ? 'business_services' : resource === 'staff' ? 'business_staff' : 'businesses';
-      const clean = {};
-      ['name', 'description', 'role', 'tagline', 'open_time', 'close_time'].forEach(k => { if (rest[k] != null) clean[k] = sanitizeText(rest[k], 300); });
-      ['duration_min', 'price', 'rating'].forEach(k => { if (rest[k] != null) clean[k] = Number(rest[k]); });
-      ['active'].forEach(k => { if (rest[k] != null) clean[k] = !!rest[k]; });
-      const { data, error } = await supabase.from(table).update(clean).eq('id', id).select().single();
+        clean.description = sanitizeText(body.description, 300);
+        numericServiceFields({ duration_min: body.duration_min ?? 30, price: body.price ?? 0 }, clean);
+        if (body.image_url != null && body.image_url !== '') {
+          assert(typeof body.image_url === 'string', 'Invalid service image.');
+          await verifyMediaUrls([body.image_url], auth.user.id); clean.image_url = body.image_url;
+        }
+      } else clean.role = sanitizeText(body.role, 80);
+      const { data, error } = await supabase.from(table).insert(clean).select().single();
       if (error) throw error;
-      await audit(actor, `${resource}.update`, resource, id, clean, ip);
+      await audit(actor, `${resource}.create`, resource, data.id, { name }, clientIp(req));
+      return res.status(201).json(data);
+    }
+    if (req.method === 'PUT' || req.method === 'DELETE') {
+      assert(body.id, 'id is required.');
+      const { data: existing, error: findError } = await supabase.from(table).select(resource === 'services' ? 'id,business_id,image_url' : 'id,business_id').eq('id', body.id).maybeSingle();
+      if (findError) throw findError;
+      assert(existing && canAccessBusiness(scope, existing.business_id), 'Resource not found or not owned by your account.', 404);
+      if (req.method === 'DELETE') {
+        // Disable instead of deleting: booking/service history remains intact.
+        const { error } = await supabase.from(table).update({ active: false }).eq('id', body.id);
+        if (error) throw error;
+        await audit(actor, `${resource}.archive`, resource, body.id, {}, clientIp(req));
+        return res.status(200).json({ ok: true, archived: true });
+      }
+      const clean = {};
+      for (const key of ['name', 'description', 'role']) if (body[key] != null) clean[key] = sanitizeText(body[key], key === 'name' ? 120 : 300);
+      if (Object.hasOwn(clean, 'name')) assert(clean.name, 'Name cannot be empty.');
+      if (resource === 'services') {
+        numericServiceFields(body, clean);
+        if (Object.hasOwn(body, 'image_url')) {
+          assert(body.image_url == null || typeof body.image_url === 'string', 'Invalid service image.');
+          const image = body.image_url || null;
+          await verifyMediaUrls([image], auth.user.id, [existing.image_url]); clean.image_url = image;
+        }
+      }
+      if (body.active != null) { assert(typeof body.active === 'boolean', 'Invalid active state.'); clean.active = body.active; }
+      assert(Object.keys(clean).length, 'No valid fields to update.');
+      const { data, error } = await supabase.from(table).update(clean).eq('id', body.id).select().single();
+      if (error) throw error;
+      await audit(actor, `${resource}.update`, resource, body.id, clean, clientIp(req));
       return res.status(200).json(data);
     }
-
-    // ---- DELETE ----
-    if (req.method === 'DELETE') {
-      const { id } = req.body || {};
-      assert(id, 'id is required.');
-      const table = resource === 'services' ? 'business_services' : resource === 'staff' ? 'business_staff' : 'businesses';
-      const { error } = await supabase.from(table).delete().eq('id', id);
-      if (error) throw error;
-      await audit(actor, `${resource}.delete`, resource, id, {}, ip);
-      return res.status(200).json({ ok: true });
-    }
-
-    res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
-    console.error('[admin:error]', err.message);
     const s = safeError(err, 'admin:error');
-    if (!res.headersSent) res.status(s.status).json({ error: s.error });
+    if (!res.headersSent) return res.status(s.status).json({ error: s.error });
   }
 }

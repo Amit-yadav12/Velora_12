@@ -1,6 +1,7 @@
 import supabase from './db-client.js';
 import { cors, isEmail , safeError} from './_lib/security.js';
 import { getAuth } from './_lib/auth.js';
+import { qrSigningReady, signBookingToken, verifyUrl } from './_lib/qr.js';
 
 // Customer's own bookings (upcoming + past), STRICTLY scoped to the
 // authenticated user. The email is taken from the verified session token —
@@ -19,21 +20,22 @@ export default async function handler(req, res) {
     if (!isEmail(email)) return res.status(200).json([]);
 
     const { data, error } = await supabase.from('bookings').select('*')
-      .eq('customer_email', email).order('start_time', { ascending: false });
+      .eq('customer_id', auth.user.id).order('start_time', { ascending: false });
     if (error) throw error;
-
-    // Best-effort QR payload join — history stays valid even without meta rows.
-    let rows = data || [];
-    try {
-      const ids = rows.map((b) => b.id);
-      if (ids.length) {
-        const { data: metas } = await supabase.from('booking_meta').select('booking_id,qr_payload').in('booking_id', ids);
-        const byId = new Map((metas || []).map((m) => [m.booking_id, m.qr_payload]));
-        rows = rows.map((b) => ({ ...b, qr_payload: byId.get(b.id) || null }));
-      }
-    } catch (e) {
-      console.error('[my-bookings:meta]', e.message);
+    let legacy = [];
+    if (auth.user.email_confirmed_at) {
+      const result = await supabase.from('bookings').select('*').is('customer_id', null)
+        .eq('customer_email', email).order('start_time', { ascending: false });
+      if (result.error) throw result.error;
+      legacy = result.data || [];
     }
+
+    // Generate a current signed ticket from the persisted row. Metadata writes
+    // are auxiliary and must not make a committed ticket disappear on reload.
+    const rows = [...(data || []), ...legacy]
+      .sort((a, b) => new Date(b.start_time) - new Date(a.start_time))
+      .map((b) => ({ ...b, qr_payload: qrSigningReady() && !['cancelled', 'no_show'].includes(b.status)
+        ? verifyUrl(req, signBookingToken({ ref: b.ref, id: b.id, biz: b.resource_name, svc: b.service_name, at: b.start_time })) : null }));
     return res.status(200).json(rows);
   } catch (err) {
     const se = safeError(err, 'my-bookings:error');

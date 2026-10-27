@@ -1,11 +1,10 @@
-import { useEffect, useState, useMemo, lazy, Suspense, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Map as MapIcon, List, SlidersHorizontal, Sparkles, Search, X, Compass, Pin, TrendingUp, History, ArrowLeftRight } from 'lucide-react';
 import { CATEGORIES, type Business } from '../../lib/product';
 import { Grid } from '../../components/product';
 import { useLocation } from '../../contexts/LocationContext';
-import { useTheme } from '../../lib/theme';
 import LocationBar from '../../components/premium/LocationBar';
 import DiscoverCard from '../../components/premium/DiscoverCard';
 import CompareSheet from '../../components/premium/CompareSheet';
@@ -13,6 +12,7 @@ import { COMPARE_LIMIT } from '../../lib/compare';
 import EmptyState from '../../components/premium/EmptyState';
 import { BusinessCardSkeleton } from '../../components/premium/Skeleton';
 import GoogleMapEmbed from '../../components/premium/GoogleMapEmbed';
+import InteractiveMap from '../../components/premium/InteractiveMap';
 import supabase from '../../lib/supabase';
 import { onBusinessesChanged, onServicesChanged } from '../../services/events';
 import { fetchDiscover, hydrateLiveBusiness } from '../../lib/hybridData';
@@ -21,7 +21,6 @@ import { cacheSet } from '../../lib/smartCache';
 import type { LivePlace } from '../../lib/googleMaps';
 import { toMapBusinesses } from '../../lib/mapData';
 
-const MapView = lazy(() => import('../../components/premium/MapView'));
 
 const SORTS = [
   // 'ai' stays as the URL/sort id for backwards compatibility; the label is
@@ -35,14 +34,13 @@ export default function Explore() {
   const [params, setParams] = useSearchParams();
   const nav = useNavigate();
   const { city, mapCenter } = useLocation();
-  const { theme } = useTheme();
   const origin = mapCenter;
 
   const [q, setQ] = useState(params.get('q') || '');
   const [category, setCategory] = useState(params.get('category') || 'All');
   const [sort, setSort] = useState(params.get('view') === 'map' ? 'distance' : 'ai');
   const [view, setView] = useState<'list' | 'map'>(params.get('view') === 'map' ? 'map' : 'list');
-  const [mapMode, setMapMode] = useState<'google' | 'pins'>('google');
+  const [mapMode, setMapMode] = useState<'google' | 'pins'>('pins');
   const [openNow, setOpenNow] = useState(false);
   const [minRating, setMinRating] = useState(0);
   const [maxKm, setMaxKm] = useState(0);
@@ -50,6 +48,7 @@ export default function Explore() {
   const [results, setResults] = useState<Business[]>([]);
   const [topPick, setTopPick] = useState<Business | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [active, setActive] = useState<number | string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -60,14 +59,14 @@ export default function Explore() {
   const [compareOpen, setCompareOpen] = useState(false);
 
   const fetchResults = () => {
-    setLoading(true);
+    setLoading(true); setLoadError('');
     fetchDiscover({
       city: city.name, lat: origin.lat, lng: origin.lng,
       category, q, sort, openNow, minRating, maxKm, priceMax,
       includeLive: view === 'map',
     }).then((d) => {
       setResults(d.results || []); setTopPick(d.top_pick || null); setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(() => { setResults([]); setTopPick(null); setLoadError('Could not load businesses. Please try again.'); setLoading(false); });
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchResults intentionally unmemoized; q is debounced by the next effect
@@ -136,8 +135,7 @@ export default function Explore() {
   };
 
   const selectLive = (place: LivePlace) => {
-    // Hydrate the live Google place into a booking-ready profile and cache it
-    // so the detail page opens instantly with live info + synthetic booking.
+    // Show this Google listing as information only; it is not a Velora partner.
     const full = hydrateLiveBusiness(place, city.name, category !== 'All' ? category : undefined);
     cacheSet(`business:${full.id}`, full, 300000);
     pushSearchHistory(place.name);
@@ -249,13 +247,14 @@ export default function Explore() {
             <div className="h-10 w-10 rounded-xl grad-btn grid place-items-center shrink-0"><Sparkles className="h-5 w-5 text-white" /></div>
             <div className="flex-1 min-w-0">
               <p className="text-xs text-[var(--color-brand-indigo)] font-medium">Top match in {city.name}</p>
-              <p className="font-semibold truncate">{topPick.name} <span className="text-dim font-normal text-sm" title="Velora match score (0–100), ranked on rating, distance, opening hours and featured status — a transparent heuristic, not a trained model.">· match {topPick.ai_score}/100</span></p>
+              <p className="font-semibold truncate">{topPick.name} <span className="text-dim font-normal text-sm" title="Velora match score (0–100), ranked on rating, distance, opening hours and featured status — a transparent heuristic, not a trained model.">{topPick.ai_score != null ? `· match ${topPick.ai_score}/100` : ''}</span></p>
               {(() => { const r = Array.isArray(topPick.ai_reason) ? topPick.ai_reason : topPick.ai_reason ? [topPick.ai_reason] : []; return r.length > 0 ? <p className="text-xs text-dim">Ranked highest because it is {r.join(', ')} — rating, distance and opening hours, nothing hidden.</p> : null; })()}
             </div>
           </div>
         </motion.div>
       )}
 
+      {loadError && <div role="alert" className="card p-4 mb-4 text-sm text-red-400">{loadError} <button onClick={fetchResults} className="underline ml-2">Retry</button></div>}
       {/* Views */}
       {view === 'map' ? (
         <div className="grid lg:grid-cols-5 gap-4">
@@ -263,19 +262,17 @@ export default function Explore() {
             {mapMode === 'google' ? (
               <GoogleMapEmbed center={origin} city={city.name} category={category !== 'All' ? category : undefined} onSelectLive={selectLive} />
             ) : (
-              <Suspense fallback={<div className="skeleton h-full w-full" />}>
-                <MapView origin={origin} businesses={mapBusinesses} activeId={active} onSelect={setActive} theme={theme} />
-              </Suspense>
+              <InteractiveMap center={origin} markers={mapBusinesses} activeId={active} onSelect={(id) => { setActive(id); document.getElementById(`map-result-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }} />
             )}
             <div className="absolute left-3 top-[68px] flex rounded-xl border border-app bg-[var(--bg-elev)]/90 backdrop-blur p-0.5 z-[5]">
-              <button onClick={() => setMapMode('google')} title="Live Google Maps" className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${mapMode === 'google' ? 'grad-btn text-white' : 'text-muted'}`}><MapIcon className="h-3.5 w-3.5" /> Google</button>
-              <button onClick={() => setMapMode('pins')} title="Velora booking pins" className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${mapMode === 'pins' ? 'grad-btn text-white' : 'text-muted'}`}><Pin className="h-3.5 w-3.5" /> Pins</button>
+              <button onClick={() => setMapMode('google')} title="Google Maps search (separate results)" className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${mapMode === 'google' ? 'grad-btn text-white' : 'text-muted'}`}><MapIcon className="h-3.5 w-3.5" /> Google search</button>
+              <button onClick={() => setMapMode('pins')} title="Map of filtered results" className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${mapMode === 'pins' ? 'grad-btn text-white' : 'text-muted'}`}><Pin className="h-3.5 w-3.5" /> Filtered results</button>
             </div>
           </div>
           <div className="lg:col-span-2 space-y-3 lg:max-h-[600px] lg:overflow-y-auto no-scrollbar">
             {loading ? Array.from({ length: 4 }).map((_, i) => <BusinessCardSkeleton key={i} />) :
               results.length === 0 ? <EmptyState icon={Compass} title={`Nothing in ${city.name}`} sub="Try widening your filters or searching another area." /> :
-                results.map((b) => <DiscoverCard key={b.id} b={b} active={String(active) === String(b.id)} onHover={(id) => setActive(id)} compact onCompare={toggleCompare} compared={compareIds.some((id) => String(id) === String(b.id))} />)}
+                results.map((b) => <div key={b.id} id={`map-result-${b.id}`}><DiscoverCard b={b} active={String(active) === String(b.id)} onHover={(id) => setActive(id)} compact onCompare={toggleCompare} compared={compareIds.some((id) => String(id) === String(b.id))} /></div>)}
           </div>
         </div>
       ) : (

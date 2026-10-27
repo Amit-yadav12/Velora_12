@@ -1,7 +1,7 @@
 import { istTimeLabel } from './_lib/ist.js';
-import supabase from './db-client.js';
+import supabase, { isDatabaseConfigured } from './db-client.js';
 import { cors, enforceRateLimit, safeError } from './_lib/security.js';
-import { getAuth } from './_lib/auth.js';
+import { getAuth, businessScope, canAccessBusiness } from './_lib/auth.js';
 import { travelTimeMin } from './_lib/maps.js';
 import { syntheticBusiness, isSyntheticId } from './_lib/synthetic.js';
 
@@ -21,30 +21,32 @@ export default async function handler(req, res) {
       const { data: bk } = await supabase.from('bookings').select('*').eq('ref', booking_ref).single();
       if (bk) {
         // Authorization: admin or the booking's own customer only.
-        const isAdmin = auth?.profile?.role === 'admin';
-        const isOwner = (auth?.user?.email || '').toLowerCase() === (bk.customer_email || '').toLowerCase();
+        const scope = auth?.profile?.role === 'admin' ? await businessScope(auth) : { operator: false, ids: [] };
+        const isAdmin = canAccessBusiness(scope, bk.resource_id);
+        const isOwner = !!auth?.user && (bk.customer_id === auth.user.id || (!bk.customer_id && !!auth.user.email_confirmed_at && !!auth.user.email && auth.user.email.toLowerCase() === (bk.customer_email || '').toLowerCase()));
         if (!isAdmin && !isOwner) return res.status(403).json({ error: 'Not your booking' });
         if (bk.status === 'cancelled') return res.status(404).json({ error: 'Booking cancelled' });
         start = new Date(bk.start_time);
-        if (isSyntheticId(bk.resource_id)) {
+        if (!isDatabaseConfigured() && isSyntheticId(bk.resource_id)) {
           biz = syntheticBusiness(bk.resource_id);
         } else {
-          const { data: b } = await supabase.from('businesses').select('*').eq('name', bk.resource_name).single(); biz = b;
+          const { data: b } = await supabase.from('businesses').select('*').eq('id', bk.resource_id).single(); biz = b;
         }
         // Local/demo bookings carry location only — synthesize a center point.
-        if (!biz && bk.location) biz = { name: bk.resource_name, address: bk.location, lat: origin_lat ? +origin_lat : null, lng: origin_lng ? +origin_lng : null };
+        if (!biz && bk.location) biz = { name: bk.resource_name, address: bk.location, lat: null, lng: null };
       }
     } else if (business_id) {
-      if (isSyntheticId(business_id)) biz = syntheticBusiness(business_id);
+      if (!isDatabaseConfigured() && isSyntheticId(business_id)) biz = syntheticBusiness(business_id);
       else {
         const { data: b } = await supabase.from('businesses').select('*').eq('id', business_id).single(); biz = b;
-        if (!biz) biz = syntheticBusiness(business_id);
+        if (!biz && !isDatabaseConfigured()) biz = syntheticBusiness(business_id);
       }
     }
     if (!biz || !start) return res.status(400).json({ error: 'Provide business_id/booking_ref and start_time' });
 
-    let travel = 15;
-    if (origin_lat && biz.lat != null) travel = await travelTimeMin({ lat: +origin_lat, lng: +origin_lng }, { lat: biz.lat, lng: biz.lng }) || 15;
+    if (!origin_lat || !origin_lng || !Number.isFinite(+origin_lat) || !Number.isFinite(+origin_lng) || Math.abs(+origin_lat) > 90 || Math.abs(+origin_lng) > 180 || biz.lat == null || biz.lng == null || !Number.isFinite(start.getTime())) return res.status(422).json({ error: 'A valid location and appointment time are needed for a travel estimate.' });
+    const travel = await travelTimeMin({ lat: +origin_lat, lng: +origin_lng }, { lat: biz.lat, lng: biz.lng });
+    if (!travel) return res.status(503).json({ error: 'Travel estimate unavailable.' });
     const buffer = 10; // parking + walk-in buffer
     const leaveAt = new Date(start.getTime() - (travel + buffer) * 60000);
     const minsUntilLeave = Math.round((leaveAt.getTime() - Date.now()) / 60000);

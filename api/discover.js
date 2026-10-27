@@ -1,7 +1,8 @@
-import { istHour, istMinute, istTimeLabel, istWallDate, istYmd } from './_lib/ist.js';
-import supabase from './db-client.js';
+import { publicBusiness } from './_lib/public-business.js';
+import { istHour, istMinute, istTimeLabel, istWallDate, istYmd, istWeekdayLabel } from './_lib/ist.js';
+import supabase, { isDatabaseConfigured } from './db-client.js';
 import { cors, sanitizeText, enforceRateLimit, safeError } from './_lib/security.js';
-import { cityBusinesses, isSyntheticId, hashStr, mulberry32 } from './_lib/synthetic.js';
+import { cityBusinesses } from './_lib/synthetic.js';
 
 // FAST location-aware discovery, CITY-SCOPED. Merges Supabase rows with the
 // deterministic synthetic city ecosystem so every city feels fully populated.
@@ -11,7 +12,7 @@ const cache = new Map(); // key -> { at, payload }
 const TTL = 30000; // 30s micro-cache
 
 function haversineKm(a, b) {
-  if (a.lat == null || b.lat == null) return null;
+  if (![a.lat, a.lng, b.lat, b.lng].every((v) => v != null && Number.isFinite(Number(v)))) return null;
   const R = 6371;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
   const dLng = ((b.lng - a.lng) * Math.PI) / 180;
@@ -26,6 +27,7 @@ export default async function handler(req, res) {
   try {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
     const { lat, lng, category, q, sort = 'recommended', open_now, max_km, min_rating, city, price_max } = req.query;
+    if ((lat != null && (!Number.isFinite(+lat) || Math.abs(+lat) > 90)) || (lng != null && (!Number.isFinite(+lng) || Math.abs(+lng) > 180))) return res.status(400).json({ error: 'Invalid coordinates' });
     const origin = lat && lng ? { lat: +lat, lng: +lng } : null;
     const cityName = sanitizeText(city, 40) || null;
     const now = new Date();
@@ -33,23 +35,29 @@ export default async function handler(req, res) {
 
     const key = JSON.stringify({ lat, lng, category, q, sort, open_now, max_km, min_rating, city: cityName, price_max, b: Math.floor(Date.now() / TTL) });
     const hit = cache.get(key);
-    if (hit) { res.setHeader('X-Cache', 'HIT'); return res.status(200).json(hit); }
+    // Do not serve cached DB listings after an owner publishes or edits.
+    void hit;
 
     // 1) Supabase rows (best effort — never blocks the synthetic ecosystem)
     let dbRows = [];
     try {
-      let query = supabase.from('businesses').select('*').eq('active', true);
+      let query = supabase.from('businesses').select('*,business_services(price,active)').eq('active', true);
       if (category && category !== 'All') query = query.eq('category', category);
       const { data, error } = await query;
-      if (!error && Array.isArray(data)) dbRows = data;
+      if (error && isDatabaseConfigured()) throw error;
+      if (!error && Array.isArray(data)) dbRows = data.map((b) => {
+        const prices = (b.business_services || []).filter((v) => v.active !== false && Number.isFinite(Number(v.price))).map((v) => Number(v.price));
+        return { ...publicBusiness(b), price_from: prices.length ? Math.min(...prices) : null };
+      });
     } catch (e) {
       console.error('[discover:db]', e.message);
+      if (isDatabaseConfigured()) throw e;
     }
 
     // 2) Synthetic city ecosystem (always available)
     let synth = [];
     try {
-      synth = cityBusinesses(cityName || 'Jaipur', { category: category && category !== 'All' ? category : undefined });
+      synth = isDatabaseConfigured() ? [] : cityBusinesses(cityName || 'Jaipur', { category: category && category !== 'All' ? category : undefined });
     } catch (e) {
       console.error('[discover:synth]', e.message);
     }
@@ -76,9 +84,14 @@ export default async function handler(req, res) {
       const oh = parseInt((b.open_time || '09:00').split(':')[0], 10);
       const is247 = b.open_time === '00:00';
       const ch = is247 ? 24 : (parseInt((b.close_time || '21:00').split(':')[0], 10) || 21);
-      const open = hour >= oh && hour < ch;
+      const weekday = istWeekdayLabel(now).toLowerCase();
+      const day = b.weekly_hours?.[weekday];
+      const parse = (v) => { const m = /^(\d{2}):(\d{2})/.exec(v || ''); return m ? +m[1] * 60 + +m[2] : null; };
+      const opens = parse(day?.open || b.open_time), closes = parse(day?.close || b.close_time);
+      const minutes = hour * 60 + istMinute(now);
+      const closed = day?.closed || (b.holidays || []).includes(istYmd(now));
+      const open = closed ? false : opens != null && closes != null ? minutes >= opens && minutes < closes : null;
       const km = origin ? haversineKm(origin, b) : null;
-      const travelMin = km != null ? Math.round((km / 35) * 60) : null;
 
       // Next bookable slot label, computed on the IST wall clock (the runtime
       // is UTC, so local-time arithmetic produced late-night/overnight labels).
@@ -105,10 +118,10 @@ export default async function handler(req, res) {
       return {
         ...b,
         distance_km: km != null ? Math.round(km * 10) / 10 : null,
-        travel_min: travelMin,
+        travel_min: null,
         open_now: open,
-        next_available: !!nextLabel,
-        next_available_label: nextLabel,
+        next_available: b.synthetic ? !!nextLabel : false,
+        next_available_label: b.synthetic ? nextLabel : null,
         ai_score: Math.round(Math.min(100, Math.max(0, score))),
         ai_reason: reasons.length ? reasons.slice(0, 2) : ['good match'],
       };

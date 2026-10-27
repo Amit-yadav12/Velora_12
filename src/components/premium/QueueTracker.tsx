@@ -25,9 +25,9 @@ export default function QueueTracker({ startTime }: { startTime: string }) {
   return (
     <div className="card p-5 relative overflow-hidden">
       <div className="absolute -right-8 -top-8 h-28 w-28 rounded-full grad-btn opacity-10 blur-2xl" />
-      <div className="flex items-center gap-2 text-xs text-[var(--color-brand-indigo)] mb-3"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 pulse-dot" /> Live queue</div>
+      <div className="flex items-center gap-2 text-xs text-[var(--color-brand-indigo)] mb-3"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 pulse-dot" /> Demo queue estimate</div>
       <div className="flex items-end gap-6">
-        <div><p className="text-4xl font-semibold">#{pos}</p><p className="text-xs text-dim">Your position</p></div>
+        <div><p className="text-4xl font-semibold">#{pos}</p><p className="text-xs text-dim">Sample position</p></div>
         <div className="flex-1">
           <div className="flex items-center gap-1.5">
             {Array.from({ length: Math.min(pos, 8) }).map((_, i) => (

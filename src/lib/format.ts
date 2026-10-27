@@ -3,11 +3,12 @@
 /** Format a number as Indian Rupees using the Indian digit-grouping system. */
 export function inr(amount: number | string | null | undefined, opts?: { decimals?: boolean }): string {
   const n = Number(amount || 0);
+  const showPaise = opts?.decimals ?? !Number.isInteger(n);
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
-    maximumFractionDigits: opts?.decimals ? 2 : 0,
-    minimumFractionDigits: opts?.decimals ? 2 : 0,
+    maximumFractionDigits: showPaise ? 2 : 0,
+    minimumFractionDigits: showPaise ? 2 : 0,
   }).format(n);
 }
 

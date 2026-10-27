@@ -46,7 +46,8 @@ export function hasMapCoords(b: Pick<Business, 'lat' | 'lng'>): boolean {
 export function toMapBusinesses(businesses: readonly Business[]): MapBusiness[] {
   const out: MapBusiness[] = [];
   for (const b of businesses) {
-    if (!hasMapCoords(b)) continue;
+    // Sample listings have illustrative coordinates, not verified locations.
+    if (b.synthetic || b.demo || !hasMapCoords(b)) continue;
     out.push({
       id: b.id,
       name: b.name,

@@ -4,11 +4,6 @@ import { motion } from 'framer-motion';
 import { ArrowRight, Loader2, Mail, Lock, User, ShieldCheck, CalendarCheck, Sparkles, MapPin, ChevronLeft, Store, UserRound, Building2, KeyRound } from 'lucide-react';
 import supabase, { isDemoMode } from '../../lib/supabase';
 import { LogoMark } from '../../components/Logo';
-import { CATEGORIES } from '../../lib/product';
-import { CITIES } from '../../lib/cities';
-import { saveDemoBusiness } from '../../lib/demoStore';
-import { apiSend } from '../../lib/api';
-import { toast } from '../../services/events';
 import { inputCls } from '../../components/ui';
 import { signInDemo } from '../../lib/demoAuth';
 import { useAuth } from '../../contexts/AuthContext';
@@ -30,7 +25,8 @@ const GoogleLogo = () => (
 export default function Welcome() {
   const nav = useNavigate();
   const [params] = useSearchParams();
-  const next = params.get('next') || '/';
+  const requestedNext = params.get('next') || '/';
+  const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '/';
   const { user, profile, loading: authLoading, refresh } = useAuth();
 
   // ?role=business preselects the business console path (?role=customer the
@@ -50,27 +46,21 @@ export default function Welcome() {
   // access (missing schema / missing credentials / rotated key). While it is
   // set we stay on this page and say why, instead of silently bouncing the
   // operator into the customer app.
-  const [demoNotice, setDemoNotice] = useState('');
   const [loading, setLoading] = useState(false);
-
-  // Business registration (2 steps)
-  const [bizStep, setBizStep] = useState<1 | 2>(1);
-  const [biz, setBiz] = useState({ name: '', category: 'Salons', description: '', area: '', city: 'Jaipur', phone: '', open_time: '09:00', close_time: '20:00' });
-  const [svc, setSvc] = useState({ name: '', duration_min: 45, price: 500 });
 
   // Landing back here with a live session (e.g. an OAuth redirect) means we
   // should continue to the right home instead of showing the role picker.
   // Runs only on a fully settled state — never mid-load, never while an auth
   // action is in flight — so it can't race the demo sign-in or double-fire.
   useEffect(() => {
-    if (!authLoading && user && profile && !loading && !demoNotice) {
-      nav(profile.role === 'admin' ? '/admin' : next, { replace: true });
+    if (!authLoading && user && profile && !loading) {
+      nav(profile.role === 'admin' ? '/admin' : role === 'admin' ? '/onboard' : next, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user, profile, loading, next, demoNotice]);
+  }, [authLoading, user, profile, loading, next]);
 
   const homeFor = (r: Role) => (r === 'admin' ? '/admin' : next);
-  const resetMsgs = () => { setErr(''); setInfo(''); setDemoNotice(''); };
+  const resetMsgs = () => { setErr(''); setInfo(''); };
   const switchMode = (m: Mode, revealEmail = false) => { resetMsgs(); setMode(m); setEmailOpen(revealEmail); };
 
   /* ---------------- Email auth (sign in / create account) ---------------- */
@@ -95,11 +85,14 @@ export default function Welcome() {
         if (data.user) {
           supabase.from('profiles').upsert({ id: data.user.id, email, full_name: name || email.split('@')[0], role: 'customer' }).then(() => {}, () => {});
         }
-        nav(next, { replace: true });
+        await refresh();
+        nav(role === 'admin' ? '/onboard' : next, { replace: true });
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        nav(homeFor(role || 'customer'), { replace: true });
+        await refresh();
+        const { data: signedProfile } = await supabase.from('profiles').select('role').eq('id', data.user?.id).maybeSingle();
+        nav(signedProfile?.role === 'admin' ? '/admin' : role === 'admin' ? '/onboard' : next, { replace: true });
       }
     } catch (e: unknown) {
       setErr(friendly(errMsg(e)));
@@ -127,34 +120,27 @@ export default function Welcome() {
     }
   };
 
-  /* ---------------- Google sign-in — intentionally INERT ---------------- */
-  // The "Continue with Google" button is a visual/hover-only affordance for
-  // now: it renders, it hovers, it performs NO action. No handler is attached,
-  // so a click can never start an OAuth flow, create a session or navigate.
-  // (Email + business account creation remain fully functional below.)
+  const googleSignIn = async () => {
+    if (isDemoMode) return;
+    resetMsgs(); setLoading(true);
+    try {
+      const destination = role === 'admin' ? '/onboard' : next;
+      const redirectTo = `${window.location.origin}/welcome?role=${role === 'admin' ? 'business' : 'customer'}&next=${encodeURIComponent(destination)}`;
+      const { error } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } });
+      if (error) throw error;
+    } catch (e: unknown) { setErr(friendly(errMsg(e)) || 'Google sign-in is unavailable.'); setLoading(false); }
+  };
 
   /* ---------------- Demo accounts ---------------- */
   const demo = async () => {
     setLoading(true); resetMsgs();
     const target = role || 'customer';
     try {
-      const signed = await signInDemo(target, (p) => setInfo(p.message));
+      await signInDemo(target, (p) => setInfo(p.message));
       // Re-read session + profile from the live session BEFORE navigating so
       // the target gate (AdminGate) already sees user + role=admin — this is
       // what makes the business demo land directly on the console.
       await refresh();
-      // Console access could not be granted server-side. Report the cause and
-      // stay put — navigating to /admin would bounce straight back to `/` and
-      // the operator would have no idea what to fix.
-      if (target === 'admin' && signed.provision && !signed.provision.ok) {
-        const cause = signed.provision.hint
-          || signed.provision.error
-          || 'the server could not grant the console role';
-        setDemoNotice(cause);
-        setErr(`Business demo is signed in as ${signed.email}, but the console role was not granted: ${cause}`);
-        setLoading(false);
-        return;
-      }
       nav(homeFor(target), { replace: true });
     } catch (e: unknown) {
       setErr(friendly(errMsg(e)));
@@ -162,61 +148,22 @@ export default function Welcome() {
     }
   };
 
-  /* ---------------- Business account registration ---------------- */
-  const toBizStep2 = (e: React.FormEvent) => {
-    e.preventDefault();
-    resetMsgs();
-    if (!name.trim()) { setErr('Enter the owner name.'); return; }
-    if (!email.includes('@')) { setErr('Enter a valid email.'); return; }
-    if (password.length < 6) { setErr('Password must be at least 6 characters.'); return; }
-    setBizStep(2);
-  };
-
+  /* Account creation happens first; the full business is saved only in the launch flow. */
   const createBusinessAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
-    resetMsgs();
-    if (!biz.name.trim() || !biz.category) { setErr('Business name and category are required.'); return; }
+    e.preventDefault(); resetMsgs();
+    if (!name.trim() || !email.includes('@') || password.length < 6) { setErr('Enter your name, email and a password of at least 6 characters.'); return; }
     setLoading(true);
     try {
-      // 1. Create the auth account.
-      const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-        email, password,
-        options: { data: { full_name: name } },
-      });
-      if (signUpErr) throw signUpErr;
-      if (!signUpData.session && !isDemoMode) {
-        setInfo('Account created! Confirm your email (check inbox), then sign in and your business will finish setting up.');
-        setLoading(false);
-        return;
+      const redirect = `${window.location.origin}/welcome?role=business&next=${encodeURIComponent('/onboard')}`;
+      const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name }, emailRedirectTo: redirect } });
+      if (error) throw error;
+      if (!data.session && !isDemoMode) {
+        setInfo('Account created. Confirm your email, then sign in to finish your business profile.');
+        setLoading(false); return;
       }
-
-      // 2. Register the business — server grants the console role + creates
-      //    the business row (production). Demo mode stores it in the demo
-      //    tenant so the whole flow works with zero backend.
-      if (isDemoMode) {
-        supabase.from('profiles').upsert({ id: signUpData.user?.id, email, full_name: name, role: 'admin' }).then(() => {}, () => {});
-        saveDemoBusiness({
-          name: biz.name.trim(), category: biz.category, description: biz.description.trim(),
-          area: biz.area.trim() || 'City Center', phone: biz.phone.trim(), email,
-          open_time: biz.open_time, close_time: biz.close_time, city: biz.city,
-        });
-        toast('Business created — welcome to Velora', 'success');
-        nav('/admin', { replace: true });
-        return;
-      }
-
-      await apiSend('/api/register-business', 'POST', {
-        owner_name: name, name: biz.name.trim(), category: biz.category,
-        description: biz.description.trim(), address: `${biz.area.trim()}, ${biz.city}`,
-        city: biz.city, phone: biz.phone.trim(), open_time: biz.open_time, close_time: biz.close_time,
-        services: svc.name.trim() ? [{ name: svc.name.trim(), duration_min: svc.duration_min, price: svc.price, description: '' }] : [],
-      });
-      toast('Business account created — welcome to Velora', 'success');
-      nav('/admin', { replace: true });
-    } catch (e: unknown) {
-      setErr(friendly(errMsg(e)) || 'Could not create the business account. Please try again.');
-      setLoading(false);
-    }
+      await refresh();
+      nav('/onboard', { replace: true });
+    } catch (e: unknown) { setErr(friendly(errMsg(e)) || 'Could not create the account.'); setLoading(false); }
   };
 
   /* ---------------- Role selection screen ---------------- */
@@ -298,7 +245,7 @@ export default function Welcome() {
         <motion.div key={role + mode} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm relative">
           <button
             onClick={() => {
-              if (mode === 'bizreg') { switchMode('signin'); setBizStep(1); }
+              if (mode === 'bizreg') { switchMode('signin'); }
               else if (mode === 'register' || emailOpen) { switchMode('signin'); }
               else { setRole(null); resetMsgs(); }
             }}
@@ -318,64 +265,16 @@ export default function Welcome() {
 
           {mode === 'bizreg' ? (
             <>
-              <h2 className="text-2xl font-semibold">{bizStep === 1 ? 'Create your business account' : `Tell us about ${biz.name.trim() || 'your business'}`}</h2>
-              <p className="text-sm text-dim mt-1">{bizStep === 1 ? 'Step 1 of 2 — the owner account.' : 'Step 2 of 2 — your business profile. Customers see this instantly.'}</p>
-              {bizStep === 1 ? (
-                <form onSubmit={toBizStep2} className="mt-6 space-y-3">
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
-                    <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Owner name" className={inputCls + ' pl-10'} />
-                  </div>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
-                    <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required placeholder="business@email.com" className={inputCls + ' pl-10'} />
-                  </div>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
-                    <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required minLength={6} placeholder="Password (min 6 characters)" className={inputCls + ' pl-10'} />
-                  </div>
-                  {err && <p className="text-sm text-red-400">{err}</p>}
-                  <button className="w-full grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2">
-                    Continue <ArrowRight className="h-4 w-4" />
-                  </button>
-                </form>
-              ) : (
-                <form onSubmit={createBusinessAccount} className="mt-6 space-y-3">
-                  <input value={biz.name} onChange={(e) => setBiz({ ...biz, name: e.target.value })} required placeholder="Business name" className={inputCls} />
-                  <div className="grid grid-cols-2 gap-3">
-                    <select value={biz.category} onChange={(e) => setBiz({ ...biz, category: e.target.value })} className={inputCls}>
-                      {CATEGORIES.filter((c) => c.name !== 'All').map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
-                    </select>
-                    <select value={biz.city} onChange={(e) => setBiz({ ...biz, city: e.target.value })} className={inputCls}>
-                      {CITIES.map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
-                    </select>
-                  </div>
-                  <textarea value={biz.description} onChange={(e) => setBiz({ ...biz, description: e.target.value })} placeholder="What does your business do?" rows={2} className={inputCls + ' resize-none'} />
-                  <div className="grid grid-cols-2 gap-3">
-                    <input value={biz.area} onChange={(e) => setBiz({ ...biz, area: e.target.value })} placeholder="Area / locality" className={inputCls} />
-                    <input value={biz.phone} onChange={(e) => setBiz({ ...biz, phone: e.target.value })} placeholder="Phone" className={inputCls} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <label className="block"><span className="text-xs text-dim">Opens</span>
-                      <input type="time" value={biz.open_time} onChange={(e) => setBiz({ ...biz, open_time: e.target.value })} className={inputCls + ' mt-1'} /></label>
-                    <label className="block"><span className="text-xs text-dim">Closes</span>
-                      <input type="time" value={biz.close_time} onChange={(e) => setBiz({ ...biz, close_time: e.target.value })} className={inputCls + ' mt-1'} /></label>
-                  </div>
-                  <div className="rounded-xl border border-dashed border-app p-3 space-y-2">
-                    <p className="text-xs text-dim">First service (optional — you can add more later)</p>
-                    <div className="grid grid-cols-[1fr_70px_80px] gap-2">
-                      <input value={svc.name} onChange={(e) => setSvc({ ...svc, name: e.target.value })} placeholder="e.g. Consultation" className={inputCls} />
-                      <input type="number" min={5} value={svc.duration_min} onChange={(e) => setSvc({ ...svc, duration_min: +e.target.value })} title="Minutes" className={inputCls} />
-                      <input type="number" min={0} value={svc.price} onChange={(e) => setSvc({ ...svc, price: +e.target.value })} title="Price ₹" className={inputCls} />
-                    </div>
-                  </div>
-                  {err && <p className="text-sm text-red-400">{err}</p>}
-                  {info && <p className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">{info}</p>}
-                  <button disabled={loading} className="w-full grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2 disabled:opacity-60">
-                    {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating…</> : <><Building2 className="h-4 w-4" /> Create business account</>}
-                  </button>
-                </form>
-              )}
+              <h2 className="text-2xl font-semibold">Create your business account</h2>
+              <p className="text-sm text-dim mt-1">Start with your owner account, then build your business profile.</p>
+              <form onSubmit={createBusinessAccount} className="mt-6 space-y-3">
+                <input value={name} onChange={(e) => setName(e.target.value)} required autoComplete="name" placeholder="Owner name" className={inputCls} />
+                <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required autoComplete="email" placeholder="business@email.com" className={inputCls} />
+                <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required minLength={6} autoComplete="new-password" placeholder="Password (min 6 characters)" className={inputCls} />
+                {err && <p role="alert" className="text-sm text-red-400">{err}</p>}
+                {info && <p className="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">{info}</p>}
+                <button disabled={loading} className="w-full grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2 disabled:opacity-60">{loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Create account & continue <ArrowRight className="h-4 w-4" /></>}</button>
+              </form>
             </>
           ) : (
             <>
@@ -384,18 +283,18 @@ export default function Welcome() {
                 {mode === 'register' ? 'Join Velora in seconds.' : `Sign in to your ${isAdmin ? 'business console' : 'account'}.`}
               </p>
 
-              {/* Google — visual/hover-only for now: no handler, no action.
-                  Kept in the same position and styling so the sign-in screen is
-                  unchanged; email + demo remain the working paths. */}
+              {/* Supabase OAuth requires a configured and enabled Google provider. */}
               <button
                 type="button"
-                aria-disabled="true"
-                title="Google sign-in is not enabled yet — continue with email or the demo below"
+                disabled={isDemoMode || loading}
+                onClick={googleSignIn}
+                title={isDemoMode ? 'Connect Supabase to enable Google sign-in' : 'Continue with Google'}
                 className="mt-6 w-full rounded-xl border border-app bg-[var(--surface)] py-3 text-sm font-semibold flex items-center justify-center gap-2.5 transition-all duration-200 hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-[var(--color-brand-indigo)]/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand-indigo)]"
               >
                 <GoogleLogo /> Continue with Google
               </button>
 
+              {err && !emailOpen && <p role="alert" className="text-sm text-red-400 mt-3">{err}</p>}
               <div className="my-4 flex items-center gap-3 text-xs text-dim">
                 <div className="flex-1 h-px bg-[var(--border)]" />
                 or
@@ -416,7 +315,7 @@ export default function Welcome() {
               {/* Secondary: create business account (hollow, business role) */}
               {isAdmin && (
                 <button
-                  onClick={() => { switchMode('bizreg'); setBizStep(1); }}
+                  onClick={() => switchMode('bizreg')}
                   disabled={loading}
                   className="mt-2.5 w-full rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2.5 hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] transition-colors"
                 >
@@ -473,28 +372,17 @@ export default function Welcome() {
               )}
 
               {/* Demo — clearly styled, honest about what it is */}
-              <div className="mt-6 rounded-xl border border-dashed border-app p-3">
-                <p className="text-xs text-dim mb-2">Explore the full working demo — {isAdmin ? 'business console' : 'customer app'} with live demo data.</p>
+              {isDemoMode && <div className="mt-6 rounded-xl border border-dashed border-app p-3">
+                <p className="text-xs text-dim mb-2">Explore the full working demo — {isAdmin ? 'business console' : 'customer app'} with sample data stored on this device.</p>
                 <button onClick={demo} disabled={loading} className="w-full text-xs rounded-lg border border-app hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] py-2.5 font-medium flex items-center justify-center gap-1.5 transition-colors">
                   {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><ShieldCheck className="h-3.5 w-3.5" /> Continue as demo {isAdmin ? 'business' : 'customer'}</>}
                 </button>
-                {demoNotice && (
-                  <div className="mt-2 rounded-lg border border-amber-500/20 bg-amber-500/10 p-2.5">
-                    <p className="text-xs text-amber-300">{demoNotice}</p>
-                    <button
-                      type="button"
-                      onClick={() => { setRole('customer'); setDemoNotice(''); setErr(''); nav(homeFor('customer'), { replace: true }); }}
-                      className="mt-2 text-xs font-medium text-[var(--color-brand-indigo)] underline hover:opacity-80"
-                    >
-                      Continue into the customer demo instead
-                    </button>
-                  </div>
-                )}
-              </div>
+
+              </div>}
 
               {!isAdmin && (
                 <p className="mt-4 text-center text-sm text-dim">
-                  Have a business? <button onClick={() => { setRole('admin'); switchMode('bizreg'); setBizStep(1); }} className="text-[var(--color-brand-indigo)] font-medium">Create a business account</button>
+                  Have a business? <button onClick={() => { setRole('admin'); switchMode('bizreg'); }} className="text-[var(--color-brand-indigo)] font-medium">Create a business account</button>
                 </p>
               )}
             </>

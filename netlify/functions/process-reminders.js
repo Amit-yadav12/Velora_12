@@ -1,6 +1,7 @@
 // Netlify Scheduled Function: processes due reminders every 15 minutes
 // Schedule is defined in netlify.toml: "*/15 * * * *"
-// Also callable as HTTP endpoint for manual triggering (with CRON_SECRET)
+// This must remain a Netlify scheduled-only function: Netlify does not expose
+// scheduled functions as public HTTP endpoints. Invoke it from the Netlify UI.
 
 import processReminders from '../../api/process-reminders.js';
 

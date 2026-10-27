@@ -40,7 +40,7 @@ export interface Business {
   open_now?: boolean;
   next_available?: boolean;
   next_available_label?: string | null;
-  ai_score?: number;
+  ai_score?: number | null;
   ai_reason?: string[] | string;
   live_bookable?: boolean;
   // Full address parts (demo tenant + console editing)
@@ -52,11 +52,18 @@ export interface Business {
   // Console state
   active?: boolean;
   demo?: boolean;
+  logo_url?: string | null;
+  booking_policy?: string | null;
+  cancellation_hours?: number;
+  weekly_hours?: Record<string, { open: string; close: string; closed: boolean }>;
+  holidays?: string[];
+  location_status?: string;
+  google_place_id?: string | null;
 }
 export interface BusinessOffer { title: string; desc: string; code: string; pct: number; valid_till?: string }
 export interface BusinessService {
   id: number | string; business_id: number | string; name: string; description?: string; duration_min: number; price: number;
-  active?: boolean; demo?: boolean;
+  active?: boolean; demo?: boolean; image_url?: string | null;
 }
 export interface BusinessStaff {
   id: number | string; business_id: number | string; name: string; role?: string; avatar_url?: string;
@@ -204,14 +211,9 @@ export function categoryFallbackImage(cat: string): string {
   return map[cat] || '/biz/clinic.jpg';
 }
 
-/** Attach to <img onError> so remote photos degrade to a local asset, never broken. */
-export function imgOnError(category: string) {
-  return (e: React.SyntheticEvent<HTMLImageElement>) => {
-    const el = e.currentTarget;
-    if (el.dataset.fbk) return;
-    el.dataset.fbk = '1';
-    el.src = categoryFallbackImage(category);
-  };
+/** A failed business photo is hidden rather than replaced with another business's image. */
+export function imgOnError(_category: string) {
+  return (e: React.SyntheticEvent<HTMLImageElement>) => { e.currentTarget.style.display = 'none'; };
 }
 
 export function staticMap(lat?: number, lng?: number, _zoom = 14) {

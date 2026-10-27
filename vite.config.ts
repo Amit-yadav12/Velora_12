@@ -27,22 +27,25 @@ export default defineConfig(async ({ mode }) => {
   // structured data) at BUILD time. Crawlers do not execute JS, so a runtime
   // rewrite alone cannot fix SEO on a new domain; the host's APP_URL /
   // VITE_APP_URL is the single source of truth.
-  const appUrl = String(process.env.APP_URL || process.env.VITE_APP_URL || env.VITE_APP_URL || '').replace(/\/$/, '');
+  let appUrl = '';
+  try {
+    const parsed = new URL(String(process.env.APP_URL || process.env.VITE_APP_URL || env.VITE_APP_URL || ''));
+    if (['http:', 'https:'].includes(parsed.protocol)) appUrl = parsed.origin;
+  } catch { /* no public origin configured; relative metadata is safe */ }
   if (appUrl) {
     plugins.push({
       name: 'velora-seo-origin',
       transformIndexHtml(html: string) {
-        return html.replace(/https:\/\/velora-ai-in\.netlify\.app/g, appUrl);
+        return html.replace('</head>', `<link rel="canonical" href="${appUrl}/" /><meta property="og:url" content="${appUrl}/" /></head>`)
+          .replace('"name": "Velora",', `"name": "Velora",\n        "url": "${appUrl}/",`);
       },
     });
   }
   if (env.GOOGLE_MAPS_API_KEY) process.env.GOOGLE_MAPS_API_KEY = env.GOOGLE_MAPS_API_KEY;
-  if (!process.env.GOOGLE_MAPS_API_KEY && env.VITE_GOOGLE_MAPS_API_KEY) {
-    process.env.GOOGLE_MAPS_API_KEY = env.VITE_GOOGLE_MAPS_API_KEY;
-  }
+
   const processEnvDefines: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
-    processEnvDefines[`process.env.${key}`] = JSON.stringify(value);
+    if (key.startsWith('VITE_')) processEnvDefines[`process.env.${key}`] = JSON.stringify(value);
   }
 
   return {

@@ -21,23 +21,45 @@ export default async function handler(req, res) {
     const auth = isCron ? null : await getAuth(req);
     if (!isCron && !auth?.user?.email) return res.status(401).json({ error: 'Authentication required' });
     const scopeEmail = isCron ? null : auth.user.email.toLowerCase();
-    const { data: due } = await supabase.from('reminders').select('*').eq('sent', false).lte('fire_at', now).limit(50);
-    if (!due || !due.length) return res.status(200).json({ processed: 0 });
+    let dueQuery = supabase.from('reminders').select('*').eq('sent', false).lte('fire_at', now).order('fire_at').limit(50);
+    if (!isCron) {
+      const own = await supabase.from('bookings').select('id').eq('customer_id', auth.user.id);
+      if (own.error) throw own.error;
+      let legacy = [];
+      if (auth.user.email_confirmed_at && scopeEmail) {
+        const result = await supabase.from('bookings').select('id').is('customer_id', null).eq('customer_email', scopeEmail);
+        if (result.error) throw result.error;
+        legacy = result.data || [];
+      }
+      const ids = [...(own.data || []), ...legacy].map((b) => b.id);
+      if (!ids.length) return res.status(200).json({ processed: 0 });
+      dueQuery = dueQuery.in('booking_id', ids);
+    }
+    const { data: due, error: dueError } = await dueQuery;
+    if (dueError) throw dueError;
+    if (!due?.length) return res.status(200).json({ processed: 0 });
 
     let processed = 0;
     for (const r of due) {
-      const { data: bk } = await supabase.from('bookings').select('*').eq('id', r.booking_id).single();
-      if (!bk || bk.status === 'cancelled') { await supabase.from('reminders').update({ sent: true }).eq('id', r.id); continue; }
-      if (scopeEmail && (bk.customer_email || '').toLowerCase() !== scopeEmail) continue;
+      const { data: bk, error: findError } = await supabase.from('bookings').select('*').eq('id', r.booking_id).maybeSingle();
+      if (findError) throw findError;
+      if (!bk) continue;
+      if (!isCron && !(bk.customer_id === auth.user.id || (!bk.customer_id && auth.user.email_confirmed_at && scopeEmail && (bk.customer_email || '').toLowerCase() === scopeEmail))) continue;
+      if (bk.status === 'cancelled') {
+        const skipped = await supabase.from('reminders').update({ sent: true }).eq('id', r.id);
+        if (skipped.error) throw skipped.error;
+        continue;
+      }
       const whenIST = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(bk.start_time)) + ' IST';
 
       const titles = { '24h': 'Appointment tomorrow', '6h': 'Appointment in 6 hours', '1h': 'Appointment in 1 hour', '15min': 'Appointment in 15 minutes', 'leave_now': 'Time to leave' };
-      await supabase.from('notifications').insert({
+      const notification = await supabase.from('notifications').insert({
         user_id: bk.customer_id || null, audience: 'customer',
         title: titles[r.kind] || 'Appointment reminder',
         body: `${bk.service_name} at ${bk.resource_name} — ${whenIST}`,
         type: r.kind === 'leave_now' ? 'warning' : 'info', booking_ref: bk.ref,
       });
+      if (notification.error) throw notification.error;
 
       if (r.kind === 'leave_now') {
         const { data: biz } = await supabase.from('businesses').select('*').eq('name', bk.resource_name).single();
@@ -62,7 +84,8 @@ export default async function handler(req, res) {
           cta: { label: 'Get directions', href: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(bk.location || bk.resource_name)}` },
         });
       }
-      await supabase.from('reminders').update({ sent: true }).eq('id', r.id);
+      const marked = await supabase.from('reminders').update({ sent: true }).eq('id', r.id);
+      if (marked.error) throw marked.error;
       processed++;
     }
     return res.status(200).json({ processed });

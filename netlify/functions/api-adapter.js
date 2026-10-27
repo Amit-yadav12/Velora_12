@@ -16,6 +16,7 @@ import myBookings from '../../api/my-bookings.js';
 import nearest from '../../api/nearest.js';
 import notifications from '../../api/notifications.js';
 import places from '../../api/places.js';
+import placePhoto from '../../api/place-photo.js';
 import provisionDemo from '../../api/provision-demo.js';
 import registerBusiness from '../../api/register-business.js';
 import processReminders from '../../api/process-reminders.js';
@@ -39,6 +40,7 @@ const handlers = {
   nearest,
   notifications,
   places,
+  'place-photo': placePhoto,
   'provision-demo': provisionDemo,
   'process-reminders': processReminders,
   'register-business': registerBusiness,
@@ -117,6 +119,7 @@ export const handler = async (event, context) => {
     const responseHeaders = {};
     let responseBody = null;
     let ended = false;
+    let isBase64Encoded = false;
 
     const res = {
       statusCode: 200,
@@ -140,7 +143,8 @@ export const handler = async (event, context) => {
         return res;
       },
       send: (data) => {
-        responseBody = typeof data === 'string' ? data : JSON.stringify(data);
+        if (Buffer.isBuffer(data)) { responseBody = data.toString('base64'); isBase64Encoded = true; }
+        else responseBody = typeof data === 'string' ? data : JSON.stringify(data);
         ended = true;
         return res;
       },
@@ -169,13 +173,14 @@ export const handler = async (event, context) => {
       statusCode,
       headers: responseHeaders,
       body: responseBody || '',
+      isBase64Encoded,
     };
   } catch (err) {
     console.error('[netlify:api] error', err);
     return {
       statusCode: 500,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Internal server error', detail: err.message }),
+      body: JSON.stringify({ error: 'Internal server error' }),
     };
   }
 };

@@ -1,10 +1,11 @@
 // Signed QR verification tokens (HMAC-SHA256).
 // Format: v1.<base64url(payload)>.<base64url(signature)>
 // Payload: { ref, id, biz, svc, at, exp } — no PII (never embeds email/phone).
-// The token is self-validating (signature + expiry) so demo/local bookings
-// without a database row still verify; when a DB row exists the live status
-// (e.g. cancelled) takes precedence.
+// Signature and expiry are necessary but not sufficient: the verification API
+// also requires a matching persisted booking in an allowed current state.
 import { createHmac, timingSafeEqual } from 'node:crypto';
+
+export function qrSigningReady() { return typeof process.env.QR_SIGNING_SECRET === 'string' && process.env.QR_SIGNING_SECRET.length >= 32; }
 
 let warned = false;
 function secret() {
@@ -34,6 +35,7 @@ export function verifyBookingToken(token) {
   const parts = t.split('.');
   if (parts.length !== 3 || parts[0] !== 'v1') return { ok: false, reason: 'malformed' };
   const [, payload, sig] = parts;
+  if (!/^[A-Za-z0-9_-]+$/.test(payload) || !/^[A-Za-z0-9_-]+$/.test(sig) || b64u(unb64u(payload)) !== payload || b64u(unb64u(sig)) !== sig) return { ok: false, reason: 'malformed' };
   let expected;
   try {
     expected = b64u(createHmac('sha256', secret()).update(`v1.${payload}`).digest());

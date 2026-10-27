@@ -115,25 +115,25 @@ export async function fetchLivePlaces(opts: {
 /** Normalize a live Google place into a Velora business shape (booking-ready). */
 export function liveToBusiness(p: LivePlace, cityName: string, categoryFallback = 'Clinics'): Business {
   // Production fallback uses local /biz/ images, zero placeholder-image.
-  const fallbackImg = `/biz/clinic.jpg`;
+
   return {
     id: `live-${p.place_id}`,
     live: true,
     place_id: p.place_id,
     name: p.name,
-    tagline: p.category || 'Verified on Google Maps',
+    tagline: p.category || 'Listed on Google Maps',
     category: p.category || categoryFallback,
-    description: `${p.name}${p.address ? ` — ${p.address}` : ''}. Live listing from Google Maps with Velora instant booking.`,
+    description: `${p.name}${p.address ? ` — ${p.address}` : ''}. Listed on Google Maps; this business has not yet enabled booking on Velora.`,
     address: p.address || cityName,
     city: cityName,
     lat: p.lat,
     lng: p.lng,
     phone: p.phone,
-    rating: p.rating ?? 4.2,
-    review_count: p.review_count ?? 50,
-    image_url: p.photos?.[0] || fallbackImg,
-    cover_url: p.photos?.[1] || p.photos?.[0] || fallbackImg,
-    photos: p.photos?.length ? p.photos : [fallbackImg],
+    rating: p.rating ?? 0,
+    review_count: p.review_count ?? 0,
+    image_url: p.photos?.[0],
+    cover_url: p.photos?.[1] || p.photos?.[0],
+    photos: p.photos || [],
     open_now: p.open_now ?? undefined,
     hours_text: p.hours,
     website: p.website,

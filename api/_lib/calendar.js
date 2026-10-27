@@ -10,10 +10,8 @@
 //   2. GOOGLE_CALENDAR_ACCESS_TOKEN → static bearer token (still honoured for
 //      existing deployments; it expires, so the refresh chain is preferred).
 //
-// With neither configured the pipeline degrades to an explicitly-labelled
-// `log-fallback` (a synthetic event id + a log line) so a booking is never
-// lost to a calendar problem — and it never claims a Google event exists.
-// Any real API failure returns { ok: false, error } — never a fake success.
+// Without credentials no event is created or invented. Calendar failures are
+// reported separately and never roll back an already committed booking.
 
 const API = 'https://www.googleapis.com/calendar/v3/calendars';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -43,7 +41,7 @@ async function fetchAccessToken() {
     grant_type: 'refresh_token',
   });
   const r = await fetch(TOKEN_URL, {
-    method: 'POST',
+    method: 'POST', signal: AbortSignal.timeout(5000),
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body,
   });
@@ -83,7 +81,7 @@ async function callCalendar(pathname, init, { retried = false } = {}) {
   const token = await accessToken();
   if (!token) return null;
   const r = await fetch(`${API}/${pathname}`, {
-    ...init,
+    ...init, signal: AbortSignal.timeout(5000),
     headers: { ...(init.headers || {}), Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
   });
   if ((r.status === 401 || r.status === 403) && !retried && calendarAuthMode() === 'refresh-token') {
@@ -92,8 +90,6 @@ async function callCalendar(pathname, init, { retried = false } = {}) {
   }
   return r;
 }
-
-const syntheticId = () => `evt_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 export async function createCalendarEvent({ summary, description, start, end, location, attendees }) {
   try {
@@ -115,13 +111,11 @@ export async function createCalendarEvent({ summary, description, start, end, lo
       },
     );
     if (!r) {
-      // No credential configured — configuration-dependent, clearly labelled.
-      const synthetic = syntheticId();
-      console.log(`[calendar:not-configured] no Google credential (set GOOGLE_CALENDAR_REFRESH_TOKEN + GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET); logged placeholder ${synthetic} "${summary}"`);
-      return { ok: true, eventId: synthetic, provider: 'log-fallback', configured: false };
+      return { ok: false, eventId: null, provider: 'none', configured: false, error: 'Google Calendar is not configured' };
     }
     if (!r.ok) throw new Error(`Calendar ${r.status}: ${(await r.text()).slice(0, 200)}`);
     const j = await r.json();
+    if (!j?.id) throw new Error('Calendar returned no event id');
     return { ok: true, eventId: j.id, htmlLink: j.htmlLink, provider: 'google', configured: true };
   } catch (e) {
     console.error('[calendar:error]', e.message);
@@ -134,7 +128,7 @@ export async function updateCalendarEvent(eventId, { summary, description, start
     if (!eventId) return { ok: false, error: 'no event id' };
     if (eventId.startsWith('evt_')) {
       console.log(`[calendar:not-configured] skipped update of placeholder ${eventId}`);
-      return { ok: true, provider: 'log-fallback', configured: false };
+      return { ok: false, provider: 'none', configured: false, error: 'Legacy placeholder is not a Google event' };
     }
     const r = await callCalendar(`${encodeURIComponent(calId())}/events/${encodeURIComponent(eventId)}?sendUpdates=all`, {
       method: 'PATCH',
@@ -158,7 +152,7 @@ export async function deleteCalendarEvent(eventId) {
     if (!eventId) return { ok: false, error: 'no event id' };
     if (eventId.startsWith('evt_')) {
       console.log(`[calendar:not-configured] skipped delete of placeholder ${eventId}`);
-      return { ok: true, provider: 'log-fallback', configured: false };
+      return { ok: false, provider: 'none', configured: false, error: 'Legacy placeholder is not a Google event' };
     }
     const r = await callCalendar(`${encodeURIComponent(calId())}/events/${encodeURIComponent(eventId)}?sendUpdates=all`, {
       method: 'DELETE',

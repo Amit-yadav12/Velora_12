@@ -1,4 +1,4 @@
-import supabase from './db-client.js';
+import supabase, { isDatabaseConfigured } from './db-client.js';
 import { cors, sanitizeText, isEmail , enforceRateLimit, safeError } from './_lib/security.js';
 import { getAuth } from './_lib/auth.js';
 import { cityBusinesses } from './_lib/synthetic.js';
@@ -41,12 +41,13 @@ export default async function handler(req, res) {
     const city = sanitizeText(req.body?.city, 40) || 'Jaipur';
     let businesses = [];
     try {
-      const { data } = await supabase.from('businesses').select('*').eq('active', true);
+      const { data, error } = await supabase.from('businesses').select('*').eq('active', true);
+      if (error && isDatabaseConfigured()) throw error;
       if (Array.isArray(data)) businesses = data;
-    } catch (e) { console.error('[concierge:db]', e.message); }
+    } catch (e) { console.error('[concierge:db]', e.message); if (isDatabaseConfigured()) throw e; }
     // Merge the synthetic city ecosystem so the concierge knows every city.
     try {
-      const synth = cityBusinesses(city).filter((b) => !businesses.some((d) => String(d.id) === String(b.id)));
+      const synth = (isDatabaseConfigured() ? [] : cityBusinesses(city)).filter((b) => !businesses.some((d) => String(d.id) === String(b.id)));
       businesses = [...businesses, ...synth];
     } catch (e) { console.error('[concierge:synth]', e.message); }
     businesses = businesses.filter((b) => !b.city || b.city === city);
@@ -77,14 +78,14 @@ export default async function handler(req, res) {
     if (intent === 'find') {
       const results = cat ? (businesses || []).filter((b) => b.category === cat) : businesses || [];
       const top = results.sort((a, b) => b.rating - a.rating).slice(0, 3);
-      reply = top.length ? `I found ${results.length} ${cat || 'places'} in ${city} for you. Top pick: ${top[0].name} (${top[0].rating}★) at ${top[0].address}.` : `I couldn't find matches in ${city}. Try a category like salons, clinics or gyms.`;
+      reply = top.length ? `${top[0].synthetic ? 'Sample results — not real businesses. ' : ''}I found ${results.length} ${cat || 'places'} in ${city} for you. Top pick: ${top[0].name} (${top[0].rating}★) at ${top[0].address}.` : `I couldn't find matches in ${city}. Try a category like salons, clinics or gyms.`;
       action = { type: 'navigate', to: cat ? `/search?category=${encodeURIComponent(cat)}` : '/search', results: top.map((b) => ({ id: b.id, name: b.name })) };
     } else if (intent === 'book') {
       const target = matchBiz || (cat ? (businesses || []).filter((b) => b.category === cat).sort((a, b) => b.rating - a.rating)[0] : null);
       if (target) {
         const d = (date || new Date());
         const dateStr = d.toISOString().slice(0, 10);
-        reply = `Great — let's book ${target.name}${date ? ` for ${d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}` : ''}${hour ? ` in the ${hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'}` : ''}. Opening the booking page with smart slots.`;
+        reply = `${target.synthetic ? 'Sample listing — not a real appointment. ' : ''}Great — let's explore ${target.name}${date ? ` for ${d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}` : ''}${hour ? ` in the ${hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'}` : ''}. Opening the booking page with smart slots.`;
         action = { type: 'book', business_id: target.id, date: dateStr, preferred_hour: hour, to: `/business/${target.id}?date=${dateStr}${hour ? `&hour=${hour}` : ''}` };
       } else {
         reply = 'Which type of business would you like to book? For example: "Book a dentist tomorrow afternoon" or "Book Lumen Hair & Beauty".';
@@ -97,15 +98,15 @@ export default async function handler(req, res) {
       const email = auth?.user?.email;
       let upcoming = [];
       if (email && isEmail(email)) {
-        const { data } = await supabase.from('bookings').select('*').eq('customer_email', email).eq('status', 'confirmed').gt('start_time', new Date().toISOString()).order('start_time').limit(3);
+        const { data } = await supabase.from('bookings').select('*').eq('customer_id', auth.user.id).eq('status', 'confirmed').gt('start_time', new Date().toISOString()).order('start_time').limit(3);
         upcoming = data || [];
       }
       reply = upcoming.length ? `You have ${upcoming.length} upcoming appointment(s). Opening your bookings so you can ${intent} — your next is ${upcoming[0].service_name} at ${upcoming[0].resource_name}.` : `Opening your appointments so you can ${intent} one.`;
       action = { type: 'navigate', to: '/appointments' };
     } else if (intent === 'navigate') {
       const target = matchBiz || (businesses || [])[0];
-      reply = target ? `Opening directions to ${target.name}.` : 'Which place would you like directions to?';
-      action = target ? { type: 'directions', maps_link: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(target.address || target.name)}` } : null;
+      reply = target?.synthetic ? 'This is a sample listing, so real directions are unavailable.' : target ? `Opening directions to ${target.name}.` : 'Which place would you like directions to?';
+      action = target && !target.synthetic ? { type: 'directions', maps_link: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(target.address || target.name)}` } : null;
     } else {
       reply = "I can book, reschedule or cancel appointments, find nearby businesses, and open directions. Try: \u201cBook me a salon tomorrow afternoon\u201d or \u201cFind the nearest clinic\u201d.";
     }
@@ -114,7 +115,7 @@ export default async function handler(req, res) {
     if (process.env.OPENAI_API_KEY && intent === 'chat') {
       try {
         const r = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+          method: 'POST', signal: AbortSignal.timeout(6000), headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ model: process.env.OPENAI_MODEL || 'gpt-4o-mini', messages: [
             { role: 'system', content: 'You are Velora, a concise, friendly booking concierge. Keep replies under 2 sentences.' },
             { role: 'user', content: message },

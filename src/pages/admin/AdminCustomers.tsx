@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Mail, Phone, CalendarDays, ChevronRight, Star } from 'lucide-react';
-import { PageHeader, Spinner, EmptyState, DemoBadge, Modal, StatusBadge, StatCard } from '../../components/ui';
+import { PageHeader, Spinner, ConsoleUnavailable, EmptyState, DemoBadge, Modal, StatusBadge, StatCard } from '../../components/ui';
 import { useConsoleData } from '../../lib/useConsoleData';
 import { inr, istDate, istTime } from '../../lib/format';
 import { Users, Wallet as WalletIcon, Repeat } from 'lucide-react';
@@ -8,7 +8,7 @@ import type { ReactNode } from 'react';
 import type { CustomerRecord } from '../../lib/metrics';
 
 export default function AdminCustomers() {
-  const { customers, bookings, loading } = useConsoleData();
+  const { customers, bookings, loading, error, reload } = useConsoleData();
   const [detail, setDetail] = useState<CustomerRecord | null>(null);
   const [q, setQ] = useState('');
 
@@ -36,6 +36,7 @@ export default function AdminCustomers() {
   }, [detail, bookings]);
 
   if (loading) return <Spinner />;
+  if (error) return <ConsoleUnavailable retry={reload} />;
 
   return (
     <div>

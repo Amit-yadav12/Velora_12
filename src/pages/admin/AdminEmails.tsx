@@ -15,7 +15,8 @@ const statusMeta: Record<string, { icon: LucideIcon; color: string; label: strin
 export default function AdminEmails() {
   const [logs, setLogs] = useState<EmailLogRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const load = () => apiGet<EmailLogRow[]>('/api/admin?resource=emails').then((d) => { setLogs(Array.isArray(d) ? d : []); setLoading(false); }).catch(() => setLoading(false));
+  const [error, setError] = useState(false);
+  const load = () => { setError(false); apiGet<EmailLogRow[]>('/api/admin?resource=emails').then((d) => { setLogs(Array.isArray(d) ? d : []); setLoading(false); }).catch(() => { setError(true); setLoading(false); }); };
   useEffect(() => { load(); }, []);
   useEffect(() => {
     const ch = supabase.channel('adm-email').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'email_log' }, load).subscribe();
@@ -23,18 +24,19 @@ export default function AdminEmails() {
   }, []);
 
   if (loading) return <Spinner />;
+  if (error) return <div role="alert" className="card p-6 text-sm">Delivery logs could not be loaded. <button onClick={load} className="underline">Retry</button></div>;
   const queuedCount = logs.filter((l) => l.status === 'queued').length;
 
   return (
     <div>
-      <PageHeader title="Email delivery" subtitle="Every booking confirmation is recorded here — verifiable and reliable." />
+      <PageHeader title="Email delivery" subtitle="Review recorded provider attempts and unsent messages." />
       <div className="mb-4 rounded-2xl border border-app bg-surface p-4 flex items-start gap-3">
         <Mail className="h-5 w-5 text-[var(--color-brand-indigo)] mt-0.5 shrink-0" />
         <div>
           <p className="text-sm font-medium">How email works here</p>
           <p className="text-xs text-muted mt-0.5">
-            Server bookings trigger real emails when <code className="text-[var(--text)]">RESEND_API_KEY</code> or <code className="text-[var(--text)]">SENDGRID_API_KEY</code> is configured — otherwise they queue (below) and the customer gets a one-tap Gmail compose fallback.
-            Demo-tenant bookings never send real email; they notify in-app instead. Reminders run on the 15-minute scheduler.
+            Server bookings trigger real emails when <code className="text-[var(--text)]">RESEND_API_KEY</code> or <code className="text-[var(--text)]">SENDGRID_API_KEY</code> is configured — otherwise they may be recorded as unsent below. Provider acceptance is not proof of inbox delivery.
+            Demo bookings never send real email. Reminder processing requires a configured scheduler.
           </p>
         </div>
       </div>
@@ -43,7 +45,7 @@ export default function AdminEmails() {
           <Clock className="h-5 w-5 text-amber-400 mt-0.5 shrink-0" />
           <div>
             <p className="text-sm font-medium text-[var(--text)]">{queuedCount} email(s) queued</p>
-            <p className="text-xs text-muted mt-0.5">Emails are queued when no provider is configured. Add a <code className="text-[var(--text)]">RESEND_API_KEY</code> (or SendGrid) to deliver instantly to Gmail and other inboxes.</p>
+            <p className="text-xs text-muted mt-0.5">These messages were not sent. Configuring a provider applies to future sends; existing logged messages are not automatically retried.</p>
           </div>
         </div>
       )}

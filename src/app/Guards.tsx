@@ -24,9 +24,8 @@ function Loading() {
 // AND role admin) is redirected to the console — this prevents redirect loops
 // caused by transient/optimistic state.
 export function CustomerGate({ children }: { children: React.ReactNode }) {
-  const { user, loading, role } = useAuth();
+  const { loading } = useAuth();
   if (loading) return <Loading />;
-  if (user && role === 'admin') return <Navigate to="/admin" replace />;
   return <CustomerShell><PageTransition>{children}</PageTransition></CustomerShell>;
 }
 

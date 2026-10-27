@@ -2,6 +2,8 @@
 // recently-viewed and personalized ranking. Pure functions, no network.
 
 import type { Business } from './product';
+import { isDemoMode } from './supabase';
+import { MI_ROAD_ELECTRICIAN_ID, withMiRoadElectricianImage } from './miRoadElectrician';
 
 export interface SearchFilters {
   category?: string;
@@ -125,13 +127,23 @@ export function trendingQueries(city: string): string[] {
 
 // ---- Recently viewed (local, instant) ----
 
-export interface RecentView { id: number | string; name: string; category: string; city?: string; image_url?: string; rating?: number; at: number }
+export interface RecentView { id: number | string; name: string; category: string; city?: string; image_url?: string; rating?: number; synthetic?: boolean; at: number }
 
 export function readRecentViews(): RecentView[] {
   try {
     const raw = localStorage.getItem(RECENT_KEY);
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
+    const arr: RecentView[] = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(arr)) return [];
+    return arr.map((r) => {
+      // Older local recents predate the synthetic flag. Only recognize the
+      // specific sample and its old catalogue image, never a real business.
+      const oldSample = isDemoMode && r.synthetic == null && String(r.id) === String(MI_ROAD_ELECTRICIAN_ID)
+        && r.category === 'Electricians' && /^MI Road /i.test(r.name) && r.image_url === '/biz/education.jpg';
+      if ((r.synthetic || oldSample) && String(r.id) === String(MI_ROAD_ELECTRICIAN_ID)) {
+        return withMiRoadElectricianImage({ ...r, synthetic: true });
+      }
+      return r;
+    });
   } catch {
     return [];
   }

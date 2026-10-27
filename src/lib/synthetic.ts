@@ -11,6 +11,7 @@
 import { CITIES, cityIndex } from './cities';
 import type { Business, BusinessService, BusinessStaff } from './product';
 import { ist, istTime, istWallDate, istWeekdayIndex, istYmd } from './format';
+import { MI_ROAD_ELECTRICIAN_ID, MI_ROAD_ELECTRICIAN_IMAGE, MI_ROAD_ELECTRICIAN_NAME, MI_ROAD_ELECTRICIAN_ADDRESS } from './miRoadElectrician';
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG
@@ -862,7 +863,9 @@ export function getCityBusinesses(cityName: string, opts?: { category?: string; 
         const id = SYN_BASE + cityIndex(city.name) * SYN_CITY_STRIDE + catIdx * SYN_CAT_STRIDE + idx;
         const rnd = mulberry32(hashStr(`${city.slug}|${def.name}|${idx}`));
         const area = city.areas[Math.floor(rnd() * city.areas.length)];
-        const name = businessName(rnd, def, area, city.name, idx);
+        const generatedName = businessName(rnd, def, area, city.name, idx);
+        // Keep this sample's detail identity consistent with the API card.
+        const name = id === MI_ROAD_ELECTRICIAN_ID ? MI_ROAD_ELECTRICIAN_NAME : generatedName;
         const rating = Math.round((3.9 + rnd() * 1.1) * 10) / 10;
         const reviewCount = 40 + Math.floor(rnd() * 2400);
         const featured = rnd() > 0.9;
@@ -873,7 +876,7 @@ export function getCityBusinesses(cityName: string, opts?: { category?: string; 
         const streetNo = 1 + Math.floor(rnd() * 120);
         const street = pick(rnd, STREETS);
         const landmark = pick(rnd, LANDMARKS);
-        const address = `${streetNo}, ${street}, ${area}, ${city.name}`;
+        const address = id === MI_ROAD_ELECTRICIAN_ID ? MI_ROAD_ELECTRICIAN_ADDRESS : `${streetNo}, ${street}, ${area}, ${city.name}`;
         const facCount = 4 + Math.floor(rnd() * 3);
         const facilities = [...def.facilities].sort(() => rnd() - 0.5).slice(0, Math.min(facCount, def.facilities.length));
         const amenities = ['UPI Payments', 'Online Booking', 'GST Invoice', 'Free Cancellation'].slice(0, 2 + Math.floor(rnd() * 3));
@@ -888,10 +891,9 @@ export function getCityBusinesses(cityName: string, opts?: { category?: string; 
           const valid = new Date(Date.now() + (7 + Math.floor(rnd() * 45)) * 86400000);
           offers.push({ title: t.t, desc: t.d, code: t.code, pct: t.pct, valid_till: valid.toISOString().slice(0, 10) });
         }
-        // Use real category photo from /biz/ — zero placeholder-image for production.
-        const mainImg = def.img;
-        // Deterministic photo gallery: main + 2 related from same category family.
-        const gallery = [mainImg, mainImg, mainImg];
+        // This one synthetic listing has its own clearly labelled illustration.
+        const mainImg = id === MI_ROAD_ELECTRICIAN_ID ? MI_ROAD_ELECTRICIAN_IMAGE : def.img;
+        const gallery = id === MI_ROAD_ELECTRICIAN_ID ? [mainImg] : [mainImg, mainImg, mainImg];
         const services: BusinessService[] = def.services.map((t, si) => ({
           id: id * 100 + si,
           business_id: id,

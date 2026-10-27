@@ -2,9 +2,11 @@ import { createElement } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Star, MapPin, Clock } from 'lucide-react';
-import { Business, categoryIcon, categoryColor, imgOnError } from '../lib/product';
+import { Business, categoryIcon, categoryColor } from '../lib/product';
 import { fadeUp } from '../lib/motion';
+import { todayHours } from '../lib/businessHours';
 import { prefetchOnIntent } from '../lib/smartCache';
+import { isMiRoadElectricianSample, MI_ROAD_ELECTRICIAN_ALT } from '../lib/miRoadElectrician';
 
 /**
  * Renders a category's lucide icon. Encapsulating the icon lookup in a
@@ -18,7 +20,8 @@ export function CategoryIcon({ category, className, color }: { category: string;
   return createElement(categoryIcon(category), { className, style: color ? { color } : undefined });
 }
 
-export function Rating({ value, count, sm }: { value: number; count?: number; sm?: boolean }) {
+export function Rating({ value, count, sm }: { value: number | null | undefined; count?: number; sm?: boolean }) {
+  if (value == null || !Number.isFinite(Number(value)) || Number(value) <= 0) return <span className="text-xs text-dim">Not rated</span>;
   return (
     <span className={`inline-flex items-center gap-1 ${sm ? 'text-xs' : 'text-sm'}`}>
       <Star className={`${sm ? 'h-3 w-3' : 'h-3.5 w-3.5'} fill-amber-400 text-amber-400`} />
@@ -37,6 +40,7 @@ export function Rating({ value, count, sm }: { value: number; count?: number; sm
  */
 export function BusinessCard({ b }: { b: Business; index?: number }) {
   const color = categoryColor(b.category);
+  const isIllustratedSample = isMiRoadElectricianSample(b);
   return (
     <motion.div variants={fadeUp} style={{ contentVisibility: 'auto', containIntrinsicSize: '280px' } as React.CSSProperties}>
       <Link
@@ -45,12 +49,13 @@ export function BusinessCard({ b }: { b: Business; index?: number }) {
         onFocus={() => prefetchOnIntent(`/api/businesses?id=${b.id}`)}
         className="group block card overflow-hidden"
       >
-        <div className="relative h-40 overflow-hidden">
-          <img src={b.image_url} alt={b.name} onError={imgOnError(b.category)} className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105 will-change-transform" loading="lazy" decoding="async" />
+        <div className="relative h-40 overflow-hidden bg-gradient-to-br from-indigo-900 via-slate-900 to-emerald-950">
+          {b.image_url && <img src={b.image_url} alt={isIllustratedSample ? MI_ROAD_ELECTRICIAN_ALT : b.name} onError={e => { e.currentTarget.style.display = 'none'; }} className={`h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-105 will-change-transform ${isIllustratedSample ? 'object-left' : ''}`} loading="lazy" decoding="async" />}
           <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
           <div className="absolute top-3 left-3 rounded-full px-2.5 py-1 flex items-center gap-1.5 text-xs bg-black/45 text-white backdrop-blur-sm">
             <CategoryIcon category={b.category} className="h-3.5 w-3.5" color={color} /> {b.category}
           </div>
+          {(b.synthetic || b.demo || b.live) && <div className="absolute bottom-3 right-3 rounded-full bg-black/60 px-2 py-1 text-[10px] text-white">{b.live ? 'Google listing' : isIllustratedSample ? 'Sample · AI illustration' : 'Sample'}</div>}
           {b.featured && <div className="absolute top-3 right-3 grad-btn text-white text-[10px] font-medium px-2 py-1 rounded-full">Featured</div>}
         </div>
         <div className="p-4">
@@ -61,7 +66,7 @@ export function BusinessCard({ b }: { b: Business; index?: number }) {
           <p className="text-sm text-dim mt-0.5 line-clamp-1">{b.tagline}</p>
           <div className="mt-3 flex items-center gap-3 text-xs text-dim">
             <span className="flex items-center gap-1 min-w-0"><MapPin className="h-3 w-3 shrink-0" /><span className="truncate">{b.city}</span></span>
-            <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{b.open_time}–{b.close_time}</span>
+            {todayHours(b) && <span className="flex items-center gap-1"><Clock className="h-3 w-3" />{todayHours(b)}</span>}
           </div>
         </div>
       </Link>

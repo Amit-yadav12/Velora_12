@@ -173,8 +173,9 @@ export function cityBusinesses(cityName, opts = {}) {
         const name = bizName(rnd, def, area, idx);
         const rating = Math.round((3.9 + rnd() * 1.1) * 10) / 10;
         const reviewCount = 40 + Math.floor(rnd() * 2400);
-        // Production: real category photos from /biz/, zero placeholder-image.
-        const mainImg = def.img;
+        // The MI Road sample uses a dedicated AI illustration, not a business photo.
+        // Keep the rest of the sample catalogue unchanged.
+        const mainImg = id === 236002 ? '/biz/mi-road-electrician-illustration.jpg' : def.img;
         all.push({
           id, synthetic: true, active: true, name, category: def.name,
           description: `${name} in ${area}, ${city.name} — rated ${rating} by ${reviewCount}+ customers with instant Velora booking.`,

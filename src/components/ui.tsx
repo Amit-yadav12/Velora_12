@@ -34,6 +34,10 @@ export function Spinner() {
   return <div className="grid place-items-center py-20"><div className="h-8 w-8 rounded-full border-2 border-[var(--color-brand-indigo)] border-t-transparent animate-spin" /></div>;
 }
 
+export function ConsoleUnavailable({ retry }: { retry: () => void }) {
+  return <div role="alert" className="card p-8 text-center"><p className="font-semibold">Console data could not be loaded</p><p className="text-sm text-dim mt-2">Check your connection and try again. No empty results are being assumed.</p><button onClick={retry} className="mt-4 rounded-xl border border-app px-4 py-2 text-sm">Retry</button></div>;
+}
+
 export function EmptyState({ title, sub, action }: { title: string; sub?: string; action?: ReactNode }) {
   return (
     <div className="card p-10 text-center">

@@ -4,8 +4,8 @@
 // every page renders and the full product flow stays explorable.
 import { createClient } from '@supabase/supabase-js';
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const url = import.meta.env?.VITE_SUPABASE_URL;
+const anon = import.meta.env?.VITE_SUPABASE_ANON_KEY;
 
 export const isDemoMode = !url || !anon;
 

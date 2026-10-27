@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Plus, Pencil, Trash2, Power, CalendarClock } from 'lucide-react';
-import { PageHeader, Spinner, EmptyState, DemoBadge, Modal, Field, inputCls, btnGhost, btnPrimary } from '../../components/ui';
+import { PageHeader, Spinner, ConsoleUnavailable, EmptyState, DemoBadge, Modal, Field, inputCls, btnGhost, btnPrimary } from '../../components/ui';
 import { useConsoleData } from '../../lib/useConsoleData';
 import { saveDemoStaff, updateDemoStaff, deleteDemoStaff } from '../../lib/demoStore';
 import { apiSend } from '../../lib/api';
@@ -15,7 +15,7 @@ interface StaffForm {
 }
 
 export default function AdminStaff() {
-  const { staff, businesses, services, bookings, loading, reload } = useConsoleData();
+  const { staff, businesses, services, bookings, loading, error, reload } = useConsoleData();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<BusinessStaff | null>(null);
   const [form, setForm] = useState<StaffForm>({ business_id: '', name: '', role: '', service_ids: [], days: [...ALL_DAYS], start: '10:00', end: '19:00' });
@@ -39,7 +39,7 @@ export default function AdminStaff() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ business_id: demoBiz[0] ? String(demoBiz[0].id) : '', name: '', role: '', service_ids: [], days: [...ALL_DAYS], start: '10:00', end: '19:00' });
+    setForm({ business_id: businesses[0] ? String(businesses[0].id) : '', name: '', role: '', service_ids: [], days: [...ALL_DAYS], start: '10:00', end: '19:00' });
     setErr(''); setOpen(true);
   };
   const openEdit = (s: BusinessStaff) => {
@@ -92,17 +92,18 @@ export default function AdminStaff() {
   };
 
   if (loading) return <Spinner />;
+  if (error) return <ConsoleUnavailable retry={reload} />;
 
   return (
     <div>
       <PageHeader
         title="Staff"
-        subtitle="Specialists who deliver services — assignments and availability drive the booking engine."
+        subtitle="Active staff provide capacity during the business’s published opening hours."
         action={<button onClick={openCreate} className={btnPrimary}><Plus className="h-4 w-4" /> Add staff</button>}
       />
 
       {staff.length === 0 ? (
-        <EmptyState title="No staff yet" sub="Add specialists to a demo business — customers can pick them when booking." action={<button onClick={openCreate} className={btnGhost}><Plus className="h-4 w-4" /> Add staff</button>} />
+        <EmptyState title="No staff yet" sub="Add specialists so customers can choose them when booking." action={<button onClick={openCreate} className={btnGhost}><Plus className="h-4 w-4" /> Add staff</button>} />
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {staff.map((s) => {
@@ -129,8 +130,7 @@ export default function AdminStaff() {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
                   <span className="px-2 py-0.5 rounded-lg bg-surface text-dim">{svcCount} service{svcCount === 1 ? '' : 's'}</span>
-                  <span className="px-2 py-0.5 rounded-lg bg-surface text-dim">{(Array.isArray(s.days) ? s.days : ALL_DAYS).length} days/wk</span>
-                  <span className="px-2 py-0.5 rounded-lg bg-surface text-dim">{s.start || '10:00'}–{s.end || '19:00'}</span>
+                  {s.demo ? <><span className="px-2 py-0.5 rounded-lg bg-surface text-dim">{(Array.isArray(s.days) ? s.days : ALL_DAYS).length} days/wk</span><span className="px-2 py-0.5 rounded-lg bg-surface text-dim">{s.start || '10:00'}–{s.end || '19:00'}</span></> : <span className="px-2 py-0.5 rounded-lg bg-surface text-dim">Uses business hours</span>}
                   <span className={`px-2 py-0.5 rounded-lg inline-flex items-center gap-1 ${upcoming > 0 ? 'bg-[var(--color-brand-indigo)]/15 text-[var(--color-brand-indigo)]' : 'bg-surface text-dim'}`}>
                     <CalendarClock className="h-3 w-3" /> {upcoming} upcoming
                   </span>
@@ -189,6 +189,7 @@ export default function AdminStaff() {
               </Field>
             </>
           )}
+          {!String(form.business_id).startsWith('demo-biz-') && <p className="text-xs text-dim">Individual working hours and service assignments are not configured for real staff; active staff use business hours.</p>}
           {err && <p className="text-sm text-red-400">{err}</p>}
           <div className="flex gap-2.5">
             <button onClick={() => setOpen(false)} disabled={busy} className={btnGhost + ' flex-1'}>Cancel</button>

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { Download, LogIn, CheckCircle2, X, Eye, Mail, Phone, MapPin, Clock, QrCode, ShieldCheck, ScanLine } from 'lucide-react';
-import { PageHeader, Spinner, EmptyState, StatusBadge, DemoBadge, Modal, btnGhost, btnPrimary } from '../../components/ui';
+import { Download, CheckCircle2, X, Eye, Mail, Phone, MapPin, Clock, QrCode, ShieldCheck, ScanLine } from 'lucide-react';
+import { PageHeader, Spinner, ConsoleUnavailable, EmptyState, StatusBadge, DemoBadge, Modal, btnGhost, btnPrimary } from '../../components/ui';
 import { useConsoleData } from '../../lib/useConsoleData';
 import { applyBookingAction } from '../../services/consoleActions';
 import { toast } from '../../services/events';
@@ -14,7 +14,7 @@ import type { LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 export default function AdminAppointments() {
-  const { bookings, loading, reload } = useConsoleData();
+  const { bookings, loading, error, reload } = useConsoleData();
   const [filter, setFilter] = useState('all');
   const [busy, setBusy] = useState<number | string | null>(null);
   const [detail, setDetail] = useState<ConsoleBooking | null>(null);
@@ -55,12 +55,13 @@ export default function AdminAppointments() {
   };
 
   if (loading) return <Spinner />;
+  if (error) return <ConsoleUnavailable retry={reload} />;
 
   return (
     <div>
       <PageHeader
         title="Appointments"
-        subtitle="Every booking across all businesses — updated in real time."
+        subtitle="Appointments for your authorized businesses."
         action={
           <div className="flex flex-wrap gap-2">
             <button onClick={() => setCheckInOpen(true)} className={btnPrimary}><ScanLine className="h-4 w-4" /> Verify ticket</button>
@@ -113,10 +114,7 @@ export default function AdminAppointments() {
                         {isActionable(b.status) && (
                           <>
                             {b.status === 'pending' && <button onClick={() => act(b, 'confirm')} title="Confirm" className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:text-blue-400 hover:border-blue-400/50"><CheckCircle2 className="h-3.5 w-3.5" /></button>}
-                            {/* Manual check-in is allowed (guest lost their phone) but is
-                                recorded as a manual override — the ticket flow above is
-                                the verified path and the one to demo. */}
-                            {b.status !== 'pending' && <button onClick={() => act(b, 'check_in')} title="Check in without ticket (manual override)" className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:text-cyan-400 hover:border-cyan-400/50"><LogIn className="h-3.5 w-3.5" /></button>}
+                            {b.status !== 'pending' && <button onClick={() => setCheckInOpen(true)} title="Verify a ticket to check in" aria-label="Verify a ticket to check in" className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:text-cyan-400 hover:border-cyan-400/50"><ScanLine className="h-3.5 w-3.5" /></button>}
                             <button onClick={() => act(b, 'complete')} title="Complete" className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:text-emerald-400 hover:border-emerald-400/50"><CheckCircle2 className="h-3.5 w-3.5" /></button>
                             <button onClick={() => act(b, 'cancel')} title="Cancel" className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:text-red-400 hover:border-red-400/50"><X className="h-3.5 w-3.5" /></button>
                           </>
@@ -173,7 +171,7 @@ export default function AdminAppointments() {
                     <button onClick={() => act(detail, 'confirm')} disabled={busy === detail.id} className={btnPrimary + ' px-3 py-2 text-xs'}>Confirm</button>
                   )}
                   {canTransition(detail.status, 'checked_in') && (
-                    <button onClick={() => act(detail, 'check_in')} disabled={busy === detail.id} className={btnGhost + ' px-3 py-2 text-xs'}>Check in</button>
+                    <button onClick={() => { setDetail(null); setCheckInOpen(true); }} className={btnGhost + ' px-3 py-2 text-xs'}>Verify ticket to check in</button>
                   )}
                   {canTransition(detail.status, 'completed') && (
                     <button onClick={() => act(detail, 'complete')} disabled={busy === detail.id} className={btnGhost + ' px-3 py-2 text-xs'}>Complete</button>
@@ -187,7 +185,7 @@ export default function AdminAppointments() {
                 </div>
               </div>
             )}
-            <p className="text-[11px] text-dim">Changes appear on the customer's side instantly — no refresh needed.</p>
+            <p className="text-[11px] text-dim">Changes are saved to the booking; notifications depend on delivery configuration.</p>
           </div>
         )}
       </Modal>

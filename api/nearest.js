@@ -1,4 +1,5 @@
-import supabase from './db-client.js';
+import { publicBusiness } from './_lib/public-business.js';
+import supabase, { isDatabaseConfigured } from './db-client.js';
 import { cors, sanitizeText, enforceRateLimit, safeError } from './_lib/security.js';
 import { cityBusinesses } from './_lib/synthetic.js';
 
@@ -6,7 +7,7 @@ import { cityBusinesses } from './_lib/synthetic.js';
 // key category relative to the user's coordinates, with distance + travel est.
 // City-scoped; DB + synthetic merged.
 function haversineKm(a, b) {
-  if (a.lat == null || b.lat == null) return null;
+  if (![a.lat, a.lng, b.lat, b.lng].every((v) => v != null && Number.isFinite(Number(v)))) return null;
   const R = 6371;
   const dLat = ((b.lat - a.lat) * Math.PI) / 180;
   const dLng = ((b.lng - a.lng) * Math.PI) / 180;
@@ -22,19 +23,22 @@ export default async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
     const { lat, lng, city } = req.query;
     if (!lat || !lng) return res.status(400).json({ error: 'lat and lng required' });
+    if (!Number.isFinite(+lat) || !Number.isFinite(+lng) || Math.abs(+lat) > 90 || Math.abs(+lng) > 180) return res.status(400).json({ error: 'Invalid coordinates' });
     const origin = { lat: +lat, lng: +lng };
     const cityName = sanitizeText(city, 40) || 'Jaipur';
 
     let dbRows = [];
     try {
       const { data, error } = await supabase.from('businesses').select('*').eq('active', true);
-      if (!error && Array.isArray(data)) dbRows = data;
+      if (error && isDatabaseConfigured()) throw error;
+      if (!error && Array.isArray(data)) dbRows = data.map(publicBusiness);
     } catch (e) {
       console.error('[nearest:db]', e.message);
+      if (isDatabaseConfigured()) throw e;
     }
     let synth = [];
     try {
-      synth = cityBusinesses(cityName);
+      synth = isDatabaseConfigured() ? [] : cityBusinesses(cityName);
     } catch (e) {
       console.error('[nearest:synth]', e.message);
     }
@@ -51,7 +55,7 @@ export default async function handler(req, res) {
     const enriched = pinned
       .map((b) => {
         const km = haversineKm(origin, b);
-        return { ...b, distance_km: km, travel_min: km != null ? Math.round((km / 35) * 60) : null };
+        return { ...b, distance_km: km, travel_min: null };
       })
       .filter((b) => b.distance_km != null)
       .sort((a, b) => a.distance_km - b.distance_km);

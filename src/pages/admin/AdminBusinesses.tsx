@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Star, MapPin, Plus, Pencil, Trash2, Phone, Clock, ExternalLink, Power } from 'lucide-react';
-import { PageHeader, Spinner, EmptyState, DemoBadge, Modal, Field, inputCls, btnGhost, btnPrimary } from '../../components/ui';
+import { PageHeader, Spinner, ConsoleUnavailable, EmptyState, DemoBadge, Modal, Field, inputCls, btnGhost, btnPrimary } from '../../components/ui';
 import { useConsoleData } from '../../lib/useConsoleData';
 import { useLocation } from '../../contexts/LocationContext';
-import { imgOnError } from '../../lib/product';
+import { isDemoMode } from '../../lib/supabase';
 import { CATEGORIES } from '../../lib/product';
 import { CITIES } from '../../lib/cities';
 import { saveDemoBusiness, updateDemoBusiness, deleteDemoBusiness, isDemoBusinessId } from '../../lib/demoStore';
@@ -31,7 +31,7 @@ const emptyForm = (city: string): BizForm => ({
 export default function AdminBusinesses() {
   const { city } = useLocation();
   const nav = useNavigate();
-  const { businesses, loading, reload } = useConsoleData(city.name);
+  const { businesses, loading, error, reload } = useConsoleData(city.name);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Business | null>(null);
   const [form, setForm] = useState<BizForm>(emptyForm(city.name));
@@ -45,8 +45,9 @@ export default function AdminBusinesses() {
     return [...demo, ...rest];
   }, [businesses]);
 
-  const openCreate = () => { setEditing(null); setForm(emptyForm(city.name)); setErr(''); setOpen(true); };
+  const openCreate = () => { if (!isDemoMode) { nav('/onboard'); return; } setEditing(null); setForm(emptyForm(city.name)); setErr(''); setOpen(true); };
   const openEdit = (b: Business) => {
+    if (!isDemoBusinessId(b.id)) { nav(`/onboard/${b.id}`); return; }
     setEditing(b);
     setForm({
       name: b.name, category: b.category, description: b.description || '',
@@ -119,23 +120,24 @@ export default function AdminBusinesses() {
   };
 
   if (loading) return <Spinner />;
+  if (error) return <ConsoleUnavailable retry={reload} />;
 
   return (
     <div>
       <PageHeader
         title={`Businesses · ${city.name}`}
-        subtitle={`${list.length} providers on the platform. Demo businesses are editable; production rows are managed in the database.`}
+        subtitle={isDemoMode ? `${list.length} sample businesses on this device.` : `${list.length} businesses in your account. Create, edit or publish your profile.`}
         action={<button onClick={openCreate} className={btnPrimary}><Plus className="h-4 w-4" /> Add business</button>}
       />
 
       {list.length === 0 ? (
-        <EmptyState title="No businesses yet" sub="Add your first demo business — it appears in customer discovery instantly." action={<button onClick={openCreate} className={btnGhost}><Plus className="h-4 w-4" /> Add business</button>} />
+        <EmptyState title="No businesses yet" sub={isDemoMode ? "Add a sample business for this device." : "Create your first business profile."} action={<button onClick={openCreate} className={btnGhost}><Plus className="h-4 w-4" /> Add business</button>} />
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {list.slice(0, 90).map((b) => (
             <div key={b.id} className="card overflow-hidden group hover:border-[var(--border-strong)] transition-colors">
-              <div className="relative">
-                <img src={b.image_url} alt={b.name} onError={imgOnError(b.category)} loading="lazy" className={`h-32 w-full object-cover ${b.active === false ? 'opacity-50' : ''}`} />
+              <div className="relative h-32 bg-gradient-to-br from-indigo-900 via-slate-900 to-emerald-950">
+                {b.image_url && <img src={b.image_url} alt={b.name} onError={(e) => { e.currentTarget.style.display = 'none'; }} loading="lazy" className={`h-32 w-full object-cover ${b.active === false ? 'opacity-50' : ''}`} />}
                 <div className="absolute top-2 left-2 flex gap-1.5">{isDemoBusinessId(b.id) && <DemoBadge />}{b.active === false && <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-red-500/15 text-red-400 border border-red-500/25">Inactive</span>}</div>
               </div>
               <div className="p-4">
@@ -160,7 +162,7 @@ export default function AdminBusinesses() {
                         <button onClick={() => setConfirmDelete(b)} title="Delete" className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:text-red-400 hover:border-red-400/50"><Trash2 className="h-3.5 w-3.5" /></button>
                       </>
                     ) : (
-                      <span className="text-[10px] text-dim self-center">DB row</span>
+                      <button onClick={() => openEdit(b)} aria-label={`Edit ${b.name}`} title="Edit business" className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:border-[var(--border-strong)]"><Pencil className="h-3.5 w-3.5" /></button>
                     )}
                   </div>
                 </div>

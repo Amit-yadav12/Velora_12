@@ -1,7 +1,9 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Plus, Trash2, Pencil, Power } from 'lucide-react';
-import { PageHeader, Spinner, EmptyState, DemoBadge, Modal, Field, inputCls, btnGhost, btnPrimary } from '../../components/ui';
+import { PageHeader, Spinner, ConsoleUnavailable, EmptyState, DemoBadge, Modal, Field, inputCls, btnGhost, btnPrimary } from '../../components/ui';
 import { useConsoleData } from '../../lib/useConsoleData';
+import { useAuth } from '../../contexts/AuthContext';
+import ImageUploader from '../../components/premium/ImageUploader';
 import { inr } from '../../lib/format';
 import { saveDemoService, updateDemoService, deleteDemoService } from '../../lib/demoStore';
 import { apiSend } from '../../lib/api';
@@ -9,14 +11,16 @@ import { toast } from '../../services/events';
 import { errMsg } from '../../lib/types';
 import type { BusinessService } from '../../lib/product';
 
-interface SvcForm { business_id: string; name: string; description: string; duration_min: number; price: number; }
+interface SvcForm { business_id: string; name: string; description: string; duration_min: number; price: number; image_url: string | null; }
 
 export default function AdminServices() {
-  const { services, businesses, loading, reload } = useConsoleData();
+  const { services, businesses, loading, error, reload } = useConsoleData();
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<BusinessService | null>(null);
-  const [form, setForm] = useState<SvcForm>({ business_id: '', name: '', description: '', duration_min: 30, price: 0 });
+  const [form, setForm] = useState<SvcForm>({ business_id: '', name: '', description: '', duration_min: 30, price: 0, image_url: null });
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [err, setErr] = useState('');
 
   const bizName = useCallback((id: number | string) => businesses.find((b) => String(b.id) === String(id))?.name || '—', [businesses]);
@@ -25,12 +29,12 @@ export default function AdminServices() {
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ business_id: demoBiz[0] ? String(demoBiz[0].id) : '', name: '', description: '', duration_min: 30, price: 0 });
+    setForm({ business_id: businesses[0] ? String(businesses[0].id) : '', name: '', description: '', duration_min: 30, price: 0, image_url: null });
     setErr(''); setOpen(true);
   };
   const openEdit = (s: BusinessService) => {
     setEditing(s);
-    setForm({ business_id: String(s.business_id), name: s.name, description: s.description || '', duration_min: s.duration_min, price: s.price });
+    setForm({ business_id: String(s.business_id), name: s.name, description: s.description || '', duration_min: s.duration_min, price: s.price, image_url: s.image_url || null });
     setErr(''); setOpen(true);
   };
 
@@ -45,7 +49,7 @@ export default function AdminServices() {
         else saveDemoService({ ...form, name: form.name.trim(), description: form.description.trim(), business_id: form.business_id });
       } else {
         // Production row — admin-gated API.
-        if (editing) await apiSend('/api/admin', 'PUT', { resource: 'services', id: editing.id, name: form.name.trim(), description: form.description.trim(), duration_min: form.duration_min, price: form.price });
+        if (editing) await apiSend('/api/admin', 'PUT', { resource: 'services', id: editing.id, name: form.name.trim(), description: form.description.trim(), duration_min: form.duration_min, price: form.price, image_url: form.image_url });
         else await apiSend('/api/admin', 'POST', { resource: 'services', ...form, name: form.name.trim(), description: form.description.trim(), business_id: Number(form.business_id) });
       }
       toast(editing ? 'Service updated' : 'Service created — bookable immediately', 'success');
@@ -69,11 +73,12 @@ export default function AdminServices() {
   const del = async (s: BusinessService) => {
     if (s.demo) deleteDemoService(String(s.id));
     else { try { await apiSend('/api/admin', 'DELETE', { resource: 'services', id: s.id }); } catch (e: unknown) { toast(errMsg(e), 'error'); return; } }
-    toast('Service deleted', 'info');
+    toast('Service archived — booking history is preserved', 'info');
     reload();
   };
 
   if (loading) return <Spinner />;
+  if (error) return <ConsoleUnavailable retry={reload} />;
 
   return (
     <div>
@@ -84,7 +89,7 @@ export default function AdminServices() {
       />
 
       {list.length === 0 ? (
-        <EmptyState title="No services" sub="Add a service to a demo business to make it bookable." action={<button onClick={openCreate} className={btnGhost}><Plus className="h-4 w-4" /> Add service</button>} />
+        <EmptyState title="No services" sub="Add a service to make your business bookable." action={<button onClick={openCreate} className={btnGhost}><Plus className="h-4 w-4" /> Add service</button>} />
       ) : (
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
@@ -124,10 +129,10 @@ export default function AdminServices() {
         </div>
       )}
 
-      <Modal open={open} onClose={() => !busy && setOpen(false)} title={editing ? 'Edit service' : 'New service'}>
+      <Modal open={open} onClose={() => !busy && !uploading && setOpen(false)} title={editing ? 'Edit service' : 'New service'}>
         <div className="space-y-3">
           <Field label="Business *">
-            <select className={inputCls} value={form.business_id} onChange={(e) => setForm({ ...form, business_id: e.target.value })} disabled={!!editing}>
+            <select className={inputCls} value={form.business_id} onChange={(e) => setForm({ ...form, business_id: e.target.value, image_url: null })} disabled={!!editing}>
               <option value="">Select business</option>
               {(demoBiz.length ? [...demoBiz, ...businesses.filter((b) => !String(b.id).startsWith('demo-biz-'))] : businesses).map((b) => <option key={b.id} value={String(b.id)}>{b.name}</option>)}
             </select>
@@ -136,12 +141,13 @@ export default function AdminServices() {
           <Field label="Description"><input className={inputCls} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="What's included" /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Duration (min)"><input className={inputCls} type="number" min={5} value={form.duration_min} onChange={(e) => setForm({ ...form, duration_min: +e.target.value })} /></Field>
-            <Field label="Price (₹)"><input className={inputCls} type="number" min={0} value={form.price} onChange={(e) => setForm({ ...form, price: +e.target.value })} /></Field>
+            <Field label="Price (₹)"><input className={inputCls} type="number" min={0} step="0.01" value={form.price} onChange={(e) => setForm({ ...form, price: +e.target.value })} /></Field>
           </div>
+          {form.business_id && !String(form.business_id).startsWith('demo-biz-') && user && <ImageUploader label="Service photo (optional)" images={form.image_url ? [form.image_url] : []} onChange={(v) => setForm((f) => ({ ...f, image_url: v[0] || null }))} userId={user.id} max={1} onBusy={setUploading} />}
           {err && <p className="text-sm text-red-400">{err}</p>}
           <div className="flex gap-2.5">
-            <button onClick={() => setOpen(false)} disabled={busy} className={btnGhost + ' flex-1'}>Cancel</button>
-            <button onClick={save} disabled={busy} className={btnPrimary + ' flex-1'}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Create service'}</button>
+            <button onClick={() => setOpen(false)} disabled={busy || uploading} className={btnGhost + ' flex-1'}>Cancel</button>
+            <button onClick={save} disabled={busy || uploading} className={btnPrimary + ' flex-1'}>{busy ? 'Saving…' : editing ? 'Save changes' : 'Create service'}</button>
           </div>
         </div>
       </Modal>
