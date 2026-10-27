@@ -2,6 +2,13 @@
 // never replace an image belonging to a real business with the same numeric ID.
 export const MI_ROAD_ELECTRICIAN_ID = 236002;
 export const MI_ROAD_ELECTRICIAN_IMAGE = '/biz/mi-road-electrician-illustration.jpg';
+/** Category photo for Indian electricians.
+ *
+ * The Onboarding/demo catalogue used to point Electricians at `education.jpg`
+ * (a tutoring photo), so every electrician except the MI Road sample showed a
+ * classroom. Electricians now ship their own image; the MI Road sample keeps
+ * its own illustration on top of the default. */
+export const ELECTRICIANS_IMAGE = '/biz/electrician.jpg';
 export const MI_ROAD_ELECTRICIAN_NAME = 'MI Road Electrician on Call';
 export const MI_ROAD_ELECTRICIAN_ADDRESS = '3, 1st Cross, MI Road, Jaipur';
 export const MI_ROAD_ELECTRICIAN_ALT = 'AI illustration of an electrician working in a Jaipur-inspired home';

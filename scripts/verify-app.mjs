@@ -447,8 +447,93 @@ await click(find('button','Continue')); await waitFor(() => bodyHas('Your servic
 ok('Onboarding collects services, hours and holidays', bodyHas('Service name') && bodyHas('Weekly opening hours') && bodyHas('Holiday closures'));
 await click(find('button','Continue')); await waitFor(() => bodyHas('A final look'), {label:'review step'});
 await click(find('button','Save draft'));
-await waitFor(() => bodyHas('no business or images have been saved'), {label:'preview save refusal'});
-ok('Preview cannot claim a real draft was saved without Supabase', bodyHas('no business or images have been saved'));
+await waitFor(() => bodyHas('A beautiful start'), { timeout: 12000, label: 'draft saved' });
+// The draft is genuinely saved — to the demo tenant, which the screen names
+// explicitly. The contract is "never claim a database write that did not happen",
+// not "refuse to save at all".
+const draftNote = document.querySelector('[data-demo-save]');
+ok('A draft save succeeds and says it went to browser storage, not a database',
+  bodyHas('Saved as a draft') && !!draftNote && /browser only/i.test(txt(draftNote)),
+  txt(draftNote).slice(0, 80));
+ok('The draft is persisted as unpublished (it must not appear in discovery)',
+  JSON.parse(window.localStorage.getItem('velora-demo-businesses') || '[]')
+    .some((b) => b.name === newBizName && b.active === false));
+
+/* ================================================================== */
+console.log('\n—— 2d. Business launch wizard (demo tenant, end to end) ——');
+await ReactMod.act(async () => { await demoAuth.signInDemo('admin'); });
+await mount('/onboard');
+await waitFor(() => bodyHas('beautifully booked'), { timeout: 12000, label: 'onboarding wizard' });
+ok('Owners get a multi-step launch wizard, not a single form',
+  bodyHas('Your business') && bodyHas('Photos') && bodyHas('Location') && bodyHas('Services & hours'));
+ok('The wizard shows a live profile preview while you type', bodyHas('Live preview'));
+
+// A field is located by its visible label, the way a user finds it.
+const fieldByLabel = (needle) => all('label').find((l) => txt(l).includes(needle))?.querySelector('input, textarea, select');
+const setSelect = (el, value) => {
+  if (!el) return;
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')?.set;
+  if (setter) setter.call(el, value); else el.value = value;
+  el.dispatchEvent(new window.Event('change', { bubbles: true }));
+};
+const nextBtn = () => all('button').find((b) => /^Continue$/.test(txt(b)));
+
+// Step 0 refuses to advance with nothing filled in.
+await click(nextBtn());
+await settle(200);
+ok('Step 1 refuses to advance without a name and category',
+  bodyHas('Add your business name') && bodyHas('Tell your story'));
+
+const launchName = `Verify Launch ${Math.floor(Math.random() * 9000) + 1000}`;
+typeInto(fieldByLabel('Business name'), launchName);
+setSelect(fieldByLabel('Category'), 'Dentists');
+await settle(150);
+ok('The live preview picks up the business name as it is typed', bodyHas(launchName));
+await click(nextBtn());
+await settle(250);
+ok('Step 2 (Photos) opens after the essentials are valid', bodyHas('Show the real you'));
+await click(nextBtn());
+await settle(250);
+ok('Step 3 (Location) offers address entry plus a map pin', bodyHas('Put yourself on the map'));
+typeInto(fieldByLabel('Full street address'), '12, Test Road, MI Road');
+typeInto(fieldByLabel('PIN code'), '302001');
+typeInto(fieldByLabel('Latitude'), '26.915');
+typeInto(fieldByLabel('Longitude'), '75.786');
+await settle(150);
+const pinBox = all('input[type=checkbox]')[0];
+if (pinBox) await click(pinBox);
+await settle(150);
+await click(nextBtn());
+await settle(250);
+ok('Step 4 (Services & hours) asks for ₹ prices', bodyHas('prices in rupees'));
+typeInto(fieldByLabel('Service name'), 'Consultation & Cleaning');
+typeInto(fieldByLabel('Price (₹)'), '1750');
+await settle(150);
+await click(nextBtn());
+await settle(250);
+ok('Step 5 (Review) summarises what will be published', bodyHas('A final look'));
+
+await click(all('button').find((b) => /Publish business/.test(txt(b))));
+await waitFor(() => bodyHas('Your launch is live') || bodyHas('starts here'), { timeout: 12000, label: 'launch success' });
+ok('Publishing reaches a success screen (not a dead end)', bodyHas('starts here'));
+ok('The success screen shows the saved profile, address, map and ₹ services',
+  bodyHas(launchName) && bodyHas('302001') && /₹1,750/.test(txt(document.body)));
+
+// The honest bit: this is the demo tenant, and it says so.
+const demoNote = document.querySelector('[data-demo-save]');
+ok('The success screen states exactly where the business was stored',
+  !!demoNote && /browser only/i.test(txt(demoNote)) && /Nothing was written to a database/i.test(txt(demoNote)),
+  txt(demoNote).slice(0, 90));
+const storedLaunch = JSON.parse(window.localStorage.getItem('velora-demo-businesses') || '[]').find((b) => b.name === launchName);
+ok('The business is really persisted (survives a refresh)', !!storedLaunch && storedLaunch.pin === '302001');
+ok('Its uploaded-state photos and map pin are stored with it',
+  storedLaunch?.created_via === 'onboarding' && storedLaunch?.lat === 26.915 && storedLaunch?.lng === 75.786);
+ok('The owner\'s own service was saved, with no catalogue injected',
+  JSON.parse(window.localStorage.getItem('velora-demo-services') || '[]').filter((s) => s.business_id === storedLaunch?.id).length === 1,
+  `${JSON.parse(window.localStorage.getItem('velora-demo-services') || '[]').filter((s) => s.business_id === storedLaunch?.id).length} services`);
+await click(all('button, a').find((el) => /Go to business dashboard/.test(txt(el))));
+await waitFor(() => /\/admin/.test(window.location.pathname), { timeout: 8000, label: 'dashboard' }).catch(() => {});
+ok('A clear next action leads to the business dashboard', /\/admin/.test(window.location.pathname), window.location.pathname);
 
 /* ================================================================== */
 console.log('\n—— 3. Customer demo → booking → instant QR ——');

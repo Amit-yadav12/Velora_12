@@ -1,6 +1,12 @@
 import supabase, { isDemoMode } from './supabase';
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+/** Demo tenant: images live in localStorage, which is small. Compress hard. */
+const DEMO_MAX_EDGE = 900;
+const DEMO_MAX_DATA_URL = 320_000; // ≈ 240 KB of image data
+/** True when an image URL is browser-stored (demo tenant) rather than uploaded. */
+export const isBrowserStoredImage = (url: string | null | undefined): boolean =>
+  !!url && url.startsWith('data:image/');
 const TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 /** Reject spoofed extensions/MIME types as well as oversized files. */
@@ -32,9 +38,65 @@ async function optimize(file: File): Promise<Blob> {
   } finally { bitmap.close(); }
 }
 
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('This file could not be read.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Demo tenant only: shrink the image in the browser and return a data URL.
+ * The photo is genuinely the one the owner picked — it is not a placeholder —
+ * but it is stored in this browser, which the UI says out loud.
+ * Returns null when the browser cannot decode/canvas (the caller falls back to
+ * the original bytes, still validated).
+ */
+async function toCompressedDataUrl(file: File): Promise<string | null> {
+  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return null;
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) return null;
+  try {
+    const canvas = document.createElement('canvas');
+    const scale = Math.min(1, DEMO_MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const ctx = canvas.getContext('2d');
+    if (!ctx || typeof canvas.toBlob !== 'function') return null;
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    for (const [type, quality] of [['image/webp', 0.72], ['image/jpeg', 0.65], ['image/jpeg', 0.5]] as const) {
+      const blob = await new Promise<Blob | null>((resolve) => {
+        try { canvas.toBlob(resolve, type, quality); } catch { resolve(null); }
+      });
+      if (!blob) continue;
+      const url = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('This file could not be read.'));
+        reader.readAsDataURL(blob);
+      });
+      if (url.length <= DEMO_MAX_DATA_URL) return url;
+    }
+    return null;
+  } finally { bitmap.close(); }
+}
+
 export async function uploadBusinessImage(file: File, userId: string): Promise<string> {
   await validateImage(file);
-  if (isDemoMode) throw new Error('Connect Supabase Storage to upload real images. Nothing was uploaded.');
+  if (isDemoMode) {
+    // No Supabase project in the local preview. Rather than refuse (which made
+    // the whole launch flow undemonstrable) or fake an upload, keep the real
+    // photo in the demo tenant and label it as browser storage everywhere.
+    const compressed = await toCompressedDataUrl(file).catch(() => null);
+    if (compressed) return compressed;
+    const raw = await readAsDataUrl(file);
+    if (raw.length > DEMO_MAX_DATA_URL) {
+      throw new Error('That photo is too large for demo storage. Use one under about 200 KB, or connect Supabase Storage.');
+    }
+    return raw;
+  }
   if (!userId || !/^[0-9a-f-]{36}$/i.test(userId)) throw new Error('Sign in before uploading images.');
   const image = await optimize(file);
   const ext = image.type === 'image/webp' ? 'webp' : image.type === 'image/png' ? 'png' : 'jpg';

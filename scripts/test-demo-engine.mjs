@@ -58,7 +58,8 @@ const serverListing = serverElectricians.find((b) => b.id === miRoad.MI_ROAD_ELE
 const clientListing = clientSynthetic.getSyntheticBusiness(miRoad.MI_ROAD_ELECTRICIAN_ID);
 ok('Selected sample has the same name and image in discovery and detail', serverListing?.name === clientListing?.name && serverListing?.image_url === miRoad.MI_ROAD_ELECTRICIAN_IMAGE && clientListing?.image_url === miRoad.MI_ROAD_ELECTRICIAN_IMAGE);
 ok('Selected sample gallery contains one illustration', JSON.stringify(clientListing?.photos) === JSON.stringify([miRoad.MI_ROAD_ELECTRICIAN_IMAGE]));
-ok('Other sample electricians are unchanged', [...serverElectricians, ...clientElectricians].filter((b) => b.id !== miRoad.MI_ROAD_ELECTRICIAN_ID).every((b) => b.image_url === '/biz/education.jpg'));
+ok('Other sample electricians now use the electrician photo, not a classroom',
+  [...serverElectricians, ...clientElectricians].filter((b) => b.id !== miRoad.MI_ROAD_ELECTRICIAN_ID).every((b) => b.image_url === '/biz/electrician.jpg'));
 ok('Illustration is an existing JPEG asset', fs.readFileSync(resolve(ROOT, `public${miRoad.MI_ROAD_ELECTRICIAN_IMAGE}`)).subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])));
 const staleSample = miRoad.withMiRoadElectricianImage({ id: miRoad.MI_ROAD_ELECTRICIAN_ID, synthetic: true, name: 'MI Road Wiring Experts', image_url: '/biz/education.jpg', photos: ['/biz/education.jpg'] });
 ok('Cached sample refreshes its illustration and listing name', staleSample.image_url === miRoad.MI_ROAD_ELECTRICIAN_IMAGE && staleSample.name === serverListing.name && staleSample.photos.length === 1);
@@ -72,6 +73,25 @@ localStorage.setItem('velora-recent-views', JSON.stringify([
 const recents = search.readRecentViews();
 ok('Old sample recents update without changing real photos', recents[0].image_url === miRoad.MI_ROAD_ELECTRICIAN_IMAGE && recents[0].synthetic && recents[1].image_url === 'https://example.com/owner.jpg');
 localStorage.removeItem('velora-recent-views');
+
+console.log('\n—— 1c. Category photos match the business (no classroom for a plumber) ——');
+const product = await import(run('src/lib/product.ts'));
+const synthetic = await import(run('src/lib/synthetic.ts'));
+const { readFileSync: readSync } = await import('node:fs');
+const sharedApi = readSync(`${ROOT}/api/_lib/synthetic.js`, 'utf8');
+const cats = ['Electricians', 'Plumbers', 'Cleaners', 'Tutors', 'Cafés', 'Salons', 'Dentists', 'Car Rentals', 'Event Venues'];
+const fallbackOf = (c) => product.categoryFallbackImage(c);
+const catalogOf = (c) => synthetic.CATEGORY_DEFS.find((d) => d.name === c)?.img;
+ok('Every category resolves to a real bundled photo', cats.every((c) => { const u = fallbackOf(c); return typeof u === 'string' && u.startsWith('/biz/'); }));
+ok('Electricians no longer borrow the tutoring photo', !/education/.test(fallbackOf('Electricians')), fallbackOf('Electricians'));
+ok('Client catalogue and image fallback agree (no drift between tables)',
+  cats.every((c) => catalogOf(c) === fallbackOf(c)),
+  cats.filter((c) => catalogOf(c) !== fallbackOf(c)).join(', ') || 'all agree');
+ok('The API catalogue serves the same photo the client expects',
+  /C\('Electricians', '[^']*', '[^']*', '\/biz\/electrician\.jpg'/.test(sharedApi)
+  && !/C\('Electricians', '[^']*', '[^']*', '\/biz\/education\.jpg'/.test(sharedApi));
+ok('The MI Road sample keeps its own illustration', /mi-road-electrician-illustration/.test(
+  (await import(run('src/lib/miRoadElectrician.ts'))).MI_ROAD_ELECTRICIAN_IMAGE));
 
 console.log('\n—— 2. Business / service / staff CRUD (demo dataset) ——');
 const newBiz = demoStore.saveDemoBusiness({ name: 'Test Studio', category: 'Gyms', city: 'Jaipur' });
@@ -201,6 +221,28 @@ try {
 ok('Same specialist + same slot twice is rejected', guardRejected);
 const guardCount = offlineStore.listLocalBookings().filter((b) => b.business_id === 'demo-biz-aurora' && b.start_time === guardSlot.time).length;
 ok('Exactly one booking for that slot (no duplicate)', guardCount === 1, `got ${guardCount}`);
+// CONCURRENT attempt — two clicks in the same tick, not one after the other.
+{
+  const raceSvc = demoStore.listDemoServices('demo-biz-aurora')[0];
+  const raceDate = new Date(Date.now() + 4 * 86400000).toISOString().slice(0, 10);
+  const raceSlot = demoStore.demoSlots('demo-biz-aurora', raceSvc.id, raceDate, [], 'Meera Kapoor').find((s) => s.available);
+  const raceBody = {
+    business_id: 'demo-biz-aurora', business_name: 'Aurora Luxe Salon & Spa',
+    service_id: raceSvc.id, service_name: raceSvc.name, service_duration: raceSvc.duration_min, service_price: raceSvc.price,
+    start_time: raceSlot.time, staff_id: null, staff_name: 'Meera Kapoor',
+    customer_name: 'Concurrent Customer', customer_email: 'race2@velora.ai', customer_phone: '+91 90000 00002',
+  };
+  const results = await Promise.allSettled([offlineStore.createDemoBooking(raceBody), offlineStore.createDemoBooking(raceBody)]);
+  const won = results.filter((r) => r.status === 'fulfilled').length;
+  const lost = results.filter((r) => r.status === 'rejected').length;
+  const stored = offlineStore.listLocalBookings().filter((b) => b.business_id === 'demo-biz-aurora' && b.start_time === raceSlot.time).length;
+  ok('Two simultaneous bookings of one slot: exactly one wins and one is refused',
+    won === 1 && lost === 1, `won=${won} refused=${lost}`);
+  ok('The losing attempt leaves no half-written record', stored === 1, `records=${stored}`);
+  ok('The refusal explains itself (slot just taken, not a generic failure)',
+    results.some((r) => r.status === 'rejected' && /just taken/i.test(String(r.reason?.message || r.reason))));
+}
+
 // Same slot with a DIFFERENT free specialist stays bookable (capacity-aware).
 // (Arjun Rao works all 7 days — the roster is part of real availability.)
 const guardSlots2 = demoStore.demoSlots('demo-biz-aurora', guardSvc.id, guardDate, offlineStore.listLocalBookings().map((b) => ({ business_id: b.business_id, staff_name: b.staff_name, start_time: b.start_time, end_time: b.end_time, status: b.status })), 'Arjun Rao');
@@ -378,6 +420,59 @@ ok('comparison is capped at three businesses', cmp.buildComparison([bizA, bizB, 
 ok('card price label uses rupee formatting', /^from ₹800$/.test(cmp.fromPriceLabel(bizA)), cmp.fromPriceLabel(bizA));
 ok('a business with no prices is labelled honestly, not ₹0',
   cmp.fromPriceLabel({ id: 'z', name: 'Z', rating: 4 }) === 'Price on request');
+
+console.log('\n—— 18. Demo-tenant launch: a saved business survives a reload ——');
+// The onboarding wizard writes through saveDemoBusiness/saveDemoService, so the
+// same guarantees the console relies on apply to a brand-new business.
+const media = await import(run('src/lib/businessMedia.ts'));
+const launchName = `Verify Launch ${Date.now().toString(36)}`;
+const launchPhotos = ['data:image/webp;base64,UklGRhIAAABXRUJQVlA4TAYAAAAvAAAAAAfQ//73v/+BiOh/AAA='];
+const launched = demoStore.saveDemoBusiness({
+  name: launchName, category: 'Dentists', description: 'Owner-written description.',
+  line1: '12, Test Road', street: '12, Test Road', area: 'MI Road', city: 'Jaipur', state: 'Rajasthan', pin: '302001',
+  phone: '+91 98290 41100', email: 'owner@example.in', open_time: '09:30', close_time: '19:00',
+  photos: launchPhotos, lat: 26.9150, lng: 75.7860, amenities: ['Parking'], booking_policy: 'Free cancellation 24h',
+  holidays: ['2026-11-04'], active: true, created_via: 'onboarding',
+}, { strict: true, seedCatalog: false });
+
+ok('A business saved by onboarding is in the demo tenant', demoStore.listDemoBusinesses('Jaipur', true).some((b) => b.id === launched.id));
+ok('It keeps the owner\'s own details, not generated ones',
+  launched.name === launchName && launched.pin === '302001' && launched.open_time === '09:30');
+ok('Uploaded photos are persisted with the record', (launched.photos || []).length === 1
+  && (launched.photos || [])[0].startsWith('data:image/'));
+ok('The map pin and policy survive the save',
+  launched.lat === 26.915 && launched.lng === 75.786 && launched.booking_policy === 'Free cancellation 24h');
+ok('It is marked as created through onboarding', launched.created_via === 'onboarding');
+ok('Where it was stored is detectable (never claimed as a DB row)',
+  media.isBrowserStoredImage((launched.photos || [])[0]) && !media.isBrowserStoredImage('/biz/salon.jpg'));
+
+// Onboarding creates the owner's services; the catalogue is NOT seeded on top.
+const svcA = demoStore.saveDemoService({ business_id: launched.id, name: 'Deep Cleaning', description: 'Owner service', duration_min: 45, price: 1750 });
+ok('Owner services are attached to the new business',
+  demoStore.getDemoBusiness(launched.id)?.services.some((s) => s.id === svcA.id && s.price === 1750));
+ok('The catalogue is not duplicated over the owner\'s services',
+  demoStore.getDemoBusiness(launched.id)?.services.length === 1,
+  `got ${demoStore.getDemoBusiness(launched.id)?.services.length}`);
+
+// "Reload": re-read straight from storage, exactly as a new page would.
+const reread = JSON.parse(localStorage.getItem('velora-demo-businesses') || '[]').find((b) => b.id === launched.id);
+ok('A refresh finds the business again (localStorage round-trip)', !!reread && reread.name === launchName);
+ok('An unpublished draft stays out of demo discovery', (() => {
+  demoStore.saveDemoBusiness({ name: 'Draft Only', category: 'Clinics', city: 'Jaipur', active: false }, { strict: true, seedCatalog: false });
+  const names = demoStore.listDemoBusinesses('Jaipur', true).filter((b) => b.active !== false).map((b) => b.name);
+  return !names.includes('Draft Only');
+})());
+
+// Image rules that must hold in demo mode too.
+const okPng = new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0])], 'a.png', { type: 'image/png' });
+const fakeJpg = new File([new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])], 'evil.jpg', { type: 'image/jpeg' });
+const svgFile = new File(['<svg xmlns="http://www.w3.org/2000/svg"/>'], 'x.svg', { type: 'image/svg+xml' });
+const huge = new File([new Uint8Array(media.MAX_IMAGE_BYTES + 1)], 'big.jpg', { type: 'image/jpeg' });
+const rejects = async (file) => media.validateImage(file).then(() => false).catch(() => true);
+ok('A real PNG signature passes validation', await rejects(okPng) === false);
+ok('A spoofed .jpg (wrong magic bytes) is rejected', await rejects(fakeJpg) === true);
+ok('SVG uploads are rejected', await rejects(svgFile) === true);
+ok('Oversized images are rejected before upload', await rejects(huge) === true);
 
 console.log('\n—— 11. Reset demo: isolated + restores clean state ——');
 demoStore.resetDemo();
