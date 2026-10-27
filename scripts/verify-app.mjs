@@ -978,6 +978,8 @@ await waitFor(() => document.querySelector('[data-checkin-code="verified"]'), { 
 ok('The real ticket is verified and checks the guest in',
   document.querySelector('[data-checkin-code]')?.getAttribute('data-checkin-code') === 'verified',
   document.querySelector('[data-checkin-code]')?.getAttribute('data-checkin-code') || 'no verdict');
+ok('Verified QR displays the guest, service, appointment time, checked-in status and rupee price',
+  bodyHas('Door Test') && bodyHas('Initial Assessment & Plan') && bodyHas('Appointment') && bodyHas('checked in') && bodyHas('₹900'));
 ok('Demo check-in is persisted on this device',
   JSON.parse(window.localStorage.getItem('velora-local-bookings') || '[]').find((b) => b.ref === doorBooking.ref)?.status === 'checked_in');
 ok('Check-in notifies the customer', JSON.parse(window.localStorage.getItem('velora-local-notifs') || '[]')
