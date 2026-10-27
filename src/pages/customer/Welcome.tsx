@@ -273,12 +273,12 @@ export default function Welcome() {
           <p className="mt-4 text-muted max-w-md">
             {isAdmin
               ? 'Real-time appointments, staff, services and availability — all in one beautiful console.'
-              : 'Hospitals, salons, coaching, hotels, sports & more — instant confirmation, AI-recommended slots, and directions to the nearest options.'}
+              : 'Hospitals, salons, coaching, hotels, sports & more — instant confirmation, smart slot suggestions, and directions to the nearest options.'}
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             {(isAdmin
               ? [['Live dashboard', CalendarCheck], ['Manage staff', User], ['Instant sync', Sparkles]]
-              : [['Instant booking', CalendarCheck], ['Nearest first', MapPin], ['AI concierge', Sparkles]]
+              : [['Instant booking', CalendarCheck], ['Nearest first', MapPin], ['Concierge', Sparkles]]
             ).map(([t, Icon]: (string | LucideIcon)[]) => {
               const I = Icon as LucideIcon;
               return (

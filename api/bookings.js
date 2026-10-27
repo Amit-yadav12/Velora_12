@@ -1,6 +1,7 @@
 import supabase from './db-client.js';
-import { cors, sanitizeText, isISODate, assert, clientIp } from './_lib/security.js';
-import { getAuth, requireRole } from './_lib/auth.js';
+import { cors, sanitizeText, isISODate, assert, clientIp, safeError } from './_lib/security.js';
+import { getAuth, requireRole, ownedBusinessNames, canOperateOn } from './_lib/auth.js';
+import { istDateTimeLabel } from './_lib/ist.js';
 import { sendEmail } from './_lib/email.js';
 import { updateCalendarEvent, deleteCalendarEvent } from './_lib/calendar.js';
 
@@ -36,7 +37,7 @@ async function audit(actor, action, entityId, metadata, ip) {
 // Creation happens in /api/book. Every mutation is authorization-checked:
 // customers may only act on their own bookings; admins may act on any.
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   const ip = clientIp(req);
 
@@ -46,7 +47,14 @@ export default async function handler(req, res) {
       const auth = await getAuth(req);
       const gate = requireRole(auth, ['admin']);
       if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
-      const { data, error } = await supabase.from('bookings').select('*').order('start_time', { ascending: false });
+      // Object-level authorization: an owner only ever lists their own
+      // business's appointments. A caller who owns no business is the platform
+      // operator and sees the whole estate. Ownership comes from the DB
+      // (businesses.owner_user_id), never from the request.
+      const owned = await ownedBusinessNames(auth.user.id);
+      let query = supabase.from('bookings').select('*').order('start_time', { ascending: false });
+      if (owned.length) query = query.in('resource_name', owned);
+      const { data, error } = await query;
       if (error) throw error;
       return res.status(200).json(data);
     }
@@ -69,6 +77,10 @@ export default async function handler(req, res) {
 
       // Customers cannot set arbitrary internal statuses (admin-only action).
       if (action === 'status') assert(isAdmin, 'Only staff can change booking status.', 403);
+
+      // Same object-level check for mutations, before any state change.
+      const owned = isAdmin ? await ownedBusinessNames(auth.user.id) : [];
+      assert(canOperateOn(owned, existing.resource_name), 'This booking belongs to another business.', 403);
 
       const actor = auth.user.email;
 
@@ -105,7 +117,7 @@ export default async function handler(req, res) {
         assert(!conflicts || conflicts.length === 0, 'That time is no longer available. Please choose another slot.', 409);
         const { data, error } = await supabase.from('bookings').update({ start_time: start.toISOString(), end_time: end.toISOString(), updated_at: new Date().toISOString() }).eq('id', id).select().single();
         if (error) throw error;
-        await supabase.from('booking_history').insert({ booking_id: id, action: 'rescheduled', detail: `Moved to ${start.toLocaleString()}`, actor });
+        await supabase.from('booking_history').insert({ booking_id: id, action: 'rescheduled', detail: `Moved to ${istDateTimeLabel(start)}`, actor });
         await audit(actor, 'booking.reschedule', id, { ref: existing.ref, to: start.toISOString() }, ip);
         // Calendar sync: update events + reschedule reminders
         const rmeta = await getMeta(id);
@@ -118,8 +130,8 @@ export default async function handler(req, res) {
         ].map((o) => ({ booking_id: id, booking_ref: existing.ref, kind: o.kind, fire_at: new Date(start.getTime() - o.ms).toISOString() }))
           .filter((r) => new Date(r.fire_at).getTime() > Date.now());
         if (newRem.length) await supabase.from('reminders').insert(newRem);
-        await supabase.from('notifications').insert([{ user_id: existing.customer_id || null, audience: 'customer', title: 'Booking rescheduled', body: `${existing.ref} moved to ${start.toLocaleString()}`, type: 'info', booking_ref: existing.ref }]);
-        await sendEmail({ to: existing.customer_email, subject: `Booking rescheduled — ${existing.ref}`, title: 'Booking rescheduled', name: existing.customer_name, lines: [{ k: 'Reference', v: existing.ref }, { k: 'New time', v: start.toLocaleString() }] });
+        await supabase.from('notifications').insert([{ user_id: existing.customer_id || null, audience: 'customer', title: 'Booking rescheduled', body: `${existing.ref} moved to ${istDateTimeLabel(start)}`, type: 'info', booking_ref: existing.ref }]);
+        await sendEmail({ to: existing.customer_email, subject: `Booking rescheduled — ${existing.ref}`, title: 'Booking rescheduled', name: existing.customer_name, lines: [{ k: 'Reference', v: existing.ref }, { k: 'New time', v: `${istDateTimeLabel(start)}` }] });
         return res.status(200).json(data);
       }
 
@@ -140,7 +152,9 @@ export default async function handler(req, res) {
 
     res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
-    console.error('[bookings:error]', err.message);
-    res.status(err.status || 500).json({ error: err.message });
+    // 4xx messages are written for humans; anything else is logged, never
+    // echoed (driver/schema errors can disclose internals).
+    const s = safeError(err, 'bookings:error');
+    if (!res.headersSent) res.status(s.status).json({ error: s.error });
   }
 }

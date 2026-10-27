@@ -329,6 +329,15 @@ export default function BusinessDetail() {
         </div>
       </div>
 
+      {/* Mobile: the booking panel sits below services, reviews, photos and the
+          map, so give phones an immediate primary action that jumps to it. */}
+      <div className="lg:hidden mb-5">
+        <button onClick={() => document.getElementById('booking-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          className="w-full grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2">
+          <Zap className="h-4 w-4" /> {service ? `Book · ${Number(service.price) === 0 ? 'Free' : inr(service.price)}` : 'Choose a service and time'} <ChevronRight className="h-4 w-4" />
+        </button>
+      </div>
+
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div className="flex flex-wrap gap-4 text-sm">
@@ -340,16 +349,19 @@ export default function BusinessDetail() {
           {/* Live Google signals + queue snapshot */}
           <div className="flex flex-wrap gap-2">
             {biz.open_now != null && (
-              <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${biz.open_now ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>
+              <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full ${biz.open_now ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}
+                title={isLive ? 'Opening hours supplied by the live Google Maps listing.' : 'Derived from this business\'s published opening hours.'}>
                 <span className={`h-1.5 w-1.5 rounded-full ${biz.open_now ? 'bg-emerald-400 pulse-dot' : 'bg-red-400'}`} />
-                {biz.open_now ? 'Open now (live)' : 'Closed now (live)'}
+                {biz.open_now ? 'Open now' : 'Closed now'}{isLive ? ' · live' : ''}
               </span>
             )}
             {biz.wait_min != null && (
-              <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted"><Users className="h-3.5 w-3.5" /> ~{biz.wait_min} min wait{biz.queue_length ? ` · ${biz.queue_length} in queue` : ''}</span>
+              <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted"
+                title="Estimated from this listing's sample demand pattern — Velora does not receive live queue or sensor data."><Users className="h-3.5 w-3.5" /> ~{biz.wait_min} min estimated wait{biz.queue_length ? ` · ${biz.queue_length} in queue` : ''}</span>
             )}
             {biz.ai_popularity != null && (
-              <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted"><Sparkles className="h-3.5 w-3.5 text-[var(--color-brand-indigo)]" /> {biz.ai_popularity}% loved this week</span>
+              <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted"
+                title="Relative demand score for this sample listing (0–100). It is a deterministic estimate over sample data, not measured footfall."><Sparkles className="h-3.5 w-3.5 text-[var(--color-brand-indigo)]" /> Estimated demand {biz.ai_popularity}/100</span>
             )}
             {biz.website && (
               <a href={biz.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted hover:text-[var(--text)]"><Globe className="h-3.5 w-3.5" /> Website</a>
@@ -474,15 +486,15 @@ export default function BusinessDetail() {
         </div>
 
         {/* Booking panel */}
-        <div className="lg:sticky lg:top-24 h-fit">
+        <div id="booking-panel" className="lg:sticky lg:top-24 h-fit scroll-mt-24">
           <div className="card p-5">
             <h2 className="font-semibold">Book your appointment</h2>
             <div className="mt-4">
-              <label className="text-xs text-dim">Date</label>
-              <input type="date" value={date} min={istToday()} onChange={e => setDate(e.target.value)} className="mt-1 w-full rounded-xl bg-elev border border-app px-3 py-2.5 text-sm outline-none focus:border-[var(--color-brand-indigo)]" />
+              <label htmlFor="booking-date" className="text-xs text-dim">Date (IST)</label>
+              <input id="booking-date" type="date" value={date} min={istToday()} onChange={e => setDate(e.target.value)} className="mt-1 w-full rounded-xl bg-elev border border-app px-3 py-2.5 text-sm outline-none focus:border-[var(--color-brand-indigo)]" />
             </div>
             <div className="mt-4">
-              <div className="flex items-center justify-between mb-2"><label className="text-xs text-dim">Pick a time</label>{recommended[0] && <span className="text-[10px] text-[var(--color-brand-indigo)] inline-flex items-center gap-1"><Zap className="h-3 w-3" /> AI picked {recommended[0].label}</span>}</div>
+              <div className="flex items-center justify-between mb-2"><label className="text-xs text-dim">Pick a time</label>{recommended[0] && <span className="text-[10px] text-[var(--color-brand-indigo)] inline-flex items-center gap-1" title="Earliest well-rated free slot: ranked on availability, crowding and time of day."><Zap className="h-3 w-3" /> Best time · {recommended[0].label}</span>}</div>
               {loadingSlots ? <SlotSkeleton /> : slots.filter(s => s.available).length === 0 ? <p className="text-sm text-dim py-4 text-center">No open slots. Try another date.</p> : (
                 <BookingTimeline slots={slots} selected={slot} onSelect={setSlot} recommended={recommended} />
               )}
@@ -496,7 +508,7 @@ export default function BusinessDetail() {
             <motion.button whileTap={{ scale: 0.98 }} onClick={openReview} disabled={!slot || !service || submitting} className="mt-4 w-full grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2 disabled:opacity-50">
               {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Booking…</> : !user ? <>Sign in to book <ChevronRight className="h-4 w-4" /></> : <>Review &amp; book <ChevronRight className="h-4 w-4" /></>}
             </motion.button>
-            <p className="mt-2 text-center text-[11px] text-dim">{isDemoBusinessId(biz.id) ? 'Business confirms your slot · Free cancellation · Calendar sync' : 'Free cancellation · Instant confirmation · Calendar sync'}</p>
+            <p className="mt-2 text-center text-[11px] text-dim">{isDemoBusinessId(biz.id) ? 'The business confirms your request · free cancellation' : 'Instant confirmation · free cancellation'}</p>
           </div>
         </div>
       </div>

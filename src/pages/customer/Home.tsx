@@ -14,6 +14,7 @@ import LocationBar from '../../components/premium/LocationBar';
 import { fetchDiscover } from '../../lib/hybridData';
 import { readRecentViews, pushSearchHistory, type RecentView } from '../../lib/smartSearch';
 import { prefetch } from '../../lib/smartCache';
+import { istHour } from '../../lib/format';
 
 const recentToCard = (r: RecentView): Business => ({
   id: r.id, name: r.name, category: r.category, city: r.city,
@@ -90,7 +91,7 @@ export default function Home() {
       {/* Hero + search */}
       <section>
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          <p className="text-sm text-dim">{new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening'}, {profile?.full_name?.split(' ')[0] || 'there'} 👋</p>
+          <p className="text-sm text-dim">{(() => { const h = istHour(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; })()}, {profile?.full_name?.split(' ')[0] || 'there'} 👋</p>
           <h1 className="mt-1 text-3xl sm:text-4xl font-semibold tracking-tight">What would you like to <span className="grad-text">book</span> today?</h1>
         </motion.div>
         <div className="mt-4"><LocationBar /></div>

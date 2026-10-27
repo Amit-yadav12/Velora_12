@@ -4,6 +4,7 @@
 // cached, fast responses and graceful offline fallbacks.
 
 import { getCity, DEFAULT_CITY_NAME } from './cities';
+import { istHour, istMinute, istTime, istWallDate, istYmd } from './format';
 import {
   getCityBusinesses, getSyntheticBusiness, attachDetails, getSyntheticSlots,
   getSyntheticReviews, getSyntheticHeatmap, hashStr, mulberry32, isSyntheticId,
@@ -92,17 +93,22 @@ function demoBusinessesForCity(cityName: string): Business[] {
 function enrich(b: Business, lat: number, lng: number): Business {
   const km = haversineKm(lat, lng, b.lat, b.lng);
   const now = new Date();
-  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false }).format(now));
+  // Business hours are IST wall-clock. The next-slot label must be derived from
+  // the IST clock too, otherwise a customer in another timezone sees a "next
+  // available" time that has nothing to do with the business's day.
+  const hour = istHour(now);
   const oh = parseInt(String(b.open_time || '09:00').split(':')[0], 10);
   const chRaw = parseInt(String(b.close_time || '21:00').split(':')[0], 10);
   const ch = b.close_time === '23:59' || b.open_time === '00:00' ? 24 : (chRaw || 21);
   const open = b.open_now ?? (hour >= oh && hour < ch);
   let nextLabel: string | null = null;
   if (open) {
-    const s = new Date(now);
-    s.setMinutes(now.getMinutes() < 30 ? 30 : 0, 0, 0);
-    if (now.getMinutes() >= 30) s.setHours(now.getHours() + 1);
-    if (s.getHours() < ch) nextLabel = s.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    const mins = istMinute(now);
+    const nextMin = mins < 30 ? 30 : 0;
+    const nextHour = hour + (mins < 30 ? 0 : 1);
+    if (nextHour < ch) nextLabel = istTime(istWallDate(istYmd(now), nextHour, nextMin));
+  } else if (hour < oh) {
+    nextLabel = istTime(istWallDate(istYmd(now), oh, 0));
   }
   let score = 50 + ((b.rating || 4.2) - 4) * 30;
   const reasons: string[] = [];

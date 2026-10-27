@@ -179,7 +179,26 @@ ok('Exactly one booking for that slot (no duplicate)', guardCount === 1, `got ${
 // (Arjun Rao works all 7 days — the roster is part of real availability.)
 const guardSlots2 = demoStore.demoSlots('demo-biz-aurora', guardSvc.id, guardDate, offlineStore.listLocalBookings().map((b) => ({ business_id: b.business_id, staff_name: b.staff_name, start_time: b.start_time, end_time: b.end_time, status: b.status })), 'Arjun Rao');
 ok('Another specialist can still take the same time', guardSlots2.find((s) => s.time === guardSlot.time)?.available === true);
-ok('A staff member off-duty that day blocks their slot', demoStore.demoSlots('demo-biz-aurora', guardSvc.id, guardDate, [], 'Kabir Singh').every((s) => !s.available || s.time !== guardSlot.time) || demoStore.demoSlots('demo-biz-aurora', guardSvc.id, guardDate, [], 'Kabir Singh').find((s) => s.time === guardSlot.time)?.available === false);
+// Roster check — derived from the roster itself, never a hardcoded date.
+// The previous version asked for a fixed "2 days from now", which happened to
+// be Kabir's off day in September (Sunday) but a working Thursday in October,
+// so the test failed depending on the calendar date it ran on. Now we look up
+// a day he is genuinely off and a day he genuinely works.
+const kabir = demoStore.listDemoStaff('demo-biz-aurora').find((s) => s.name === 'Kabir Singh');
+const dayNameOf = (ymd) => new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'Asia/Kolkata' }).format(new Date(`${ymd}T12:00:00+05:30`));
+const isoDay = (offset) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(Date.now() + offset * 86400000));
+let offDay = null, onDay = null;
+for (let i = 2; i <= 15 && (!offDay || !onDay); i++) {
+  const d = isoDay(i);
+  const working = (kabir?.days || []).includes(dayNameOf(d));
+  if (!working && !offDay) offDay = d;
+  if (working && !onDay) onDay = d;
+}
+const offSlots = offDay ? demoStore.demoSlots('demo-biz-aurora', guardSvc.id, offDay, [], 'Kabir Singh') : [];
+const onSlots = onDay ? demoStore.demoSlots('demo-biz-aurora', guardSvc.id, onDay, [], 'Kabir Singh') : [];
+ok('Roster resolved for the off-duty check', !!kabir && !!offDay && !!onDay, `kabir=${!!kabir} off=${offDay} on=${onDay}`);
+ok('Off-duty specialist blocks every slot that day', offSlots.length > 0 && offSlots.every((s) => !s.available), `day=${offDay} slots=${offSlots.length}`);
+ok('Working specialist keeps their free slots', onSlots.some((s) => s.available), `day=${onDay}`);
 
 console.log('\n—— 11c. IST reschedule round-trip (no 5.5h shift) ——');
 const fmt = await import(run('src/lib/format.ts'));
@@ -230,6 +249,28 @@ console.log('\n—— 14. Notification audience isolation ——');
 const notifs = offlineStore.listLocalNotifications();
 ok('Customer never receives admin notifications', notifs.filter((n) => n.audience === 'admin').every((n) => n.audience !== 'customer'));
 ok('Booking created both-side notifications (customer + admin)', notifs.some((n) => n.audience === 'customer' && n.booking_ref) && notifs.some((n) => n.audience === 'admin' && n.booking_ref));
+
+console.log('\n—— 15. Map marker contract (nullable scores normalised at the boundary) ——');
+// Regression for the type-contract bug that broke the production build:
+// a ranking score that can be null must never leak into the map's stricter
+// marker type, and rows without usable coordinates must never be plotted.
+const mapData = await import(run('src/lib/mapData.ts'));
+const markers = mapData.toMapBusinesses([
+  { id: 1, name: 'Nearby Clinic', category: 'Clinics', rating: 4.6, lat: 26.9124, lng: 75.7873, ai_score: undefined },
+  { id: 2, name: 'No Score Salon', category: 'Salons', rating: 4.9, lat: 26.92, lng: 75.8, ai_score: null },
+  { id: 3, name: 'Missing Lat', category: 'Gyms', rating: 4.2, lng: 75.8 },
+  { id: 4, name: 'Null Coords', category: 'Spas', rating: 4.1, lat: null, lng: null },
+  { id: 5, name: 'Broken Score', category: 'Cafés', rating: 4.4, lat: 26.9, lng: 75.7, ai_score: NaN },
+]);
+ok('only geo-located listings become markers', markers.length === 3, `got ${markers.length}`);
+ok('missing coordinates are never plotted at 0,0', !markers.some((m) => m.id === 3 || m.id === 4));
+ok('undefined score normalises to null (nullable contract, not a lie)', markers[0].ai_score === null);
+ok('an explicit null score is preserved as null', markers[1].ai_score === null);
+ok('a non-finite score normalises to null', markers[2].ai_score === null);
+ok('every marker carries finite lat/lng/rating',
+  markers.every((m) => Number.isFinite(m.lat) && Number.isFinite(m.lng) && Number.isFinite(m.rating)));
+ok('hasMapCoords rejects out-of-range latitude', mapData.hasMapCoords({ lat: 120, lng: 75 }) === false);
+ok('marker order follows the discovery result order', markers.map((m) => m.id).join(',') === '1,2,5');
 
 console.log('\n—— 11. Reset demo: isolated + restores clean state ——');
 demoStore.resetDemo();

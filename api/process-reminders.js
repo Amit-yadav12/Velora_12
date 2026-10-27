@@ -9,7 +9,7 @@ import { travelTimeMin } from './_lib/maps.js';
 // each reminder sent. Designed to be hit by a cron/scheduler; also callable
 // on-demand from the client to surface any just-due reminders.
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   try {
     const now = new Date().toISOString();

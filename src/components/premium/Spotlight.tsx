@@ -120,7 +120,7 @@ export default function Spotlight({ open, onClose }: { open: boolean; onClose: (
               })}
             </div>
             <div className="px-4 py-2.5 border-t border-app flex items-center gap-3 text-[10px] text-dim">
-              <span className="flex items-center gap-1"><Sparkles className="h-3 w-3" /> AI instant search · {city.name}</span>
+              <span className="flex items-center gap-1"><Sparkles className="h-3 w-3" /> Instant search · {city.name}</span>
               <span className="ml-auto">↑↓ navigate · ↵ select</span>
             </div>
           </motion.div>

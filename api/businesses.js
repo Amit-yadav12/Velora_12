@@ -1,11 +1,11 @@
 import supabase from './db-client.js';
-import { cors, sanitizeText, enforceRateLimit } from './_lib/security.js';
+import { cors, sanitizeText, enforceRateLimit, safeError } from './_lib/security.js';
 import { cityBusinesses, syntheticBusiness, isSyntheticId } from './_lib/synthetic.js';
 
 // Product catalog for customers: businesses, their services & staff.
 // City-scoped; merges DB rows with the synthetic city ecosystem.
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (!enforceRateLimit(req, res, 'businesses', { limit: 120, windowMs: 60_000 })) return;
   try {
@@ -83,6 +83,7 @@ export default async function handler(req, res) {
     res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('[businesses:error]', err.message);
-    res.status(500).json({ error: err.message });
+    const s = safeError(err, 'businesses:error');
+    if (!res.headersSent) res.status(s.status).json({ error: s.error });
   }
 }

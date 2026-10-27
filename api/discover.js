@@ -1,5 +1,6 @@
+import { istHour, istMinute, istTimeLabel, istWallDate, istYmd } from './_lib/ist.js';
 import supabase from './db-client.js';
-import { cors, sanitizeText, enforceRateLimit } from './_lib/security.js';
+import { cors, sanitizeText, enforceRateLimit, safeError } from './_lib/security.js';
 import { cityBusinesses, isSyntheticId, hashStr, mulberry32 } from './_lib/synthetic.js';
 
 // FAST location-aware discovery, CITY-SCOPED. Merges Supabase rows with the
@@ -19,7 +20,7 @@ function haversineKm(a, b) {
 }
 
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (!enforceRateLimit(req, res, 'discover', { limit: 120, windowMs: 60_000 })) return;
   try {
@@ -28,7 +29,7 @@ export default async function handler(req, res) {
     const origin = lat && lng ? { lat: +lat, lng: +lng } : null;
     const cityName = sanitizeText(city, 40) || null;
     const now = new Date();
-    const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false }).format(now));
+    const hour = istHour(now);
 
     const key = JSON.stringify({ lat, lng, category, q, sort, open_now, max_km, min_rating, city: cityName, price_max, b: Math.floor(Date.now() / TTL) });
     const hit = cache.get(key);
@@ -79,15 +80,18 @@ export default async function handler(req, res) {
       const km = origin ? haversineKm(origin, b) : null;
       const travelMin = km != null ? Math.round((km / 35) * 60) : null;
 
+      // Next bookable slot label, computed on the IST wall clock (the runtime
+      // is UTC, so local-time arithmetic produced late-night/overnight labels).
       let nextLabel = null;
       if (open) {
-        const s = new Date(now);
-        s.setMinutes(now.getMinutes() < 30 ? 30 : 0, 0, 0);
-        if (now.getMinutes() >= 30) s.setHours(now.getHours() + 1);
-        if (s.getHours() < ch) nextLabel = s.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        const mins = istMinute(now);
+        const nextMin = mins < 30 ? 30 : 0;
+        const nextHour = istHour(now) + (mins < 30 ? 0 : 1);
+        if (nextHour < ch) {
+          nextLabel = istTimeLabel(istWallDate(istYmd(now), nextHour, nextMin));
+        }
       } else if (hour < oh) {
-        const s = new Date(now); s.setHours(oh, 0, 0, 0);
-        nextLabel = s.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        nextLabel = istTimeLabel(istWallDate(istYmd(now), oh, 0));
       }
 
       let score = 50 + ((b.rating || 4.2) - 4) * 30;
@@ -133,6 +137,7 @@ export default async function handler(req, res) {
     return res.status(200).json(payload);
   } catch (err) {
     console.error('[discover:error]', err.message);
-    res.status(500).json({ error: err.message });
+    const s = safeError(err, 'discover:error');
+    if (!res.headersSent) res.status(s.status).json({ error: s.error });
   }
 }

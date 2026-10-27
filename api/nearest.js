@@ -1,5 +1,5 @@
 import supabase from './db-client.js';
-import { cors, sanitizeText, enforceRateLimit } from './_lib/security.js';
+import { cors, sanitizeText, enforceRateLimit, safeError } from './_lib/security.js';
 import { cityBusinesses } from './_lib/synthetic.js';
 
 // "Nearest everything": returns the single closest active business in each
@@ -15,7 +15,7 @@ function haversineKm(a, b) {
 }
 
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (!enforceRateLimit(req, res, 'nearest', { limit: 120, windowMs: 60_000 })) return;
   try {
@@ -71,6 +71,7 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error('[nearest:error]', err.message);
-    res.status(500).json({ error: err.message });
+    const s = safeError(err, 'nearest:error');
+    if (!res.headersSent) res.status(s.status).json({ error: s.error });
   }
 }

@@ -81,7 +81,7 @@ async function audit(actor, action, entityId, metadata, ip) {
 
 // Customer booking pipeline against the business catalog.
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   const ip = clientIp(req);
   try {
@@ -102,7 +102,12 @@ export default async function handler(req, res) {
     assert(start.getTime() > Date.now() - 60000, 'That slot is in the past.');
 
     // 1b. Idempotency: retries/double-clicks replay the original response.
-    const idempotencyKey = sanitizeText(b.idempotency_key || req.headers['x-idempotency-key'], 80);
+    // The key is NAMESPACED by the caller (verified user id, else the booking
+    // email): a replayed response contains the booking's details, so two
+    // different customers must never be able to collide on the same key.
+    const rawIdemKey = sanitizeText(b.idempotency_key || req.headers['x-idempotency-key'], 80);
+    const idemScope = auth?.user?.id || `email:${customer_email}`;
+    const idempotencyKey = rawIdemKey ? `${idemScope}:${rawIdemKey}` : null;
     if (idempotencyKey) {
       const replay = await findReplay(idempotencyKey);
       if (replay) return res.status(200).json({ ...replay, deduplicated: true });
@@ -111,6 +116,11 @@ export default async function handler(req, res) {
     // 2. Load business + service (DB rows, synthetic ecosystem, or live Google places)
     let biz = null;
     let svc = null;
+    // Only a real `business_services` row may be written to bookings.service_id
+    // (it is a foreign key). Synthetic/live-snapshot ids are not rows, so they
+    // stay NULL — but real businesses now keep their service linkage instead of
+    // silently losing it on every booking.
+    let svcFromDb = false;
     if (typeof b.business_id === 'string' && b.business_id.startsWith('live-')) {
       // Live Google Maps business — client supplies the hydrated snapshot.
       const snap = b.business_snapshot || {};
@@ -141,6 +151,7 @@ export default async function handler(req, res) {
       ]);
       biz = dbBiz;
       svc = dbSvc;
+      if (biz && svc) svcFromDb = true;
       if (!biz) {
         // Graceful fallback: synthetic registry (demo continuity)
         const synth = syntheticBusiness(b.business_id);
@@ -210,7 +221,7 @@ export default async function handler(req, res) {
     try {
       const { data, error: insErr } = await supabase.from('bookings').insert({
         ref, customer_id: auth?.user?.id || null, customer_name, customer_email,
-        service_id: null, service_name: svc.name,
+        service_id: svcFromDb && svc.id != null ? svc.id : null, service_name: svc.name,
         employee_name: staffName, resource_id: typeof biz.id === 'number' ? biz.id : null, resource_name: biz.name,
         start_time: start.toISOString(), end_time: end.toISOString(),
         status: 'confirmed', price: svc.price, price_breakdown: [{ k: svc.name, v: Number(svc.price) }],

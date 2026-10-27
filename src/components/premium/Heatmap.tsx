@@ -28,7 +28,7 @@ export default function Heatmap({ businessId, onPickDate }: { businessId?: numbe
   return (
     <div className="card p-5">
       <div className="flex items-center justify-between mb-4">
-        <div><p className="font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4 text-[var(--color-brand-indigo)]" /> Availability forecast</p><p className="text-xs text-dim mt-0.5">Predicted occupancy · next 14 days</p></div>
+        <div><p className="font-semibold flex items-center gap-2"><Sparkles className="h-4 w-4 text-[var(--color-brand-indigo)]" /> Availability forecast</p><p className="text-xs text-dim mt-0.5">Estimated occupancy · next 14 days</p></div>
       </div>
       <div className="grid grid-cols-7 gap-1.5">
         {days.map((d, i: number) => (
@@ -41,7 +41,8 @@ export default function Heatmap({ businessId, onPickDate }: { businessId?: numbe
           </motion.button>
         ))}
       </div>
-      <div className="flex items-center gap-3 mt-3 text-[10px] text-dim">
+      <p className="mt-3 text-[10px] text-dim leading-relaxed">Estimated from booking history and a baseline forecast — not live sensor data.</p>
+      <div className="flex items-center gap-3 mt-2 text-[10px] text-dim">
         <span className="flex items-center gap-1"><span className="h-2 w-2 rounded bg-emerald-400" /> Open</span>
         <span className="flex items-center gap-1"><span className="h-2 w-2 rounded" style={{ background: color(50) }} /> Moderate</span>
         <span className="flex items-center gap-1"><span className="h-2 w-2 rounded bg-red-500" /> Busy</span>
@@ -49,7 +50,7 @@ export default function Heatmap({ businessId, onPickDate }: { businessId?: numbe
       {Array.isArray(data.best_days) && data.best_days.length > 0 && data.best_days[0]?.date && (
         <div className="mt-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-3 flex items-start gap-2.5">
           <TrendingDown className="h-4 w-4 text-emerald-400 mt-0.5 shrink-0" />
-          <p className="text-xs text-emerald-100/90"><span className="font-medium">AI tip:</span> {ist(data.best_days[0].date, { weekday: 'long', month: 'short', day: 'numeric' })} is the least crowded ({data.best_days[0].occupancy}% booked). {data.busiest_day && `Avoid ${data.busiest_day.weekday} — it's the busiest.`}</p>
+          <p className="text-xs text-emerald-100/90"><span className="font-medium">Tip:</span> {ist(data.best_days[0].date, { weekday: 'long', month: 'short', day: 'numeric' })} is the least crowded ({data.best_days[0].occupancy}% booked). {data.busiest_day && `Avoid ${data.busiest_day.weekday} — it's the busiest.`}</p>
         </div>
       )}
     </div>

@@ -1,9 +1,9 @@
 import supabase from './db-client.js';
-import { cors } from './_lib/security.js';
+import { cors, safeError } from './_lib/security.js';
 import { getAuth, requireRole } from './_lib/auth.js';
 
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   try {
     if (req.method === 'GET') {
@@ -18,6 +18,7 @@ export default async function handler(req, res) {
     res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('[audit:error]', err.message);
-    res.status(500).json({ error: err.message });
+    const s = safeError(err, 'audit:error');
+    if (!res.headersSent) res.status(s.status).json({ error: s.error });
   }
 }

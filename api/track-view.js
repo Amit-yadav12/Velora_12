@@ -1,10 +1,10 @@
 import supabase from './db-client.js';
-import { cors, enforceRateLimit } from './_lib/security.js';
+import { cors, enforceRateLimit, safeError } from './_lib/security.js';
 import { getAuth } from './_lib/auth.js';
 
 // Record + fetch recently viewed businesses per user, and toggle favorites.
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   try {
     if (!enforceRateLimit(req, res, 'track-view', { limit: 120, windowMs: 60_000 })) return;
@@ -50,6 +50,7 @@ export default async function handler(req, res) {
     res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('[track-view:error]', err.message);
-    res.status(500).json({ error: err.message });
+    const s = safeError(err, 'track-view:error');
+    if (!res.headersSent) res.status(s.status).json({ error: s.error });
   }
 }

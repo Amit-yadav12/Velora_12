@@ -1,3 +1,4 @@
+import { istDayOfMonth, istTimeLabel, istWallDate, istWeekdayIndex, istWeekdayLabel, istYmd } from './ist.js';
 // Server-side synthetic ecosystem — mirrors src/lib/synthetic.ts so API
 // fallbacks stay consistent with the client. Deterministic per city+id.
 
@@ -236,14 +237,16 @@ export function syntheticSlots(bizId, dateStr, durationMin, openTime, closeTime)
   const openH = parseInt((openTime || '09:00').split(':')[0], 10);
   const closeH = openTime === '00:00' ? 24 : (parseInt((closeTime || '21:00').split(':')[0], 10) || 21);
   const now = Date.now();
-  const day = new Date(`${dateStr}T00:00:00`);
-  const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+  // Business hours are IST wall-clock. The runtime is UTC on Netlify/Vercel, so
+  // slots must be anchored with the +05:30 offset (see ./ist.js).
+  const wd = istWeekdayIndex(istWallDate(dateStr, 12, 0));
+  const isWeekend = wd === 0 || wd === 6;
   const loadFactor = isWeekend ? 0.42 : 0.26;
   const slots = [];
   for (let h = openH; h < closeH; h++) {
     for (const m of [0, 30]) {
-      const s = new Date(`${dateStr}T00:00:00`);
-      s.setHours(h, m, 0, 0);
+      const s = istWallDate(dateStr, h, m);
+      if (Number.isNaN(s.getTime())) continue;
       if (s.getTime() < now - 60000) continue;
       const peak = (h >= 11 && h <= 13) || (h >= 17 && h <= 19);
       const taken = rnd() < loadFactor + (peak ? 0.18 : 0);
@@ -259,7 +262,7 @@ export function syntheticSlots(bizId, dateStr, durationMin, openTime, closeTime)
       }
       slots.push({
         time: s.toISOString(),
-        label: s.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }),
+        label: istTimeLabel(s),
         status, available: !taken, wait_min: wait, crowd, score: Math.round(score),
       });
     }
@@ -271,17 +274,19 @@ export function syntheticHeatmap(bizId) {
   const rnd = mulberry32(hashStr(`heat|${bizId}`));
   const bias = rnd() * 0.3;
   const days = [];
+  const todayYmd = istYmd();
   for (let i = 0; i < 14; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    d.setHours(0, 0, 0, 0);
-    const wd = d.getDay();
+    // IST calendar days — `toISOString().slice(0,10)` is the UTC date and used
+    // to put the whole forecast one day behind between 00:00 and 05:30 IST.
+    const d = new Date(istWallDate(todayYmd, 12, 0).getTime() + i * 86400000);
+    const wd = istWeekdayIndex(d);
     const weekend = wd === 0 || wd === 6;
     const occ = Math.min(0.96, Math.max(0.08, (weekend ? 0.55 : 0.3) + bias + (rnd() - 0.5) * 0.3 + (i === 0 ? 0.12 : 0)));
     days.push({
-      date: d.toISOString().slice(0, 10),
-      weekday: d.toLocaleDateString('en-IN', { weekday: 'short' }),
-      day: d.getDate(), occupancy: Math.round(occ * 100),
+      date: istYmd(d),
+      weekday: istWeekdayLabel(d),
+      day: istDayOfMonth(d),
+      occupancy: Math.round(occ * 100),
     });
   }
   const hours = [];

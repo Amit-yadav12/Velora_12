@@ -7,7 +7,7 @@ import { cors, enforceRateLimit, safeError } from './_lib/security.js';
 import { getAuth } from './_lib/auth.js';
 
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   try {
     if (!enforceRateLimit(req, res, 'notifications', { limit: 120, windowMs: 60_000 })) return;

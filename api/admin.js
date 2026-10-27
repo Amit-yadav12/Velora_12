@@ -1,6 +1,7 @@
 import supabase from './db-client.js';
-import { cors, sanitizeText, assert, clientIp } from './_lib/security.js';
+import { cors, sanitizeText, assert, clientIp, safeError } from './_lib/security.js';
 import { getAuth, requireRole } from './_lib/auth.js';
+import { istYmd } from './_lib/ist.js';
 
 // Secure admin operations. Requires an authenticated ADMIN.
 async function audit(actor, action, entity, entityId, metadata, ip) {
@@ -9,7 +10,7 @@ async function audit(actor, action, entity, entityId, metadata, ip) {
 }
 
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   const ip = clientIp(req);
   try {
@@ -35,7 +36,8 @@ export default async function handler(req, res) {
           customers: (profiles || []).filter(p => p.role === 'customer'),
           stats: {
             total: active.length, revenue: Math.round(active.reduce((s, b) => s + Number(b.price || 0), 0)),
-            today: active.filter(b => new Date(b.start_time).toDateString() === new Date().toDateString()).length,
+            // "Today" means today in IST, not in the (UTC) runtime zone.
+            today: active.filter(b => istYmd(new Date(b.start_time)) === istYmd()).length,
             businesses: (businesses || []).length,
           },
         });
@@ -115,6 +117,7 @@ export default async function handler(req, res) {
     res.status(405).json({ error: 'Method not allowed' });
   } catch (err) {
     console.error('[admin:error]', err.message);
-    res.status(err.status || 500).json({ error: err.message });
+    const s = safeError(err, 'admin:error');
+    if (!res.headersSent) res.status(s.status).json({ error: s.error });
   }
 }
