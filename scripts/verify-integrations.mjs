@@ -267,6 +267,37 @@ await withEnv({ APP_URL: null, URL: null, DEPLOY_PRIME_URL: null, VERCEL_URL: nu
 });
 
 /* ========================================================================== */
+/* 3b. Door check-in — the ticket is proof, not decoration                    */
+/* ========================================================================== */
+section('3b. Door check-in requires a verifiable ticket');
+
+const bookingsApi = readFileSync(join(ROOT, 'api/bookings.js'), 'utf8');
+// Slice from the check_in branch to the *next* branch, so the assertion window
+// is exactly this action's code (the first 'status' hit is a guard earlier in
+// the file, which would give an empty window).
+const checkInStart = bookingsApi.indexOf("if (action === 'check_in')");
+const checkInEnd = bookingsApi.indexOf("if (action === 'status')", checkInStart);
+const checkInBlock = checkInStart < 0 ? '' : bookingsApi.slice(checkInStart, checkInEnd);
+ok('the API implements an explicit check_in action', checkInBlock.length > 200);
+ok('check_in verifies the scanned ticket signature server-side',
+  /verifyBookingToken\(ticket\)/.test(checkInBlock), 'no verifyBookingToken call');
+ok('check_in refuses a missing ticket instead of trusting a status flip',
+  /assert\(ticket,/.test(checkInBlock));
+ok('check_in is staff-only', /assert\(isAdmin/.test(checkInBlock));
+ok('the ticket must belong to the row being checked in',
+  /verified\.data\.ref/.test(checkInBlock) && /status\(409\)/.test(checkInBlock));
+ok('re-scanning is idempotent (no second state change)',
+  /already_checked_in/.test(checkInBlock));
+ok('the state machine still gates check_in',
+  /canTransition\(existing\.status, 'checked_in'\)/.test(checkInBlock));
+ok('check-in is audited', /audit\(actor, 'booking\.check_in'/.test(checkInBlock));
+ok('a failed verification never mutates the booking',
+  checkInBlock.indexOf('if (!verified.ok)') < checkInBlock.indexOf(".update({ status: 'checked_in'"));
+ok('the browser cannot mark a booking checked in without a ticket',
+  !/action: 'status', status: 'checked_in'/.test(readFileSync(join(ROOT, 'src/services/checkIn.ts'), 'utf8'))
+  && /ticket: token/.test(readFileSync(join(ROOT, 'src/services/checkIn.ts'), 'utf8')));
+
+/* ========================================================================== */
 /* 4. India / Asia-Kolkata helpers                                            */
 /* ========================================================================== */
 section('4. India-first validation + Asia/Kolkata time');
@@ -575,6 +606,34 @@ const invoiceService = applyAll.indexOf('create policy "invoices_insert_service"
 ok('invoice writes are service-role only',
   permissiveInvoice >= 0 && invoiceDrop > permissiveInvoice && invoiceService > invoiceDrop,
   `permissive@${permissiveInvoice} drop@${invoiceDrop} service@${invoiceService}`);
+
+/* --------------------------------------------------------------------------
+ * Brand assets: the declared sizes must match the files that actually ship.
+ * A PWA icon whose pixels disagree with the manifest is an install bug, and
+ * the OG card must be the 1200x630 the meta tags promise.
+ * -------------------------------------------------------------------------- */
+const pngSize = (file) => {
+  const buf = readFileSync(join(ROOT, 'public', file));
+  // IHDR width/height live at bytes 16..23 of every PNG.
+  return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20), bytes: buf.length, png: buf.slice(1, 4).toString() === 'PNG' };
+};
+const manifest = JSON.parse(read('public/manifest.webmanifest'));
+for (const icon of manifest.icons) {
+  const size = pngSize(icon.src.replace(/^\//, ''));
+  ok(`PWA icon ${icon.src} is a real PNG at its declared ${icon.sizes}`,
+    size.png && `${size.w}x${size.h}` === icon.sizes, `${size.w}x${size.h}`);
+}
+const og = pngSize('og-image.png');
+ok('Social card is the 1200x630 the meta tags declare', og.w === 1200 && og.h === 630, `${og.w}x${og.h}`);
+ok('Ship-weight sanity: icons and card stay small (no multi-megabyte blobs)', og.bytes < 900_000 && pngSize('icon-512.png').bytes < 400_000,
+  `og ${Math.round(og.bytes / 1024)}KB · 512 ${Math.round(pngSize('icon-512.png').bytes / 1024)}KB`);
+ok('Index.html points at the apple touch icon that exists', (() => {
+  const html = read('index.html');
+  const href = (html.match(/rel="apple-touch-icon"[^>]*href="([^"]+)"/) || [])[1];
+  return !!href && pngSize(href.replace(/^\//, '')).png;
+})());
+ok('The brand assets are reproducible from a committed script',
+  read('scripts/brand/make-assets.sh').includes('render_icon 512') && read('scripts/brand/fonts/OFL.txt').includes('SIL OPEN FONT LICENSE'));
 
 const promote = read('supabase/PROMOTE_ADMIN.sql');
 ok('PROMOTE_ADMIN.sql has no psql-only meta-commands', !/^\s*\\(set|i|c)\b/m.test(promote));

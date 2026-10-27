@@ -272,6 +272,71 @@ ok('every marker carries finite lat/lng/rating',
 ok('hasMapCoords rejects out-of-range latitude', mapData.hasMapCoords({ lat: 120, lng: 75 }) === false);
 ok('marker order follows the discovery result order', markers.map((m) => m.id).join(',') === '1,2,5');
 
+console.log('\n—— 16. Door check-in planner (ticket → verdict, no DOM) ——');
+// The planner is the security-critical decision: a booking may only be marked
+// checked-in when its own ticket verified. These cases mirror every branch.
+const checkIn = await import(run('src/lib/checkInPlan.ts'));
+const mk = (ref, status, extra = {}) => ({
+  id: `local-${ref}`, ref, status, service_name: 'Signature Haircut & Styling',
+  customer_name: 'Demo Customer', start_time: new Date().toISOString(), local: true, ...extra,
+});
+const OK = { valid: true, booking: { ref: 'VL-OK1' } };
+const plan = (result, rows) => checkIn.planCheckIn(result, rows);
+
+ok('a valid ticket for a confirmed booking is accepted',
+  plan(OK, [mk('VL-OK1', 'confirmed')]).code === 'verified');
+ok('rescanning an already checked-in ticket is idempotent, not an error',
+  plan(OK, [mk('VL-OK1', 'checked_in')]).code === 'already_checked_in');
+ok('a cancelled booking is refused', plan(OK, [mk('VL-OK1', 'cancelled')]).code === 'cancelled');
+ok('a pending request must be confirmed first', plan(OK, [mk('VL-OK1', 'pending')]).code === 'pending');
+ok('a completed appointment cannot be checked in again',
+  plan(OK, [mk('VL-OK1', 'completed')]).code === 'unsupported');
+ok('an altered/unsigned ticket is refused',
+  plan({ valid: false, reason: 'invalid_signature' }, [mk('VL-OK1', 'confirmed')]).code === 'invalid');
+ok('an unparseable ticket is refused',
+  plan({ valid: false, reason: 'malformed' }, [mk('VL-OK1', 'confirmed')]).code === 'invalid');
+ok('an expired ticket is refused',
+  plan({ valid: false, reason: 'expired' }, [mk('VL-OK1', 'confirmed')]).code === 'expired');
+ok('a genuine ticket for someone else\'s booking is not matched',
+  plan(OK, [mk('VL-OTHER', 'confirmed')]).code === 'not_found');
+ok('a refused plan never carries an actionable booking',
+  plan({ valid: false, reason: 'invalid_signature' }, [mk('VL-OK1', 'confirmed')]).booking === undefined);
+ok('the planner explains itself in human language',
+  ['verified', 'pending', 'cancelled'].every((code) => {
+    const rows = [mk('VL-OK1', code === 'verified' ? 'confirmed' : code)];
+    const p = plan(OK, rows);
+    return p.title.length > 3 && p.message.length > 10;
+  }));
+
+console.log('\n—— 17. Price comparison maths (₹, like-for-like only) ——');
+const cmp = await import(run('src/lib/compare.ts'));
+const bizA = { id: 'a', name: 'A', rating: 4.6, distance_km: 1.2, open_now: true,
+  services: [{ id: 1, name: 'Haircut', price: 800, duration_min: 45 }, { id: 2, name: 'Spa', price: 2000, duration_min: 60 }] };
+const bizB = { id: 'b', name: 'B', rating: 4.2, distance_km: 3.4, open_now: false,
+  services: [{ id: 3, name: 'Haircut', price: 1100, duration_min: 40 }] };
+const matrix = cmp.buildComparison([bizA, bizB]);
+ok('comparison keeps one column per shortlisted business', matrix.columns.length === 2);
+ok('service union is derived, not hardcoded', matrix.services.map((r) => r.name).join(',') === 'Haircut,Spa');
+const haircut = matrix.services.find((r) => r.name === 'Haircut');
+ok('the cheapest business is marked per service', haircut.cheapest === 0, String(haircut.cheapest));
+ok('the price spread is the real difference (₹1100 − ₹800)', haircut.spread === 300, String(haircut.spread));
+ok('a business that does not list a service shows null, never ₹0',
+  matrix.services.find((r) => r.name === 'Spa').prices[1] === null);
+ok('starting price is the cheapest listed service',
+  matrix.columns[0].from === 800 && matrix.columns[1].from === 1100);
+ok('the summary states the widest real gap in rupees',
+  /₹300/.test(cmp.comparisonSummary(matrix)), cmp.comparisonSummary(matrix));
+ok('a single business yields a "add one more" prompt, not a bogus verdict',
+  /Add one more/.test(cmp.comparisonSummary(cmp.buildComparison([bizA]))));
+ok('no overlapping services → no invented saving',
+  /no like-for-like price/.test(cmp.comparisonSummary(cmp.buildComparison([
+    bizA, { id: 'c', name: 'C', rating: 4, services: [{ id: 9, name: 'Massage', price: 1500, duration_min: 60 }] },
+  ]))));
+ok('comparison is capped at three businesses', cmp.buildComparison([bizA, bizB, bizA, bizB]).columns.length === 3);
+ok('card price label uses rupee formatting', /^from ₹800$/.test(cmp.fromPriceLabel(bizA)), cmp.fromPriceLabel(bizA));
+ok('a business with no prices is labelled honestly, not ₹0',
+  cmp.fromPriceLabel({ id: 'z', name: 'Z', rating: 4 }) === 'Price on request');
+
 console.log('\n—— 11. Reset demo: isolated + restores clean state ——');
 demoStore.resetDemo();
 ok('Operating sample restored after reset', offlineStore.listLocalBookings().length >= 16);

@@ -1,15 +1,18 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Star, MapPin, Clock, Navigation, Phone, Heart, ChevronRight, Sparkles, Car } from 'lucide-react';
+import { Star, MapPin, Clock, Navigation, Phone, Heart, ChevronRight, Sparkles, Car, ArrowLeftRight, Check } from 'lucide-react';
 import { categoryColor, mapsDirections, imgOnError, type Business } from '../../lib/product';
 import { CategoryIcon } from '../product';
 import { formatDistance, formatTravel } from '../../lib/geo';
 import { fadeUp } from '../../lib/motion';
 import { prefetchOnIntent } from '../../lib/smartCache';
+import { fromPriceLabel } from '../../lib/compare';
 
-export default function DiscoverCard({ b, active, onHover, compact }: {
+export default function DiscoverCard({ b, active, onHover, compact, onCompare, compared }: {
   b: Business; index?: number; active?: boolean; onHover?: (id: number | string | null) => void; compact?: boolean;
+  /** Shortlist toggle — renders only where comparison is available. */
+  onCompare?: (b: Business) => void; compared?: boolean;
 }) {
   const nav = useNavigate();
   const color = categoryColor(b.category);
@@ -37,7 +40,20 @@ export default function DiscoverCard({ b, active, onHover, compact }: {
               <h3 className="font-semibold leading-tight truncate">{b.name}</h3>
               <p className="text-xs text-dim flex items-center gap-1 mt-0.5"><CategoryIcon category={b.category} className="h-3 w-3" color={color} />{b.category}</p>
             </div>
-            <button onClick={toggleFav} className="shrink-0 h-7 w-7 grid place-items-center rounded-lg hover:bg-[var(--surface-hover)]"><Heart className={`h-4 w-4 ${fav ? 'fill-red-500 text-red-500' : 'text-dim'}`} /></button>
+            <div className="shrink-0 flex items-center gap-0.5">
+              {onCompare && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onCompare(b); }}
+                  aria-pressed={!!compared}
+                  aria-label={`${compared ? 'Remove' : 'Add'} ${b.name} ${compared ? 'from' : 'to'} price comparison`}
+                  title="Compare prices"
+                  className={`h-7 w-7 grid place-items-center rounded-lg hover:bg-[var(--surface-hover)] ${compared ? 'text-[var(--color-brand-indigo)]' : 'text-dim'}`}
+                >
+                  {compared ? <Check className="h-4 w-4" aria-hidden="true" /> : <ArrowLeftRight className="h-4 w-4" aria-hidden="true" />}
+                </button>
+              )}
+              <button onClick={toggleFav} aria-label={`${fav ? 'Remove' : 'Save'} ${b.name}`} className="h-7 w-7 grid place-items-center rounded-lg hover:bg-[var(--surface-hover)]"><Heart className={`h-4 w-4 ${fav ? 'fill-red-500 text-red-500' : 'text-dim'}`} /></button>
+            </div>
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
             <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-amber-400 text-amber-400" /><span className="font-medium">{Number(b.rating).toFixed(1)}</span><span className="text-dim">({b.review_count})</span></span>
@@ -46,6 +62,7 @@ export default function DiscoverCard({ b, active, onHover, compact }: {
           </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px]">
             <span className={`px-1.5 py-0.5 rounded ${b.open_now ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'}`}>{b.open_now ? 'Open now' : 'Closed'}</span>
+            <span className="px-1.5 py-0.5 rounded bg-[var(--surface-hover)] text-[var(--text)] tabular-nums">{fromPriceLabel(b)}</span>
             {b.next_available_label && <span className="text-dim inline-flex items-center gap-1"><Clock className="h-3 w-3" />Next: {b.next_available_label}</span>}
           </div>
         </div>

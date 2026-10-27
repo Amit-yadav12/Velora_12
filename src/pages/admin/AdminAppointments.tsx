@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Download, LogIn, CheckCircle2, X, Eye, Mail, Phone, MapPin, Clock, QrCode, ShieldCheck } from 'lucide-react';
+import { Download, LogIn, CheckCircle2, X, Eye, Mail, Phone, MapPin, Clock, QrCode, ShieldCheck, ScanLine } from 'lucide-react';
 import { PageHeader, Spinner, EmptyState, StatusBadge, DemoBadge, Modal, btnGhost, btnPrimary } from '../../components/ui';
 import { useConsoleData } from '../../lib/useConsoleData';
 import { applyBookingAction } from '../../services/consoleActions';
 import { toast } from '../../services/events';
+import CheckInDialog from '../../components/console/CheckInDialog';
 import { ist, istTime, istDate, istDateTime } from '../../lib/format';
 import { inr } from '../../lib/format';
 import { canTransition, isActionable } from '../../lib/bookingStatus';
@@ -17,9 +18,10 @@ export default function AdminAppointments() {
   const [filter, setFilter] = useState('all');
   const [busy, setBusy] = useState<number | string | null>(null);
   const [detail, setDetail] = useState<ConsoleBooking | null>(null);
+  const [checkInOpen, setCheckInOpen] = useState(false);
 
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: bookings.length, pending: 0, confirmed: 0, completed: 0, cancelled: 0 };
+    const c: Record<string, number> = { all: bookings.length, pending: 0, confirmed: 0, checked_in: 0, completed: 0, cancelled: 0 };
     for (const b of bookings) if (c[b.status] != null) c[b.status] += 1;
     return c;
   }, [bookings]);
@@ -55,15 +57,20 @@ export default function AdminAppointments() {
   if (loading) return <Spinner />;
 
   return (
-    <div>
+    <div data-checkin-open={String(checkInOpen)}>
       <PageHeader
         title="Appointments"
         subtitle="Every booking across all businesses — updated in real time."
-        action={<button onClick={exportCsv} className={btnGhost}><Download className="h-4 w-4" /> Export CSV</button>}
+        action={
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setCheckInOpen(true)} className={btnPrimary}><ScanLine className="h-4 w-4" /> Verify ticket</button>
+            <button onClick={exportCsv} className={btnGhost}><Download className="h-4 w-4" /> Export CSV</button>
+          </div>
+        }
       />
 
       <div className="flex gap-2 mb-4 flex-wrap">
-        {['all', 'pending', 'confirmed', 'completed', 'cancelled'].map((f) => (
+        {['all', 'pending', 'confirmed', 'checked_in', 'completed', 'cancelled'].map((f) => (
           <button key={f} onClick={() => setFilter(f)}
             className={`text-xs px-3 py-1.5 rounded-lg capitalize transition-colors ${filter === f ? 'grad-btn text-white' : 'border border-app text-muted hover:border-[var(--border-strong)]'}`}>
             {f.replace('_', ' ')} <span className="opacity-60">({counts[f] ?? 0})</span>
@@ -106,7 +113,10 @@ export default function AdminAppointments() {
                         {isActionable(b.status) && (
                           <>
                             {b.status === 'pending' && <button onClick={() => act(b, 'confirm')} title="Confirm" className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:text-blue-400 hover:border-blue-400/50"><CheckCircle2 className="h-3.5 w-3.5" /></button>}
-                            {b.status !== 'pending' && <button onClick={() => act(b, 'check_in')} title="Check in" className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:text-cyan-400 hover:border-cyan-400/50"><LogIn className="h-3.5 w-3.5" /></button>}
+                            {/* Manual check-in is allowed (guest lost their phone) but is
+                                recorded as a manual override — the ticket flow above is
+                                the verified path and the one to demo. */}
+                            {b.status !== 'pending' && <button onClick={() => act(b, 'check_in')} title="Check in without ticket (manual override)" className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:text-cyan-400 hover:border-cyan-400/50"><LogIn className="h-3.5 w-3.5" /></button>}
                             <button onClick={() => act(b, 'complete')} title="Complete" className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:text-emerald-400 hover:border-emerald-400/50"><CheckCircle2 className="h-3.5 w-3.5" /></button>
                             <button onClick={() => act(b, 'cancel')} title="Cancel" className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:text-red-400 hover:border-red-400/50"><X className="h-3.5 w-3.5" /></button>
                           </>
@@ -120,6 +130,15 @@ export default function AdminAppointments() {
           </div>
         </div>
       )}
+
+      {/* Door check-in — its own dialog, never nested inside another modal */}
+      <CheckInDialog
+        open={checkInOpen}
+        onClose={() => setCheckInOpen(false)}
+        bookings={bookings}
+        onCheckedIn={() => { reload(); setFilter('checked_in'); }}
+        onOpenBooking={(b) => { setCheckInOpen(false); setDetail(b); }}
+      />
 
       {/* Appointment detail — full context + allowed actions */}
       <Modal open={!!detail} onClose={() => setDetail(null)} title="Appointment details" wide>

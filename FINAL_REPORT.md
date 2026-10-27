@@ -17,9 +17,9 @@ All commands run in this workspace, in this order, on the final working tree:
 | `npm run lint` | ✅ | ESLint 9, errors fail (no disables added) |
 | `npm run build` | ✅ | `tsc -b` strict + Vite production build |
 | `npm run sql:check` | ✅ | `APPLY_ALL.sql` in sync with `supabase/migrations/` (4 migrations) |
-| `npm run verify:demo` | ✅ 76/76 | Demo engine + demo auth (4/4) |
-| `npm run verify:integrations` | ✅ 119/119 | Calendar/email/QR/IST/booking guards/security/SQL invariants |
-| `npm run verify:app` | ✅ 119/119 | Real `App.tsx` on a real Vite dev server + real `/api/*` handlers under jsdom |
+| `npm run verify:demo` | ✅ 99/99 | Demo engine + check-in planner + ₹ comparison maths + demo auth (4/4) |
+| `npm run verify:integrations` | ✅ 135/135 | Calendar/email/QR/**server check-in proof**/IST/booking guards/security/SQL invariants |
+| `npm run verify:app` | ✅ 149/149 | Real `App.tsx` on a real Vite dev server + real `/api/*` handlers under jsdom |
 | `npm audit` | ✅ | 0 vulnerabilities (was 13: 1 critical, 11 high, 1 moderate) |
 
 GitHub Actions on this branch: **verify job green** (lint → typecheck/build → sql:check → demo engine → integration suite → app/API harness). Netlify built a deploy preview of this branch (`deploy-preview-14--velora-ai-in`) successfully — evidence that the production build also runs on the real host — but the preview URL is not reachable from this sandbox, so the deployed UI itself was **not** visually verified. A second linked Netlify project (`velora-ai-com`) fails its deploy previews identically on earlier PRs; that is pre-existing and unrelated to this change.
@@ -139,7 +139,65 @@ Questions to expect, and the honest answers: the ranking and slot picker are **d
 
 ---
 
-## 7. Scorecard (self-assessment, evidence-based)
+## 7. Second pass — "100/100" mission (check-in, ₹ compare, brand, mobile)
+
+This pass added product surface rather than re-fixing the previous one. Everything below is in the same working tree as §1's last run.
+
+### 7.1 Door check-in is now a verified flow, not a status button
+
+| Layer | What was added | Why it matters |
+|---|---|---|
+| API (`api/bookings.js`) | `action: 'check_in'` verifies the scanned ticket **server-side** (`verifyBookingToken`), requires staff, requires the ticket's `ref` to equal the row's `ref`, re-checks `canTransition`, is idempotent (`already_checked_in` → 200, no second write), writes `booking_history` + `audit_logs` + both notifications | Before this, check-in was only reachable as a generic `status` flip by an admin — the QR ticket was verified for *display* but never required as *proof* at the door |
+| Decision logic (`src/lib/checkInPlan.ts`) | Pure mapper from a `VerifyResult` + the operator's bookings to a verdict: `verified / already_checked_in / invalid / expired / cancelled / pending / not_found / unsupported` | The security-relevant branches are unit-testable with no DOM and no browser-only imports |
+| Orchestration (`src/services/checkIn.ts`) | `checkInFromTicket()` = verify → plan → apply; demo rows transition through the shared local store, server rows call the API **with the ticket**; never throws | A failed verification cannot mutate state; a failed save returns a message and leaves the booking unchanged |
+| Console UI (`src/components/console/CheckInDialog.tsx`) | **Verify ticket** button on Appointments → paste or scan; `BarcodeDetector` camera as a progressive enhancement; `aria-live` verdict panel; "already checked in" and "not confirmed yet" states; link to open the appointment | Paste always works, so the flow is usable on iOS Safari and testable in jsdom |
+| Manual override | Row action kept, but relabelled *"Check in without ticket (manual override)"* | Honest: staff can still admit a guest who lost their phone, and it is visibly the unverified path |
+
+Coverage added: 11 planner assertions (`verify:demo`), 10 server-invariant assertions on the check-in branch (`verify:integrations`), and 12 DOM assertions driving the real dialog — wrong ticket refused and state untouched, real ticket checked in and persisted, customer notified, rescan idempotent, pending refused (`verify:app`).
+
+### 7.2 Comparing businesses and prices in ₹
+
+`src/lib/compare.ts` (pure) + `src/components/premium/CompareSheet.tsx` + shortlist toggles on `DiscoverCard` and a sticky tray in `Explore`.
+
+* Real data only: starting price per business and a **service-by-service matrix** from each business's own catalogue. Cheapest cell is marked, the **actual spread** is quoted in rupees, and a business that doesn't list a service shows `—` (never ₹0, never an "estimated saving").
+* Capped at 3, ephemeral (component state only — no storage, no account, no tracking).
+* Phone layout stacks one card per business; the table appears from `sm` up, so 375 px never scrolls sideways.
+* 12 maths assertions (`verify:demo`) + 10 DOM assertions (`verify:app`).
+
+### 7.3 Brand: reproducible 3D assets
+
+`scripts/brand/make-assets.sh` regenerates `icon-192.png` (192², ~118 KB), `icon-512.png` (512², ~175 KB — now the declared size; it was a 1024² image mislabelled 512), a new `apple-touch-icon.png` (180²) and `og-image.png` (**1200×630 — the size `index.html` has always declared**; the old file was 1376×768).
+
+The mark is the supplied Velora "V" ribbon: mint→teal gradient, ribbon fold, specular highlight, indigo/violet ambient glow on deep navy. Deterministic script + bundled Inter subset (SIL OFL, `scripts/brand/fonts/OFL.txt`). Type is now real Inter rather than whatever font ImageMagick found — the old card silently dropped `₹` from the strapline because the latin subset has no rupee glyph; the strapline is set in DejaVu and renders `₹` correctly. In-app the same mark stays inline SVG (`src/components/Logo.tsx`), so it survives sandboxed previews and needs no network request.
+
+### 7.4 Mobile, accessibility and the 375 px contract
+
+Structural assertions were added because jsdom cannot measure pixels: the appointments table is inside a horizontal scroller with secondary columns hidden below `md`; every icon-only console button carries `aria-label`/`title`; the compare sheet's phone/desktop split is asserted; the comparison tray is sticky; the shell ships a responsive viewport, manifest and touch icon. A newly found defect was fixed here: the check-in dialog had been nested inside the appointment-detail `Modal`, so its content was rendered inside a `role="dialog"` with **no `role="dialog"` of its own and no focus trap** — both are now independent dialogs.
+
+### 7.5 Scorecard after this pass
+
+| Category | Weight | Score | Evidence / gap |
+|---|---|---|---|
+| Functional completeness & reliability | 25 | 22 | Discover → compare → book → ticket → console → **verified check-in** is one continuous journey, all asserted end-to-end; −3 for no live Supabase/RLS run and no payment |
+| UI/UX, a11y, responsive | 20 | 16 | Distinctive brand, dimensional logo, premium cards, real skeletons, focus-trapped dialogs, labelled icons, mobile split, sticky tray; −4 because no browser/screenshot QA and no screen-reader audit was possible here |
+| Technical implementation & architecture | 15 | 13 | Pure decision modules (`checkInPlan`, `compare`), one data layer, state machine mirrored client/server, generated SQL bundle, type-safe marker contract; −2 for in-memory rate limiting/idempotency |
+| Security, privacy, data integrity | 15 | 13 | Ticket-as-credential check-in, staff-only + ownership checks, HMAC with expiry, audit trail, RLS tightening, CORS allowlist, 0 dependency vulns; −2 for unverified live RLS and cross-instance concurrency |
+| Innovation & genuine AI | 10 | 6 | Honest multi-signal ranking, availability heuristic, verified-ticket door flow; no trained model, and none claimed |
+| Testing / reproducibility / docs | 10 | 9 | 387 offline assertions incl. new security, money maths and asset contracts; CI green; deterministic asset script; README + judge script + report match the code |
+| Impact & validation | 5 | 2 | Clear India-first problem and a coherent value prop; still **no real users, pilots or metrics** — none invented |
+
+**≈81/100** on this rubric. The gap to 90+ is concentrated in the two things this sandbox cannot produce: a live, populated deployment (real Supabase rows, RLS exercised) and real user validation. Everything a judge can run offline is green.
+
+### 7.6 What is still not verified
+
+* The Netlify preview of this branch builds, but the URL is unreachable from this sandbox (no egress) — the deployed UI is **not** visually verified.
+* No Supabase project, mail provider, Google key or OpenAI key here: those paths remain code-path/stub-verified with honest fallbacks.
+* Camera scanning cannot be exercised without a browser + camera; only its absence-path and the identical paste path are tested.
+* No screen-reader or pixel-diff audit was performed.
+
+---
+
+## 8. First-pass scorecard (historical, superseded by §7.5)
 
 | Category | Weight | Assessment | Evidence |
 |---|---|---|---|
@@ -150,5 +208,3 @@ Questions to expect, and the honest answers: the ranking and slot picker are **d
 | Innovation / defensible AI | 10% | Moderate | Transparent heuristic ranking + honest labelling + optional LLM; no trained model, and the product no longer implies one |
 | Reproducibility / CI / docs | 10% | Strong | `npm ci` → lint → build → sql:check → verify all green locally and in CI workflow; README/DEPLOY rewritten to match reality |
 | Impact clarity | 5% | Moderate | Clear India-first problem framing; no real users or pilots, and none claimed |
-
-Biggest remaining judging risks: no verified live deployment of this revision, no screenshot-verified visual QA, and a demo that relies on the local demo tenant rather than a populated Supabase project.

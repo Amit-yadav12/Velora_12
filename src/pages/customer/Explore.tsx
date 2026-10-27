@@ -1,13 +1,15 @@
 import { useEffect, useState, useMemo, lazy, Suspense, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Map as MapIcon, List, SlidersHorizontal, Sparkles, Search, X, Compass, Pin, TrendingUp, History } from 'lucide-react';
+import { Map as MapIcon, List, SlidersHorizontal, Sparkles, Search, X, Compass, Pin, TrendingUp, History, ArrowLeftRight } from 'lucide-react';
 import { CATEGORIES, type Business } from '../../lib/product';
 import { Grid } from '../../components/product';
 import { useLocation } from '../../contexts/LocationContext';
 import { useTheme } from '../../lib/theme';
 import LocationBar from '../../components/premium/LocationBar';
 import DiscoverCard from '../../components/premium/DiscoverCard';
+import CompareSheet from '../../components/premium/CompareSheet';
+import { COMPARE_LIMIT } from '../../lib/compare';
 import EmptyState from '../../components/premium/EmptyState';
 import { BusinessCardSkeleton } from '../../components/premium/Skeleton';
 import GoogleMapEmbed from '../../components/premium/GoogleMapEmbed';
@@ -53,6 +55,9 @@ export default function Explore() {
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [allCats, setAllCats] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+  // Price comparison shortlist (max 3) — ephemeral by design: no tracking, no storage.
+  const [compareIds, setCompareIds] = useState<(number | string)[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   const fetchResults = () => {
     setLoading(true);
@@ -142,6 +147,12 @@ export default function Explore() {
   // Normalise at the data boundary: the map only ever receives finite
   // coordinates and a numeric rating (see src/lib/mapData.ts).
   const mapBusinesses = useMemo(() => toMapBusinesses(results), [results]);
+  const toggleCompare = (b: Business) => {
+    setCompareIds((ids) => ids.some((id) => String(id) === String(b.id))
+      ? ids.filter((id) => String(id) !== String(b.id))
+      : ids.length >= COMPARE_LIMIT ? [...ids.slice(1), b.id] : [...ids, b.id]);
+  };
+  const compared = results.filter((b) => compareIds.some((id) => String(id) === String(b.id)));
   const activeFilters = (openNow ? 1 : 0) + (minRating ? 1 : 0) + (maxKm ? 1 : 0) + (priceMax ? 1 : 0);
 
   return (
@@ -264,14 +275,59 @@ export default function Explore() {
           <div className="lg:col-span-2 space-y-3 lg:max-h-[600px] lg:overflow-y-auto no-scrollbar">
             {loading ? Array.from({ length: 4 }).map((_, i) => <BusinessCardSkeleton key={i} />) :
               results.length === 0 ? <EmptyState icon={Compass} title={`Nothing in ${city.name}`} sub="Try widening your filters or searching another area." /> :
-                results.map((b) => <DiscoverCard key={b.id} b={b} active={String(active) === String(b.id)} onHover={(id) => setActive(id)} compact />)}
+                results.map((b) => <DiscoverCard key={b.id} b={b} active={String(active) === String(b.id)} onHover={(id) => setActive(id)} compact onCompare={toggleCompare} compared={compareIds.some((id) => String(id) === String(b.id))} />)}
           </div>
         </div>
       ) : (
         loading ? <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{Array.from({ length: 6 }).map((_, i) => <BusinessCardSkeleton key={i} />)}</div> :
           results.length === 0 ? <EmptyState icon={Compass} title="No businesses found" sub={`Adjust your filters, or explore another category in ${city.name}.`} /> :
-            <Grid className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{results.map((b) => <DiscoverCard key={b.id} b={b} onHover={(id) => setActive(id)} active={String(active) === String(b.id)} />)}</Grid>
+            <Grid className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{results.map((b) => <DiscoverCard key={b.id} b={b} onHover={(id) => setActive(id)} active={String(active) === String(b.id)} onCompare={toggleCompare} compared={compareIds.some((id) => String(id) === String(b.id))} />)}</Grid>
       )}
+
+      {/* Comparison tray — appears only once something is shortlisted */}
+      <AnimatePresence>
+        {compareIds.length > 0 && (
+          <motion.div
+            initial={{ y: 24, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 24, opacity: 0 }}
+            transition={{ duration: 0.22 }}
+            className="sticky bottom-3 z-30 mt-4 mx-auto w-full max-w-2xl"
+            role="region"
+            aria-label="Price comparison shortlist"
+          >
+            <div className="glass border border-app rounded-2xl shadow-xl px-3 py-2.5 flex items-center gap-2 flex-wrap">
+              <ArrowLeftRight className="h-4 w-4 text-[var(--color-brand-indigo)] shrink-0" aria-hidden="true" />
+              <div className="flex-1 min-w-0 flex items-center gap-1.5 flex-wrap">
+                {compared.map((b) => (
+                  <button
+                    key={b.id}
+                    onClick={() => toggleCompare(b)}
+                    className="inline-flex items-center gap-1 text-[11px] rounded-full border border-app px-2 py-1 hover:border-[var(--border-strong)]"
+                    aria-label={`Remove ${b.name} from comparison`}
+                  >
+                    <span className="max-w-[9rem] truncate">{b.name}</span>
+                    <X className="h-3 w-3" aria-hidden="true" />
+                  </button>
+                ))}
+                {compared.length < 2 && <span className="text-[11px] text-dim">Add {2 - compared.length} more to compare</span>}
+              </div>
+              <button
+                onClick={() => setCompareOpen(true)}
+                disabled={compared.length < 2}
+                className="grad-btn text-white text-xs font-medium rounded-xl px-3 py-2 disabled:opacity-50"
+              >
+                Compare {compared.length}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <CompareSheet
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        businesses={compared}
+        onRemove={(id) => setCompareIds((ids) => ids.filter((x) => String(x) !== String(id)))}
+      />
     </div>
   );
 }

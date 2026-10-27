@@ -2,6 +2,7 @@ import supabase from './db-client.js';
 import { cors, sanitizeText, isISODate, assert, clientIp, safeError } from './_lib/security.js';
 import { getAuth, requireRole, ownedBusinessNames, canOperateOn } from './_lib/auth.js';
 import { istDateTimeLabel } from './_lib/ist.js';
+import { verifyBookingToken } from './_lib/qr.js';
 import { sendEmail } from './_lib/email.js';
 import { updateCalendarEvent, deleteCalendarEvent } from './_lib/calendar.js';
 
@@ -133,6 +134,49 @@ export default async function handler(req, res) {
         await supabase.from('notifications').insert([{ user_id: existing.customer_id || null, audience: 'customer', title: 'Booking rescheduled', body: `${existing.ref} moved to ${istDateTimeLabel(start)}`, type: 'info', booking_ref: existing.ref }]);
         await sendEmail({ to: existing.customer_email, subject: `Booking rescheduled — ${existing.ref}`, title: 'Booking rescheduled', name: existing.customer_name, lines: [{ k: 'Reference', v: existing.ref }, { k: 'New time', v: `${istDateTimeLabel(start)}` }] });
         return res.status(200).json(data);
+      }
+
+      // ---- Door check-in: the scanned ticket is PROOF, not decoration ----
+      // The console posts the token it scanned; the signature is verified here
+      // and the token's booking reference must match the row being checked in.
+      // A booking cannot reach 'checked_in' without a valid ticket.
+      if (action === 'check_in') {
+        assert(isAdmin, 'Only staff can check in a booking.', 403);
+        const ticket = sanitizeText(req.body.ticket, 2000);
+        assert(ticket, 'Scan or paste the ticket to check in.', 400);
+        const verified = verifyBookingToken(ticket);
+        if (!verified.ok) {
+          const messages = {
+            malformed: 'This QR code is not a valid Velora ticket.',
+            invalid_signature: 'This ticket failed verification — it may have been altered.',
+            expired: 'This ticket has expired.',
+            legacy: 'This ticket was issued before verification was enabled.',
+          };
+          return res.status(400).json({ error: messages[verified.reason] || 'This ticket could not be verified.', reason: verified.reason });
+        }
+        if (String(verified.data.ref) !== String(existing.ref)) {
+          return res.status(409).json({ error: 'That ticket belongs to a different booking.', reason: 'ref_mismatch' });
+        }
+        if (existing.status === 'checked_in') {
+          return res.status(200).json({ ...existing, already_checked_in: true, ticket_verified: true });
+        }
+        assert(canTransition(existing.status, 'checked_in'), `A ${existing.status} booking cannot be checked in.`, 409);
+
+        const { data, error } = await supabase.from('bookings')
+          .update({ status: 'checked_in', updated_at: new Date().toISOString() })
+          .eq('id', id).select().single();
+        if (error) throw error;
+        await supabase.from('booking_meta').upsert({ booking_id: id, checked_in: true, updated_at: new Date().toISOString() });
+        await supabase.from('booking_history').insert({
+          booking_id: id, action: 'checked_in',
+          detail: `Ticket verified at the door (${verified.data.svc || existing.service_name})`, actor,
+        });
+        await audit(actor, 'booking.check_in', id, { ref: existing.ref, ticket: 'verified', staff: actor }, ip);
+        await supabase.from('notifications').insert([
+          { user_id: existing.customer_id || null, audience: 'customer', title: 'Checked in', body: `${existing.service_name} — ${existing.ref}. See you inside!`, type: 'success', booking_ref: existing.ref },
+          { audience: 'admin', title: 'Checked in', body: `${existing.ref} · ${existing.customer_name}`, type: 'info', booking_ref: existing.ref },
+        ]);
+        return res.status(200).json({ ...data, ticket_verified: true });
       }
 
       if (action === 'status') {
