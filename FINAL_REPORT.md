@@ -22,6 +22,8 @@ All commands run in this workspace, in this order, on the final working tree:
 | `npm run verify:app` | ✅ 119/119 | Real `App.tsx` on a real Vite dev server + real `/api/*` handlers under jsdom |
 | `npm audit` | ✅ | 0 vulnerabilities (was 13: 1 critical, 11 high, 1 moderate) |
 
+GitHub Actions on this branch: **verify job green** (lint → typecheck/build → sql:check → demo engine → integration suite → app/API harness). Netlify built a deploy preview of this branch (`deploy-preview-14--velora-ai-in`) successfully — evidence that the production build also runs on the real host — but the preview URL is not reachable from this sandbox, so the deployed UI itself was **not** visually verified. A second linked Netlify project (`velora-ai-com`) fails its deploy previews identically on earlier PRs; that is pre-existing and unrelated to this change.
+
 Evidence limits: jsdom (no browser binary in this sandbox), and no Supabase project, mail provider or Google credentials are available — so database/RLS and provider behaviour are verified through code paths, stubs and honest-fallback assertions, not live calls. The historical demo URL was **not** reachable from this sandbox and is not claimed to serve this revision.
 
 ---

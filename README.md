@@ -207,6 +207,8 @@ Current status on this revision: `lint` clean, `build` clean, `sql:check` in syn
 
 See [`FINAL_REPORT.md`](FINAL_REPORT.md) for the engineering report (defects fixed, dependency audit, residual risk).
 
+CI additionally runs in GitHub Actions on every push, and Netlify builds a deploy preview for each PR (evidence that the production build survives the real host; the preview is not visually verified from this environment).
+
 Limitations of the evidence: the harness is jsdom-based (no real browser binary in the CI image), so visual layout is not screenshot-tested; no Supabase project or third-party credentials are available in CI, so database/RLS/email/calendar behaviour is verified through code paths, stubs and honest fallback assertions rather than live calls.
 
 ---
