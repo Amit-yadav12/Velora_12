@@ -14,7 +14,7 @@ export function PageHeader({ title, subtitle, action }: { title: string; subtitl
 export function StatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     pending: 'bg-amber-500/15 text-amber-400',
-    confirmed: 'bg-blue-500/15 text-blue-400', in_progress: 'bg-indigo-500/15 text-indigo-400', checked_in: 'bg-cyan-500/15 text-cyan-400',
+    confirmed: 'bg-blue-500/15 text-blue-300', in_progress: 'bg-indigo-500/15 text-indigo-300', checked_in: 'bg-cyan-500/15 text-cyan-400',
     completed: 'bg-emerald-500/15 text-emerald-400', cancelled: 'bg-red-500/15 text-red-400',
     no_show: 'bg-amber-500/15 text-amber-400',
   };

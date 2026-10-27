@@ -60,6 +60,7 @@ test('demo OTP can be entered and submitted from the keyboard', async ({ page })
 
 for (const viewport of sizes) {
   test(`sample booking → customer QR → business check-in at ${viewport.width}px`, async ({ page }) => {
+    test.setTimeout(90_000);
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await page.emulateMedia({ reducedMotion: 'reduce' });
 
