@@ -25,11 +25,11 @@ const CATEGORY_TYPE = {
 };
 
 function key() {
-  return process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  return process.env.GOOGLE_MAPS_API_KEY || '';
 }
 
-function photoUrl(ref, apiKey, w = 640) {
-  return `https://maps.googleapis.com/maps/api/place/photo?maxwidth=${w}&photo_reference=${ref}&key=${apiKey}`;
+function photoUrl(ref, _apiKey, w = 640) {
+  return `/api/place-photo?maxwidth=${w}&ref=${encodeURIComponent(ref)}`;
 }
 
 function normalize(p, apiKey, category) {
@@ -59,13 +59,20 @@ export default async function handler(req, res) {
   if (!enforceRateLimit(req, res, 'places', { limit: 120, windowMs: 60_000 })) return;
   try {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
-    const { lat, lng, query, category, city, radius = '5000' } = req.query;
+    const { lat, lng, query, category, city, place_id, radius = '5000' } = req.query;
     const apiKey = key();
     if (!apiKey) return res.status(200).json({ live: false, results: [] });
 
+    if (place_id) {
+      const pid = sanitizeText(place_id, 250);
+      const d = await fetch(`https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(pid)}&fields=name,place_id,formatted_address,formatted_phone_number,website,opening_hours,rating,user_ratings_total,geometry,photos,price_level,types&key=${encodeURIComponent(apiKey)}`, { signal: AbortSignal.timeout(7000) }).then((r) => r.json());
+      if (d.status !== 'OK' || !d.result) return res.status(200).json({ live: false, results: [], unavailable: d.status !== 'ZERO_RESULTS' });
+      return res.status(200).json({ live: true, results: [normalize(d.result, apiKey)] });
+    }
     const q = sanitizeText(query, 120) || '';
     const cat = sanitizeText(category, 60) || '';
-    const ck = JSON.stringify({ lat, lng, q, cat, radius });
+    if ((lat != null && (!Number.isFinite(+lat) || Math.abs(+lat) > 90)) || (lng != null && (!Number.isFinite(+lng) || Math.abs(+lng) > 180))) return res.status(400).json({ error: 'Invalid coordinates' });
+    const ck = JSON.stringify({ lat, lng, q, cat, radius, city });
     const hit = cache.get(ck);
     if (hit && Date.now() - hit.at < TTL) {
       res.setHeader('X-Cache', 'HIT');
@@ -89,6 +96,7 @@ export default async function handler(req, res) {
     try {
       const r = await fetch(url, { signal: ctrl.signal });
       const j = await r.json();
+      if (j.status !== 'OK' && j.status !== 'ZERO_RESULTS') return res.status(200).json({ live: false, results: [], unavailable: true, error: 'Google Places is unavailable. Check the API key and quota.' });
       list = (j.results || []).slice(0, 12);
       // Enrich top 4 with details (phone, hours, website) — bounded for latency.
       const top = list.slice(0, 4);
@@ -112,6 +120,6 @@ export default async function handler(req, res) {
     return res.status(200).json(payload);
   } catch (err) {
     console.error('[places:error]', err.message);
-    return res.status(200).json({ live: false, results: [] });
+    return res.status(200).json({ live: false, results: [], unavailable: true, error: 'Google Places is temporarily unavailable.' });
   }
 }

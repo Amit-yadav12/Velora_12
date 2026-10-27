@@ -1,47 +1,41 @@
 import supabase from '../db-client.js';
 
-// Verify the Supabase access token from the Authorization header.
-// Returns { user, profile } or null. Used to protect API routes + enforce RBAC.
 export async function getAuth(req) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return null;
-  const { data, error } = await supabase.auth.getUser(token);
+  const header = req.headers?.authorization || req.headers?.Authorization || '';
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  if (!match) return null;
+  const { data, error } = await supabase.auth.getUser(match[1]);
   if (error || !data?.user) return null;
   const user = data.user;
-  const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+  const { data: profile, error: profileError } = await supabase.from('profiles').select('*').eq('id', user.id).maybeSingle();
+  if (profileError) throw profileError;
   return { user, profile: profile || null };
 }
 
-/**
- * Names of the businesses a caller OWNS. The console uses a single 'admin'
- * role for both the platform operator and every business owner, so object-level
- * authorization has to come from ownership, not from the role name alone.
- * Returns [] when the caller owns nothing (platform/demo operator).
- */
-export async function ownedBusinessNames(userId) {
-  if (!userId) return [];
-  try {
-    const { data } = await supabase.from('businesses').select('name').eq('owner_user_id', userId);
-    return Array.isArray(data) ? data.map((b) => b.name).filter(Boolean) : [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * May this caller operate on a booking for `resourceName`? Owners are limited
- * to their own businesses; a caller who owns no business is the platform
- * operator and may act across the estate. Ownership is resolved server-side
- * from the database — never from a client-supplied business id.
- */
-export function canOperateOn(ownedNames, resourceName) {
-  if (!Array.isArray(ownedNames) || ownedNames.length === 0) return true; // platform operator
-  return ownedNames.some((n) => String(n).toLowerCase() === String(resourceName || '').toLowerCase());
-}
-
 export function requireRole(auth, roles) {
-  if (!auth) return { ok: false, status: 401, error: 'Authentication required' };
+  if (!auth?.user) return { ok: false, status: 401, error: 'Authentication required' };
   const role = auth.profile?.role || 'customer';
   if (roles && !roles.includes(role)) return { ok: false, status: 403, error: 'Insufficient permissions' };
   return { ok: true, role };
+}
+
+/** Empty ownership never means platform-wide access. Only an explicit server-owned flag does. */
+export async function businessScope(auth) {
+  if (auth?.profile?.role !== 'admin') return { operator: false, ids: [], names: [] };
+  if (auth.profile.is_operator === true) return { operator: true, ids: [], names: [] };
+  const { data, error } = await supabase.from('businesses').select('id,name').eq('owner_user_id', auth.user.id);
+  if (error) throw error;
+  return { operator: false, ids: (data || []).map((b) => b.id), names: (data || []).map((b) => b.name) };
+}
+export function canAccessBusiness(scope, businessId) {
+  return scope?.operator === true || (businessId != null && scope?.ids?.some((id) => String(id) === String(businessId)) === true);
+}
+// Legacy callers/tests: no implicit privilege for an empty list.
+export function canOperateOn(ownedNames, resourceName, operator = false) {
+  return operator === true || (Array.isArray(ownedNames) && ownedNames.some((n) => String(n).toLowerCase() === String(resourceName || '').toLowerCase()));
+}
+export async function ownedBusinessNames(userId) {
+  const { data, error } = await supabase.from('businesses').select('name').eq('owner_user_id', userId);
+  if (error) throw error;
+  return (data || []).map((b) => b.name).filter(Boolean);
 }

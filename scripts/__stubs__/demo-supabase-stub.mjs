@@ -8,7 +8,7 @@ const profile = { id: 'u-1', email: 'admin@velora.ai', full_name: 'Demo Admin', 
 
 const supabase = {
   auth: {
-    signInWithPassword: async () => ({ data: { session: { user: profile } }, error: null }),
+    signInWithPassword: async () => (globalThis.__demoAuthCalls++, { data: { session: { user: profile } }, error: null }),
     signUp: async () => ({ data: { session: { user: profile } }, error: null }),
     getSession: async () => ({ data: { session: { user: profile } }, error: null }),
   },

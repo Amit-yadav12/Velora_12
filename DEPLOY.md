@@ -1,332 +1,49 @@
-# 🚀 Velora — Deployment Guide
+# Deployment and safe rollout
 
-This guide covers production deployment for Netlify + Supabase + Google OAuth.
+## 1. Prepare and back up
 
----
+- Use Node 22, run the checks in README and deploy frontend/API together. Do not run destructive database resets or re-seed an existing project.
+- Back up the Supabase database **and Storage**; rehearse restore and migration in a staging copy with representative historical bookings. Check your existing migration history first.
+- For a **fresh** Supabase project only, run `supabase/APPLY_ALL.sql` in the SQL Editor (the ordered, generated 0001–0005 bundle). The bundle refuses to start if `public` already contains RLS policies, tables, views, foreign tables or sequences; do not rerun it after a partial or completed install. The check is not a substitute for reviewing the complete schema and taking a backup. Historical migration **0001 itself drops every public-schema policy** and has no such guard when run directly. Never run it against an existing project or a shared schema. For a project already on 0001–0004, apply **only** `supabase/migrations/0005_launch_security_and_booking.sql`. If its state differs, reconcile it in staging first. No migration is applied automatically by the frontend build.
+- 0005 adds columns, RLS/grants, a public `business-media` bucket with owner-folder write policies, transactional save/reservation functions and booking allocations. Existing bookings are retained; historical rows are checked at reservation time. New allocations use a PostgreSQL exclusion constraint and business-row locking. Applying it changes public column grants: direct clients must select named business columns, not `*`.
+- Business registration grants an owner the scoped console role only after a successful save. To grant **platform-wide operator** scope, edit the placeholder email in `supabase/PROMOTE_ADMIN.sql` to an already signed-up private account and run it as a trusted database administrator. Existing admin users are not implicitly operators.
 
-## 1. Overview
+## 2. Environment
 
-- **Frontend**: Vite + React, built to `dist/`
-- **Backend**: `api/*.js` serverless functions (Vercel + Netlify compatible)
-- **Database**: Supabase Postgres (14 tables, RLS, realtime)
-- **Images**: 36 real category photos in `public/biz/*.jpg` (zero picsum)
-- **Live URL**: the origin you deploy to (set as `APP_URL`); the repo hardcodes no domain
+Use `.env.example` as a template. Set secrets in the hosting provider, not Git or the frontend build.
 
----
+| Variable | Purpose |
+|---|---|
+| `APP_URL`, `VITE_APP_URL` | Exact public site origin. QR links, emails, sharing and build-time metadata must point to this deployment. |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | Public browser project URL/publishable key. Both are required for real Auth and Storage. |
+| `NEXT_PUBLIC_SUPABASE_URL` (or `SUPABASE_URL`), `SUPABASE_SERVICE_ROLE_KEY` | Server database access. Keep the service-role key server-only. |
+| `QR_SIGNING_SECRET` | Required for real bookings and verification, at least 32 random characters. Generate independently (`openssl rand -base64 32`) and keep stable; rotation invalidates previously issued signatures. |
+| `CRON_SECRET` | Independent random secret for global reminder processing. |
+| `VITE_GOOGLE_MAPS_API_KEY` | Optional public Maps JavaScript key; restrict by allowed HTTP referrers and API. |
+| `GOOGLE_MAPS_API_KEY` | Optional **server-only** key for Geocoding, Places (Legacy), Place Photos and Distance Matrix (Legacy); restrict APIs and apply platform-appropriate server restrictions. |
+| `RESEND_API_KEY`, `SENDGRID_API_KEY`, `SMTP_RELAY_URL`, `EMAIL_FROM` | Optional email provider configuration; first configured provider wins. |
+| `GOOGLE_CALENDAR_ID`, `GOOGLE_CALENDAR_REFRESH_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional Google Calendar OAuth sync. A legacy static access token is also supported but expires. |
+| `ALLOWED_ORIGINS` | Optional comma-separated browser origins in addition to `APP_URL`. |
+| `OPENAI_API_KEY`, `OPENAI_MODEL` | Optional conversational reply enrichment; not involved in reservation validity. |
 
-## 2. Netlify Setup
+Enable the appropriate Google Cloud APIs and billing/quota, and test from the deployed host. Browser and server keys have different restrictions. Without a working Maps key, OpenStreetMap tiles may render if reachable and manual coordinates work, but Google address search, provider verification, Places and travel times are unavailable. The public tile service has its own usage policy; use an appropriate tile provider for production volume.
 
-### 2.1 Connect Repository
-1. In Netlify dashboard → **Add new site → Import from GitHub**
-2. Select `Amit-yadav12/Velora_12`
-3. Build settings are in `netlify.toml`:
-   - Build command: `npm run build`
-   - Publish: `dist`
-   - Functions: `netlify/functions`
+In Supabase Auth, configure Site URL and redirect allowlist for your deployed origin. Enable and configure the Google provider there if Google sign-in is desired; Google OAuth redirects through Supabase, not a hardcoded demo identity. Test confirmation-email and recovery redirects. The public `business-media` bucket is for public photos, not sensitive documents. Verify bucket MIME, size and owner-folder policies on the real project.
 
-### 2.2 Environment Variables (Netlify → Site settings → Environment variables)
+## 3. Hosting
 
-```
-# Site origin — REQUIRED. Nothing in the repo hardcodes a domain any more, so
-# these decide where QR verify links, calendar invites, share links and the
-# SEO tags point. Use the exact origin of THIS site (no trailing slash).
-APP_URL=https://<your-site>.netlify.app
-VITE_APP_URL=https://<your-site>.netlify.app
+**Netlify:** `netlify.toml` builds `dist`, routes `/api/*` through the functions adapter and schedules `process-reminders` every 15 minutes. Set all environment values in the site configuration. Netlify scheduled functions are not publicly callable by URL; use Netlify's UI to run the scheduled function or wait for its schedule. The wrapper supplies `CRON_SECRET` internally. The separate `/api/process-reminders` endpoint accepts an authenticated user's own due reminders, or a Bearer `CRON_SECRET` for global processing. Never expose that secret in a browser. Deploy previews do not automatically run scheduled functions.
 
-VITE_SUPABASE_URL=https://<project>.supabase.co
-VITE_SUPABASE_ANON_KEY=<anon-key>
-VITE_GOOGLE_MAPS_API_KEY=<optional-maps-key>
-VITE_GOOGLE_CLIENT_ID=<optional-google-oauth-client-id>
-VITE_GOOGLE_AUTH_PROXY=<optional-custom-proxy-url>
+**Vercel:** the `api/*.js` functions and SPA rewrite are provided. Configure the same environment variables and a separate trusted scheduler for `/api/process-reminders` if global reminders are needed; the repository does not configure a Vercel cron.
 
-# Server-side (Netlify Functions)
-NEXT_PUBLIC_SUPABASE_URL=https://<project>.supabase.co
-SUPABASE_URL=https://<project>.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
-SUPABASE_ANON_KEY=<anon-key>
-GOOGLE_MAPS_API_KEY=<optional>
-RESEND_API_KEY=<optional-email>
-SENDGRID_API_KEY=<optional-email-fallback>
-EMAIL_FROM=Velora <bookings@yourdomain.com>
-CRON_SECRET=<random-32-char-secret-for-scheduled-reminders>
-# HMAC secret for signed QR verification tokens. The variable is
-# QR_SIGNING_SECRET (api/_lib/qr.js reads this exact name); anything else
-# silently leaves QR signing on the loud dev fallback.
-QR_SIGNING_SECRET=<random-32-char-for-QR-signing>
+Email/Calendar/reminder work is best effort after booking commit. A logged unsent message is not automatically retried, and provider acceptance does not guarantee inbox delivery. Add monitoring, retry/alerting, backup and retention policies before production.
 
-# Google Calendar sync (optional) — refresh-token chain, see §7-C
-GOOGLE_CALENDAR_ID=
-GOOGLE_CALENDAR_REFRESH_TOKEN=
-GOOGLE_CLIENT_ID=
-GOOGLE_CLIENT_SECRET=
-```
+## 4. Staging release checklist
 
-> **Security**: Never commit `.env` files. Use Netlify env UI only.
->
-> **Why `APP_URL` is not in `netlify.toml`**: values declared in
-> `[build.environment]` **override** the same keys set in the Netlify UI
-> ([docs](https://docs.netlify.com/build/environment-variables/overview/)). A
-> hardcoded origin there would silently win over whatever you type in the
-> dashboard, on every site you ever deploy from this repo.
-
-### 2.3 Functions Adapter
-- `netlify.toml` redirects `/api/*` → `/.netlify/functions/api-adapter/:splat`
-- `netlify/functions/api-adapter.js` dynamically loads handlers from `api/*.js`
-- `netlify/functions/process-reminders.js` runs every 15 min (see schedule below)
-
-### 2.4 Scheduled Reminders (15-min)
-In `netlify.toml`:
-```toml
-[functions."process-reminders"]
-  schedule = "*/15 * * * *"
-```
-- The function `process-reminders.js` also exports `config.schedule` for compatibility.
-- It requires `CRON_SECRET` env — the scheduler injects it automatically.
-- Manual trigger: `POST https://your-site.netlify.app/api/process-reminders` with `Authorization: Bearer <CRON_SECRET>`
-
-### 2.5 Deploy
-- Push to `main` → Netlify auto-deploys in ~3-5 min.
-- If old build persists, run **Deploys → Trigger deploy → Clear cache and deploy site**
-
----
-
-## 3. Vercel Alternative (Optional)
-
-Vercel works natively with `api/*.js`:
-- Build: `npm run build`
-- Output: `dist`
-- `vercel.json` has SPA rewrite: `/(?!api/).*` → `/index.html`
-- Set same env vars in Vercel dashboard.
-
----
-
-## 4. CI
-
-GitHub Actions workflow `.github/workflows/ci.yml` runs on every push/PR to `main`:
-- Node 22, `npm ci`
-- `npm run lint`
-- `npm run build` (typecheck + Vite build)
-- `npm run sql:check` (APPLY_ALL.sql still matches supabase/migrations/)
-- `npm run verify:demo` (demo engine + demo auth)
-- `npm run verify:integrations` (calendar OAuth, email providers, QR, IST, booking guards)
-- `npm run verify:app` (real App.tsx + real /api handlers under jsdom)
-
----
-
-## 5. Production Checks (Before Push)
-
-```bash
-npx tsc -b               # typecheck passes
-npx eslint .             # zero lint errors
-npm run build            # production build passes
-npm run verify           # demo + integrations + full app harness
-grep -rn picsum src api  # must be empty (zero picsum)
-grep -c arena dist/index.html  # must be 0 (no dev-tracking)
-```
-
-- Business images must be `/biz/*.jpg`, not `picsum.photos`
-- `public/biz/` should contain 36 real JPGs
-
----
-
-## 6. Supabase Setup (Dashboard Tasks)
-
-### 6-A. Run Migration
-
-1. In Supabase dashboard → **SQL Editor → New query**
-2. Paste the whole of `supabase/APPLY_ALL.sql` (generated from `supabase/migrations/`
-   by `npm run sql:bundle` — it applies every migration in order, not just 0001)
-3. Click **Run**
-4. Verify 14 tables created:
-   - `profiles`, `businesses`, `business_services`, `business_staff`,
-   - `bookings`, `booking_meta`, `booking_history`, `reminders`,
-   - `notifications`, `recently_viewed`, `email_log`, `audit_logs`,
-   - `idempotency_keys`, `invoices`
-
-### 6-B. Auth Settings
-
-#### Turn OFF Email Confirmation (Recommended for fast onboarding)
-1. **Authentication → Configuration → Email Auth**
-2. Toggle **Confirm email** → **OFF**
-3. Save
-
-> If you keep confirm-email ON, users will see "Check your email" UX after sign-up (handled in `Welcome.tsx`). OFF is smoother for demo.
-
-#### Create Demo Accounts (Auto-provision fallback exists, but manual is faster)
-1. **Authentication → Users → Add user**
-2. Create:
-   - `customer@velora.ai` / `velora123` (auto-confirm)
-   - `admin@velora.ai` / `velora123` (auto-confirm)
-3. Then run `supabase/PROMOTE_ADMIN.sql` (change the email inside it first).
-
-> Do **not** hand-write `update profiles set role='admin'`. Migration 0002
-> installs `protect_profile_role`, which rejects role changes from any
-> non-service-role session — including the SQL Editor. `PROMOTE_ADMIN.sql`
-> declares the service-role JWT claims and toggles that trigger for the
-> duration of the update, so it works on any Supabase version.
-
-#### Site URL (auth callbacks + password reset)
-1. **Authentication → URL Configuration**
-2. **Site URL** = the exact origin of the deployed site (e.g. `https://<your-site>.netlify.app`)
-3. Add the same origin to **Redirect URLs**
-
-### 6-C. RLS & Realtime
-
-- RLS is enabled by migration; policies allow public read for businesses/services, owner-only for bookings, owner-scoped reads for `booking_meta`/`booking_history`, and **service-role-only writes** for `reminders`, `email_log`, `audit_logs`, `idempotency_keys` (see `0003_rls_tightening.sql`).
-- Realtime: migration adds `bookings`, `notifications`, `reminders`, `businesses`, `booking_history` to `supabase_realtime` publication.
-- Verify in **Database → Realtime** that those tables show as enabled.
-
-### 6-D. Storage (Optional, for future uploads)
-
-If you add user uploads later:
-1. **Storage → Create bucket** `biz-photos` (public)
-2. Set policy: public read, authenticated write.
-
----
-
-## 7. Google OAuth Setup
-
-Velora supports **native Google OAuth** (Supabase) + **custom proxy fallback**.
-
-### 7-A. Native OAuth (Recommended)
-
-1. **Google Cloud Console** → https://console.cloud.google.com
-2. Create project → **APIs & Services → Credentials → Create OAuth client ID**
-   - Type: **Web application**
-   - Authorized redirect URIs: `https://<your-supabase-project>.supabase.co/auth/v1/callback`
-   - Authorized JS origins: `$APP_URL` (your deployed origin), `http://localhost:5173`
-3. Copy **Client ID** and **Client Secret**
-4. **Supabase → Authentication → Providers → Google → Enable**
-   - Paste Client ID + Secret
-   - Save
-
-5. In your `.env` / Netlify env, you **don't** need `VITE_GOOGLE_CLIENT_ID` for native flow — Supabase handles it. But keep it if you want fallback.
-
-6. In code: `src/lib/googleAuth.ts` → `signInWithGoogleNative()` uses `supabase.auth.signInWithOAuth({provider:'google'})` with `redirectTo: window.location.origin + '/welcome'`
-
-### 7-B. Custom Proxy Fallback (Optional, for advanced setups)
-
-If you run a custom OAuth proxy (e.g., Cloudflare Worker that exchanges code for Supabase session):
-
-1. Set env:
-```
-VITE_GOOGLE_CLIENT_ID=<google-client-id>
-VITE_GOOGLE_AUTH_PROXY=https://your-proxy.workers.dev/auth/google
-```
-2. Proxy should:
-   - Receive `?code=&state=` from Google
-   - `state` is base64 JSON: `{origin, appName, supabaseUrl, supabaseAnonKey}`
-   - Exchange code for tokens, create Supabase user via `signInWithIdToken`, return HTML that `postMessage`s `{type:'google-auth-success', access_token, refresh_token}` to opener.
-3. `src/lib/googleAuth.ts` handles the popup + message listener.
-
-### 7-C. Google Calendar sync (optional, server-side)
-
-Bookings create a calendar event for the customer **and** the business. Two
-credential modes, best first:
-
-| Mode | Env vars | Lifetime |
-| --- | --- | --- |
-| **Refresh-token chain** (recommended) | `GOOGLE_CALENDAR_REFRESH_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | permanent — access tokens are minted on demand, cached, and re-minted when Google rejects one |
-| Static access token (legacy) | `GOOGLE_CALENDAR_ACCESS_TOKEN` | ~1 hour, then sync stops |
-
-To get a refresh token: create an OAuth client in Google Cloud, enable the
-Calendar API, complete one consent for the `calendar.events` scope with
-`access_type=offline&prompt=consent`, and copy the `refresh_token` from the
-response. Set `GOOGLE_CALENDAR_ID` to leave it on `primary`.
-
-With no credential configured, bookings still confirm — the calendar step is
-reported as **not configured** and logs a `evt_...` placeholder. It never
-reports a Google event that does not exist.
-
-### 7-D. Testing OAuth
-
-1. Go to `/welcome` → **Continue with Google**
-2. Popup should open Google consent, then close and redirect to home with session.
-3. If popup blocked, fallback link appears.
-
----
-
-## 8. Post-Deploy Verification
-
-1. **Live site**: your deployed origin (`$APP_URL`)
-   - Business images should be `/biz/*.jpg`, not `picsum.photos`
-   - `/welcome` renders role selection
-   - Search works, category filter works
-
-2. **API**:
-   - `$APP_URL/api/discover?city=Jaipur` → JSON with `results` array, each with `image_url: /biz/...`
-   - `$APP_URL/api/businesses?city=Jaipur` → list
-   - `$APP_URL/api/verify-booking?token=...` → validation
-
-3. **Booking flow**:
-   - Pick business → service → date → slot → book (as demo customer)
-   - Check `bookings` table in Supabase has new row
-   - Check `notifications` has confirmation
-
----
-
-## 9. Troubleshooting
-
-- **Old build still serving picsum**: Netlify → Deploys → Trigger deploy → Clear cache and deploy site. Wait 3-5 min, hard reload.
-- **API 404**: Check `netlify.toml` redirects, ensure `netlify/functions/api.js` exists, check function logs in Netlify dashboard.
-- **Supabase 401**: Check anon key and service_role key env, RLS policies.
-- **Google OAuth fails**: Check redirect URI in Google Console matches Supabase callback, and Supabase provider enabled.
-- **Reminders not firing**: Check `CRON_SECRET` set, check function logs, manually POST to `/api/process-reminders` with Bearer token.
-- **Business demo lands in the customer app**: the `/welcome` screen now says why instead of bouncing silently. Decode the cause from the status of `/api/provision-demo`:
-
-  | Status | Cause | Fix |
-  | --- | --- | --- |
-  | 409 | no `profiles` row / table missing | run `supabase/APPLY_ALL.sql`, then `supabase/PROMOTE_ADMIN.sql` |
-  | 503 | function has no DB credentials | set `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, redeploy |
-  | 401 / 403 | service-role key rejected (rotated) | copy the current key from Supabase → Settings → API, redeploy |
-- **QR codes point at the wrong domain**: set `APP_URL` to the site origin. The QR helper resolves `APP_URL` → request host → the platform's `URL`/`DEPLOY_PRIME_URL`, and never falls back to a stale domain.
-- **Calendar events stop appearing after an hour**: you are on a static `GOOGLE_CALENDAR_ACCESS_TOKEN`. Switch to the refresh-token chain (§7-C).
-
----
-
-## 10. Final Checklist for Owner
-
-- [ ] Paste `supabase/APPLY_ALL.sql` into the SQL Editor + Run (applies every migration in `supabase/migrations/` in order — currently 0001…0004 — and ends with a `velora_tables = 14` check)
-- [ ] Run `supabase/PROMOTE_ADMIN.sql` with your admin email (grants the console role without fighting the role-lock trigger)
-- [ ] Turn OFF confirm-email (Auth → Configuration → Email Auth)
-- [ ] Set Site URL + Redirect URLs to the deployed origin (Auth → URL Configuration)
-- [ ] Google OAuth setup per §7-A (native); Calendar sync per §7-C (optional)
-- [ ] Set all env vars in Netlify dashboard — **including `APP_URL` and `VITE_APP_URL`**
-- [ ] Rotate `SUPABASE_SERVICE_ROLE_KEY` if it was ever exposed
-- [ ] Trigger deploy → Clear cache and deploy site
-- [ ] Test booking on phone: search → business → slot → confirm → verify QR
-- [ ] Check email_log table for confirmation emails
-- [ ] Confirm the business demo opens `/admin` (not the customer app)
-
----
-
-## 11. Demo Tenant & Business Registration (New)
-
-### 11-A. Demo tenant isolation
-
-All demo entities live in the browser under `velora-demo-*` / `velora-local-*` localStorage keys, tagged `tenant_id = demo-tenant-velora`:
-`velora-demo-businesses`, `velora-demo-services`, `velora-demo-staff`, `velora-demo-customers`, `velora-local-bookings`, `velora-local-invoices`, `velora-local-notifs`.
-
-- The **Demo Customer** and **Demo Business** consoles read/write the SAME demo dataset (bookings made by the demo customer appear on the dashboard instantly, and business actions reflect back to the customer in real time — same tab via CustomEvent, cross-tab via the storage event).
-- **Reset demo** (Admin sidebar / Dashboard) clears ONLY the keys above and re-seeds the showcase businesses. Production Supabase data is never touched.
-- Demo bookings are created as `pending` and confirmed by the business — the full PENDING → CONFIRMED → COMPLETED / CANCELLED state machine.
-
-### 11-B. Business account registration
-
-`/welcome` → Business → **Create Business Account** (2 steps: owner account → business profile).
-
-- With Supabase configured: the owner signs up, then `POST /api/register-business` (auth token required) grants the `admin` role SERVER-SIDE and creates the `businesses` row (with `owner_user_id`) + starter services.
-- Migration `0002` locks roles: profiles can only be inserted as `customer` by clients, and a trigger blocks any role change that isn't from the service role. `admin` can ONLY be granted via `/api/register-business` or `/api/provision-demo` (allowlisted demo emails).
-- Demo accounts (`admin@velora.ai` / `customer@velora.ai`, password `velora123`) provision through `/api/provision-demo`.
-
-### 11-C. New API endpoints
-
-| Endpoint | Auth | Purpose |
-| --- | --- | --- |
-| `POST /api/register-business` | session | Business registration; grants console role server-side, creates business + services |
-| `POST /api/provision-demo` | public, allowlisted | Provisions the two fixed demo accounts' roles server-side |
-
-### 11-D. Demo verification limits (honest behavior)
-
-- Demo-tenant QR tickets (`local.*` tokens) verify in the browser session where they were booked (the token carries no PII; the booking record is checked for live status). Server bookings use HMAC-signed `v1.*` tokens that verify anywhere.
-- Demo-tenant bookings do not send real email (in-app notifications instead). Server bookings queue real email when `RESEND_API_KEY`/`SENDGRID_API_KEY` is set, with a Gmail-compose fallback always available.
+- Verify existing records and media remain intact; inspect RLS as anon, customer, two different owners and explicit operator. Ensure cross-tenant writes and direct client role escalation fail.
+- Sign up, confirm email and test Google OAuth; publish and edit a real test business. Upload/reorder/remove business photos and add/replace a service photo; verify bucket object ownership, failed upload behavior and public access only for intended images.
+- Test Google search, draggable pins, reverse geocoding, map markers, denied GPS permission, invalid keys/quota, and manual fallback. Confirm that owner-confirmed pins are not labelled provider-verified without a match.
+- Run true concurrent reservations from independent database sessions at one staff member and with multiple staff, including overlap, cancellations, historical rows, idempotent retry and reschedule. An isolated single-session test alone is insufficient.
+- Verify INR prices, dashboard persistence, customer cancellation policy, signed QR scanning/paste, altered tickets, unauthorized check-in, cancellation, reschedule and repeat check-in. Test actual camera permissions on supported devices.
+- Independently verify email, Calendar and scheduler with credentials, provider logs and real test inboxes. Do not infer delivery merely from a successful booking.
+- Exercise mobile/desktop, keyboard and assistive technology, large and invalid images, API outages, database outage, map tile failure and restrictive network settings. Set distributed rate limits, monitoring and alerts for the intended production load.

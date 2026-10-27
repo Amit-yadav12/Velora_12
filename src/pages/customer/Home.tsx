@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { Search, Clock, Star, Compass } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLocation } from '../../contexts/LocationContext';
-import { Business, CATEGORIES, imgOnError } from '../../lib/product';
+import { Business, CATEGORIES } from '../../lib/product';
 import { BusinessCard, SectionTitle, Rating, Grid } from '../../components/product';
 import { apiGet } from '../../lib/api';
 import { BusinessCardSkeleton } from '../../components/premium/Skeleton';
@@ -15,10 +15,12 @@ import { fetchDiscover } from '../../lib/hybridData';
 import { readRecentViews, pushSearchHistory, type RecentView } from '../../lib/smartSearch';
 import { prefetch } from '../../lib/smartCache';
 import { istHour } from '../../lib/format';
+import { isDemoMode } from '../../lib/supabase';
+import { isMiRoadElectricianSample, MI_ROAD_ELECTRICIAN_ALT } from '../../lib/miRoadElectrician';
 
 const recentToCard = (r: RecentView): Business => ({
   id: r.id, name: r.name, category: r.category, city: r.city,
-  image_url: r.image_url, rating: r.rating ?? 0, review_count: 0,
+  image_url: r.image_url, rating: r.rating ?? 0, review_count: 0, synthetic: r.synthetic,
 });
 
 export default function Home() {
@@ -30,13 +32,14 @@ export default function Home() {
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [recent, setRecent] = useState<Business[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   // ONE fast hybrid call powers the whole page — city-scoped, cached, with a
   // synthetic ecosystem fallback so the page is never empty. Recently-viewed
   // loads separately (non-blocking) so it can never delay the main content.
   useEffect(() => {
     let alive = true;
-    setLoading(true);
+    setLoading(true); setLoadError(false);
     fetchDiscover({ city: city.name, lat: origin.lat, lng: origin.lng, sort: 'distance' })
       .then((disc) => {
         if (!alive) return;
@@ -47,7 +50,7 @@ export default function Home() {
         // server has no rows for them — a request would just 404).
         prefetch(disc.results.filter((b) => !String(b.id).startsWith('demo-')).slice(0, 6).map((b) => `/api/businesses?id=${b.id}`));
       })
-      .catch(() => alive && setLoading(false));
+      .catch(() => { if (alive) { setLoadError(true); setLoading(false); } });
     return () => { alive = false; };
   }, [city.name, origin.lat, origin.lng]);
 
@@ -126,12 +129,12 @@ export default function Home() {
       {/* Available right now */}
       {openNow.length > 0 && (
         <section>
-          <SectionTitle title="Available right now" />
+          <SectionTitle title={isDemoMode ? "Sample availability" : "Available right now"} />
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {openNow.map((b, i) => (
               <motion.div key={b.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
                 <Link to={`/business/${b.id}`} className="card p-4 block group h-full">
-                  <div className="flex items-center gap-2 text-xs text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 pulse-dot" /> Open now</div>
+                  <div className="flex items-center gap-2 text-xs text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 pulse-dot" /> {isDemoMode ? 'Sample listing' : 'Open now'}</div>
                   <p className="mt-2 font-medium leading-tight group-hover:text-[var(--color-brand-indigo)] transition-colors line-clamp-1">{b.name}</p>
                   <p className="text-sm text-dim truncate">{b.category}</p>
                   <div className="mt-3 flex items-center justify-between">
@@ -164,7 +167,8 @@ export default function Home() {
         <Grid className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {(loading ? Array.from({ length: 8 }, () => null) : nearby).map((b, i) => b ? <DiscoverCard key={b.id} b={b} /> : <BusinessCardSkeleton key={i} />)}
         </Grid>
-        {!loading && nearby.length === 0 && (
+        {loadError && <p role="alert" className="text-sm text-red-400 mt-3">Businesses could not be loaded. Refresh to try again.</p>}
+        {!loading && !loadError && nearby.length === 0 && (
           <button onClick={() => nav('/explore')} className="card p-6 w-full flex items-center gap-3 text-left"><div className="h-10 w-10 rounded-xl grad-btn grid place-items-center"><Compass className="h-5 w-5 text-white" /></div><div><p className="font-medium">Explore all providers</p><p className="text-sm text-dim">Browse every business across categories.</p></div></button>
         )}
       </section>
@@ -176,8 +180,8 @@ export default function Home() {
           <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
             {recent.map(b => (
               <Link key={b.id} to={`/business/${b.id}`} className="card overflow-hidden min-w-[220px] group">
-                <img src={b.image_url} alt={b.name} onError={imgOnError(b.category)} className="h-28 w-full object-cover" loading="lazy" />
-                <div className="p-3"><p className="text-sm font-medium truncate">{b.name}</p><div className="flex items-center justify-between mt-1"><span className="text-xs text-dim">{b.category}</span><Rating value={b.rating} sm /></div></div>
+                <div className="h-28 w-full bg-gradient-to-br from-indigo-900 to-emerald-950">{b.image_url && <img src={b.image_url} alt={isMiRoadElectricianSample(b) ? MI_ROAD_ELECTRICIAN_ALT : b.name} onError={e => { e.currentTarget.style.display = 'none'; }} className={`h-full w-full object-cover ${isMiRoadElectricianSample(b) ? 'object-left' : ''}`} loading="lazy" />}</div>
+                <div className="p-3"><p className="text-sm font-medium truncate">{b.name}</p>{isMiRoadElectricianSample(b) && <p className="text-[10px] text-amber-400">Sample · AI illustration</p>}<div className="flex items-center justify-between mt-1"><span className="text-xs text-dim">{b.category}</span><Rating value={b.rating} sm /></div></div>
               </Link>
             ))}
           </div>

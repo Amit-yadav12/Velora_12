@@ -71,7 +71,7 @@ export default function Verify() {
               {verdict === 'expired' && <Clock className="h-12 w-12 mx-auto text-amber-400" />}
               {verdict === 'invalid' && <ShieldAlert className="h-12 w-12 mx-auto text-red-400" />}
               <h1 className="text-xl font-semibold mt-3">
-                {verdict === 'valid' && 'Valid ticket'}
+                {verdict === 'valid' && (r.demo ? 'Demo ticket only' : 'Valid ticket')}
                 {verdict === 'cancelled' && 'Booking cancelled'}
                 {verdict === 'expired' && 'Ticket expired'}
                 {verdict === 'invalid' && 'Invalid ticket'}
@@ -113,7 +113,7 @@ export default function Verify() {
                 </div>
               )}
 
-              {r.demo && <p className="text-[11px] text-dim mt-3">Demo ticket · verified against this device&apos;s demo booking data</p>}
+              {r.demo && <p className="text-[11px] text-dim mt-3">Demo only · verified on this device, not valid for real check-in</p>}
 
               <Link to="/" className="mt-5 w-full grad-btn text-white rounded-xl py-3 text-sm font-medium flex items-center justify-center gap-2">
                 Open Velora <ArrowRight className="h-4 w-4" />

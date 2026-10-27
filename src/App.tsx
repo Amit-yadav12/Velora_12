@@ -12,6 +12,7 @@ import Home from './pages/customer/Home';
 import Welcome from './pages/customer/Welcome';
 import Verify from './pages/Verify';
 const Explore = lazy(() => import('./pages/customer/Explore'));
+const BusinessOnboarding = lazy(() => import('./pages/business/BusinessOnboarding'));
 const BusinessDetail = lazy(() => import('./pages/customer/BusinessDetail'));
 const Appointments = lazy(() => import('./pages/customer/Appointments'));
 const Notifications = lazy(() => import('./pages/customer/Notifications'));
@@ -71,6 +72,8 @@ export default function App() {
           <Routes>
             <Route path="/welcome" element={<Welcome />} />
             <Route path="/verify/:token" element={<Verify />} />
+            <Route path="/onboard" element={S(<BusinessOnboarding />)} />
+            <Route path="/onboard/:id" element={S(<BusinessOnboarding />)} />
 
             {/* Customer product — opens directly into the experience */}
             <Route path="/" element={<CustomerGate><Home /></CustomerGate>} />

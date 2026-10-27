@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback } f
 import supabase from '../lib/supabase';
 import type { User } from '@supabase/supabase-js';
 
-interface Profile { id: string; email: string; full_name: string; role: string; }
+interface Profile { id: string; email: string; full_name: string; role: string; phone?: string | null; is_operator?: boolean; }
 interface Ctx { user: User | null; profile: Profile | null; loading: boolean; role: string; signOut: () => Promise<void>; refresh: () => Promise<void>; }
 const AuthContext = createContext<Ctx>({ user: null, profile: null, loading: true, role: 'customer', signOut: async () => {}, refresh: async () => {} });
 

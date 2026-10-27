@@ -1,4 +1,4 @@
-import supabase from './db-client.js';
+import supabase, { isDatabaseConfigured } from './db-client.js';
 import { cors, sanitizeText, assert, clientIp, enforceRateLimit, safeError } from './_lib/security.js';
 
 // Demo account provisioning — server-side, strictly allowlisted.
@@ -18,6 +18,8 @@ export default async function handler(req, res) {
     assert(req.method === 'POST', 'Method not allowed', 405);
     if (!enforceRateLimit(req, res, 'provision-demo', { limit: 10, windowMs: 60_000 })) return;
 
+    // Public demo passwords must never grant privileges on a real tenant.
+    if (isDatabaseConfigured()) return res.status(403).json({ error: 'Demo role provisioning is disabled for real databases.' });
     const email = String(req.body?.email || '').toLowerCase().trim();
     const spec = ALLOWED[email];
     // Never reveal which accounts are provisionable — generic response.

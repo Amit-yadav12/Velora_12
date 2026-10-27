@@ -249,11 +249,11 @@ await click(find('button', 'Business'));
 await settle();
 ok('Business path selected', bodyHas('business console'));
 ok('Business path offers "Continue as demo business"', !!find('button', 'Continue as demo business'));
-ok('Google button is visual-only (aria-disabled, no action wiring)', (() => {
+ok('Google button is disabled until Supabase is configured', (() => {
   const g = find('button', 'Continue with Google');
-  return !!g && g.getAttribute('aria-disabled') === 'true';
+  return !!g && g.disabled === true;
 })());
-ok('Google button has no click handler bound by the app', (() => {
+ok('Disabled Google sign-in does not navigate in demo mode', (() => {
   const g = find('button', 'Continue with Google');
   if (!g) return false;
   // A real handler would route/sign-in: clicking must change nothing at all.
@@ -357,7 +357,7 @@ if (newSvcBtn) await click(newSvcBtn);
 await settle(250);
 await waitFor(() => all('button').some((b) => /^\d{1,2}:\d{2}\s?(AM|PM)/i.test(txt(b))), { label: 'slots for new service' }).catch(() => {});
 const newSlots = all('button').filter((b) => /^\d{1,2}:\d{2}\s?(AM|PM)/i.test(txt(b)) && !b.disabled);
-ok('The console-created service gets real availability', newSlots.length > 0, `${newSlots.length} slots`);
+ok('The console-created demo service gets sample availability', newSlots.length > 0, `${newSlots.length} slots`);
 if (newSlots[0]) await click(newSlots[0]);
 await settle(250);
 await click(find('button', 'Review & book'));
@@ -366,7 +366,7 @@ typeInto(all('input').find((i) => /Full name/i.test(i.placeholder || '')), 'Demo
 typeInto(all('input').find((i) => /you@email\.com/i.test(i.placeholder || '')), 'customer@velora.ai');
 await settle(150);
 await click(find('button', 'Confirm booking'));
-await waitFor(() => bodyHas("You're all set") || bodyHas('Booking received'), { timeout: 12000, label: 'ticket for new service' });
+await waitFor(() => bodyHas('Demo request saved'), { timeout: 12000, label: 'ticket for new service' });
 const writesNow = JSON.parse(window.localStorage.getItem('velora-local-bookings') || '[]');
 const newSvcBooking = writesNow.find((b) => String(b.service_name) === svcName && b.customer_email === 'customer@velora.ai');
 ok('A booking for the console-created service is saved with an instant QR', !!newSvcBooking && !!document.querySelector('[data-qr] svg'));
@@ -422,31 +422,33 @@ await waitFor(() => window.location.pathname !== '/welcome', { timeout: 8000, la
 ok('Email sign-in works with the account just created',
   window.location.pathname !== '/welcome' && !bodyHas('Incorrect email or password'), `path=${window.location.pathname}`);
 
-// Business account creation (2-step form) — must land in the ADMIN console.
+// Business account creation continues to the multi-step onboarding flow.
 await ReactMod.act(async () => { await supa.default.auth.signOut(); });
 await mount('/welcome');
-await click(find('button', 'Business'));
-await settle();
+await click(find('button', 'Business')); await settle();
 await click(find('button', 'Create Business Account'));
-await waitFor(() => bodyHas('Create your business account'), { label: 'business step 1' });
+await waitFor(() => bodyHas('Create your business account'), { label: 'business account form' });
 typeInto(all('input').find((i) => /Owner name/.test(i.placeholder || '')), 'Harness Owner');
 typeInto(all('input').find((i) => /business@email\.com/.test(i.placeholder || '')), OWNER_EMAIL);
 typeInto(all('input').find((i) => /Password/.test(i.placeholder || '')), PW);
-await settle(120);
-await click(find('button', 'Continue'));
-await waitFor(() => bodyHas('Tell us about'), { label: 'business step 2' });
+await settle(120); await click(find('button', 'Create account & continue'));
+await waitFor(() => window.location.pathname === '/onboard', { timeout:10000, label:'business onboarding' });
+await waitFor(() => bodyHas('Tell your story'), { label:'onboarding first step' });
+ok('Business account continues to onboarding before gaining console access', window.location.pathname === '/onboard');
+ok('Onboarding discloses preview mode before any save', bodyHas('Preview mode') && bodyHas('connect Supabase'));
 const newBizName = `Harness Studio ${String(Date.now()).slice(-5)}`;
-typeInto(all('input').find((i) => /Business name/.test(i.placeholder || '')), newBizName);
-await settle(120);
-await click(find('button', 'Create business account'));
-await waitFor(() => window.location.pathname === '/admin', { timeout: 10000, label: 'business account lands in console' }).catch(() => {});
-ok('Business account creation lands in the business console (never the customer app)',
-  window.location.pathname === '/admin', `path=${window.location.pathname}`);
-ok('The new business is stored in the isolated demo tenant',
-  demoStore.listDemoBusinesses('Jaipur', true).some((b) => b.name === newBizName), newBizName);
-await goto('/admin/businesses');
-await waitFor(() => bodyHas(newBizName), { timeout: 8000, label: 'new business in console' }).catch(() => {});
-ok('The new business appears in the console immediately', bodyHas(newBizName));
+typeInto(all('input').find((i) => /The Studio Jaipur/.test(i.placeholder || '')), newBizName);
+await settle(100);
+await click(find('button','Continue')); await waitFor(() => bodyHas('Show the real you'), {label:'photos step'});
+ok('Onboarding has a photo step and business-specific preview', bodyHas('Business photos') && bodyHas(newBizName));
+await click(find('button','Continue')); await waitFor(() => bodyHas('Put yourself on the map'), {label:'location step'});
+ok('Onboarding offers address and manual coordinates', bodyHas('Latitude') && bodyHas('Longitude'));
+await click(find('button','Continue')); await waitFor(() => bodyHas('Your services, your schedule'), {label:'services step'});
+ok('Onboarding collects services, hours and holidays', bodyHas('Service name') && bodyHas('Weekly opening hours') && bodyHas('Holiday closures'));
+await click(find('button','Continue')); await waitFor(() => bodyHas('A final look'), {label:'review step'});
+await click(find('button','Save draft'));
+await waitFor(() => bodyHas('no business or images have been saved'), {label:'preview save refusal'});
+ok('Preview cannot claim a real draft was saved without Supabase', bodyHas('no business or images have been saved'));
 
 /* ================================================================== */
 console.log('\n—— 3. Customer demo → booking → instant QR ——');
@@ -478,29 +480,32 @@ await click(find('button', 'Continue as demo customer'));
 await waitFor(() => window.location.pathname !== '/welcome' && bodyHas('What would you like to'), { label: 'customer app' });
 ok('Customer demo lands in the customer app (never /admin)', window.location.pathname !== '/admin', `path=${window.location.pathname}`);
 
+// The dedicated image belongs only to the MI Road sample; it is not a photo
+// of an actual provider. Exercise discovery and the full detail route.
+await goto('/explore?category=Electricians');
+await waitFor(() => !!cardWith('MI Road Electrician on Call'), { timeout: 12000, label: 'MI Road sample listing' });
+const electricianCard = cardWith('MI Road Electrician on Call');
+ok('MI Road electrician card shows its labelled AI illustration',
+  electricianCard?.querySelector('img')?.getAttribute('src') === '/biz/mi-road-electrician-illustration.jpg' && /AI illustration/i.test(txt(electricianCard)));
+await click(Array.from(electricianCard.querySelectorAll('button')).find((b) => /View listing/i.test(txt(b))) || electricianCard);
+await waitFor(() => window.location.pathname === '/business/236002' && bodyHas('MI Road Electrician on Call'), { label: 'MI Road sample detail' });
+ok('MI Road detail uses the same name and labelled illustration',
+  bodyHas('AI illustration') && document.querySelector('img[alt="AI illustration of an electrician working in a Jaipur-inspired home"]')?.getAttribute('src') === '/biz/mi-road-electrician-illustration.jpg');
+
 await goto('/explore');
 await waitFor(() => bodyHas('Aurora Luxe Salon') || bodyHas('Apex Physio'), { timeout: 12000, label: 'demo listings' }).catch(() => {});
 ok('Demo businesses are discoverable in the customer app',
   bodyHas('Aurora Luxe Salon') || bodyHas('Apex Physio'), txt(document.body).slice(-160));
 
 const auroraCard = cardWith('Aurora Luxe Salon');
-if (auroraCard) await click(Array.from(auroraCard.querySelectorAll('button')).find((b) => /book now/i.test(txt(b))));
+if (auroraCard) await click(Array.from(auroraCard.querySelectorAll('button')).find((b) => /try demo|book now/i.test(txt(b))));
 else await goto('/business/demo-biz-aurora');
 await waitFor(() => bodyHas('Choose a service'), { label: 'business detail' });
 ok('Business detail opens with services from the shared dataset', bodyHas('Choose a service') && /₹/.test(txt(document.body)));
 
-// Indian address + real Google Maps wiring for the discovery/detail surface.
-ok('Business address carries locality, city, state and a 6-digit PIN',
-  /Jaipur/.test(txt(document.body)) && /(Rajasthan|Delhi|Karnataka|Maharashtra|Gujarat|Telangana|Tamil Nadu|West Bengal)/.test(txt(document.body)) && /\b[1-9][0-9]{5}\b/.test(txt(document.body)));
-const locFrame = document.querySelector('iframe[title="location"]');
-const locSrc = locFrame?.getAttribute('src') || '';
-ok('Map renders a Google Maps embed pinned to this business',
-  /google\.com\/maps/.test(locSrc) && /(output=embed|embed\/v1)/.test(locSrc) && decodeURIComponent(locSrc).includes('Luxe'), locSrc.slice(0, 90));
-const viewMapHref = all('a').map((a) => a.getAttribute('href') || '').find((h) => /google\.com\/maps\/search\/\?api=1&query=/.test(h)) || '';
-ok('“View on Map” opens Google Maps with the business name + address',
-  /Luxe/.test(decodeURIComponent(viewMapHref)) && /Jaipur/.test(decodeURIComponent(viewMapHref)), viewMapHref.slice(0, 90));
-const dirHref = all('a').map((a) => a.getAttribute('href') || '').find((h) => /google\.com\/maps\/dir\/\?api=1&destination=/.test(h)) || '';
-ok('“Get directions” targets the same location', /destination=.+/.test(dirHref) && /%2C/.test(dirHref), dirHref.slice(0, 90));
+// Demo locations are illustrative and must never be plotted as live businesses.
+ok('Sample business is clearly labelled', bodyHas('Sample listing'));
+ok('Sample coordinates are not presented as a live map pin', !document.querySelector('iframe[title="location"]'));
 
 const svcBtn = all('button').find((b) => /Signature Haircut/.test(txt(b)));
 if (svcBtn) await click(svcBtn);
@@ -520,11 +525,11 @@ typeInto(all('input').find((i) => /Full name/i.test(i.placeholder || '')), 'Demo
 typeInto(all('input').find((i) => /you@email\.com/i.test(i.placeholder || '')), 'customer@velora.ai');
 await settle(120);
 await click(find('button', 'Confirm booking'));
-await waitFor(() => bodyHas("You're all set") || bodyHas('Booking received'), { timeout: 12000, label: 'success ticket' });
-ok('Booking completes with the success ticket', bodyHas("You're all set") || bodyHas('Booking received'));
+await waitFor(() => bodyHas('Demo request saved'), { timeout: 12000, label: 'success ticket' });
+ok('Booking completes with the success ticket', bodyHas('Demo request saved'));
 ok('QR code is rendered IMMEDIATELY (no reload)', !!document.querySelector('[data-qr] svg'));
-ok('Ticket exposes Google Calendar + Directions + QR download',
-  bodyHas('Add to Google Calendar') && bodyHas('Directions') && bodyHas('Download QR ticket'));
+ok('Demo ticket offers QR download without real-world calendar or directions links',
+  !bodyHas('Add to Google Calendar') && !bodyHas('Directions') && bodyHas('Download QR ticket'));
 
 // Verify the download actions actually fire a file download (anchor[download]).
 await click(find('button', 'Download QR ticket'));
@@ -539,11 +544,10 @@ ok('Invoice PDF downloads too (lazy-loaded, no page reload)',
 ok('Ticket never claims an email was sent when no provider is configured',
   (process.env.RESEND_API_KEY || process.env.SENDGRID_API_KEY) ? true : !bodyHas('Confirmation email sent'),
   txt(document.body).slice(-120));
-ok('Ticket states the live channel it actually uses (in-app updates / reminders)',
-  bodyHas('In-app updates on') || bodyHas('Reminders scheduled') || bodyHas('Awaiting business confirmation'));
+ok('Demo ticket makes clear no business notification was sent',
+  bodyHas('Sample only') && bodyHas('no business notification sent'));
 const gcalHref = all('a').find((a) => /calendar\.google\.com/.test(a.getAttribute('href') || ''))?.getAttribute('href') || '';
-ok('Google Calendar link is a real, working template URL (no credentials needed)',
-  gcalHref.startsWith('https://calendar.google.com/calendar/render?') && /dates=\d{8}T\d{6}Z/.test(gcalHref), gcalHref.slice(0, 80));
+ok('Demo request does not offer a real calendar event', !gcalHref, gcalHref.slice(0, 80));
 
 const bookings = JSON.parse(window.localStorage.getItem('velora-local-bookings') || '[]');
 const newest = bookings.find((b) => b.customer_email === 'customer@velora.ai' && !/^VL-OPS/.test(String(b.ref)));
@@ -604,8 +608,8 @@ await settle(150);
 console.log('\n—— 4. QR verification page ——');
 if (newest && ticketVerifyUrl) {
   await goto(new URL(ticketVerifyUrl).pathname);
-  await waitFor(() => bodyHas('Valid ticket') || bodyHas('Ticket verified'), { label: 'verified ticket' }).catch(() => {});
-  ok('QR verify page validates the booking', bodyHas('Valid ticket') || bodyHas('Ticket verified'));
+  await waitFor(() => bodyHas('Demo ticket only') || bodyHas('Ticket verified'), { label: 'verified ticket' }).catch(() => {});
+  ok('QR verify page validates the booking', bodyHas('Demo ticket only') || bodyHas('Ticket verified'));
   ok('Verification leaks no customer PII', !bodyHas('customer@velora.ai') && !bodyHas('Demo Customer'));
   await goto('/verify/local.abcdefghijkl');
   await waitFor(() => bodyHas('Invalid ticket') || bodyHas("Couldn't verify") || bodyHas('failed verification'), { label: 'invalid ticket' }).catch(() => {});
@@ -681,6 +685,7 @@ if (completeBtn) {
 await ReactMod.act(async () => { await demoAuth.signInDemo('customer'); });
 await mount('/appointments');
 await waitFor(() => all('.card').length > 0 && !bodyHas('Sign in to view your bookings'), { label: 'appointments' });
+ok('Sample requests remain labelled and offer no real directions or calendar links', bodyHas('Sample request') && !all('a').some((a) => /maps\/dir|calendar\.google/.test(a.getAttribute('href') || '')));
 const otherRefs = JSON.parse(window.localStorage.getItem('velora-local-bookings') || '[]')
   .filter((b) => b.customer_email && b.customer_email !== 'customer@velora.ai' && !/^VL-OPS/.test(String(b.ref)))
   .map((b) => b.ref);
@@ -798,7 +803,7 @@ await ReactMod.act(async () => {
 });
 const doorRow = JSON.parse(window.localStorage.getItem('velora-local-bookings') || '[]').find((b) => b.id === doorBooking?.id);
 const doorToken = doorRow?.qr_salt ? demoStore.makeLocalQrToken(doorRow.ref, doorRow.qr_salt) : '';
-ok('Check-in fixture has a signed ticket token', Boolean(doorToken), String(doorToken).slice(0, 18));
+ok('Check-in fixture has a local demo ticket token', Boolean(doorToken), String(doorToken).slice(0, 18));
 
 await mount('/admin/appointments');
 await waitFor(() => bodyHas(doorBooking.ref), { timeout: 12000, label: 'door booking row' });
@@ -827,7 +832,7 @@ await waitFor(() => document.querySelector('[data-checkin-code="verified"]'), { 
 ok('The real ticket is verified and checks the guest in',
   document.querySelector('[data-checkin-code]')?.getAttribute('data-checkin-code') === 'verified',
   document.querySelector('[data-checkin-code]')?.getAttribute('data-checkin-code') || 'no verdict');
-ok('Check-in is persisted as checked_in (server-validated transition)',
+ok('Demo check-in is persisted on this device',
   JSON.parse(window.localStorage.getItem('velora-local-bookings') || '[]').find((b) => b.ref === doorBooking.ref)?.status === 'checked_in');
 ok('Check-in notifies the customer', JSON.parse(window.localStorage.getItem('velora-local-notifs') || '[]')
   .some((n) => n.audience === 'customer' && n.booking_ref === doorBooking.ref && /checked in/i.test(n.title)));
@@ -898,7 +903,7 @@ const bizCount = Array.isArray(bizList.body) ? bizList.body.length : (bizList.bo
 ok('GET /api/businesses responds with a catalogue', bizList.status === 200 && bizCount > 0, `status=${bizList.status} count=${bizCount}`);
 const rows = Array.isArray(bizList.body) ? bizList.body : (bizList.body?.results || []);
 const serverBiz = rows.find((b) => Number(b.id) >= 100000) || rows[0];
-ok('GET /api/businesses returns bookable providers (server/synthetic catalogue)', !!serverBiz);
+ok('GET /api/businesses returns sample providers in preview mode', !!serverBiz);
 
 const single = await probe(`/api/businesses?id=${encodeURIComponent(serverBiz?.id ?? 100001)}`);
 ok('GET /api/businesses?id= resolves one business with services',
@@ -950,40 +955,11 @@ const bookBody = {
   customer_name: 'API Probe', customer_email: 'probe@example.in',
 };
 const bookRes = await probe('/api/book', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ...bookBody, idempotency_key: `probe-${Date.now()}` }) });
-ok('POST /api/book creates a booking through the API (no 5xx)', bookRes.status < 500 && !!bookRes.body?.booking?.ref, `status=${bookRes.status}`);
-ok('POST /api/book reports its pipeline HONESTLY (saved flag ⇔ demo_mode)',
-  bookRes.body?.pipeline?.saved === !bookRes.body?.pipeline?.demo_mode, JSON.stringify(bookRes.body?.pipeline));
-ok('POST /api/book never claims an email was sent without a provider',
-  ['log-fallback', 'sending', 'queued'].includes(String(bookRes.body?.pipeline?.email)), String(bookRes.body?.pipeline?.email));
-const replayA = await probe('/api/book', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ...bookBody, start_time: new Date(Date.now() + 5 * 86400000).toISOString(), idempotency_key: 'velora-idem-probe' }) });
-const replayB = await probe('/api/book', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ...bookBody, start_time: new Date(Date.now() + 5 * 86400000).toISOString(), idempotency_key: 'velora-idem-probe' }) });
-ok('POST /api/book is idempotent (same key ⇒ one booking, replayed answer)',
-  replayA.status < 500 && replayB.status < 500 && !!replayA.body?.booking?.ref && replayA.body.booking.ref === replayB.body?.booking?.ref,
-  `${replayA.body?.booking?.ref} vs ${replayB.body?.booking?.ref}`);
-
-// Capacity model: a NAMED specialist owns their slot exclusively; "any
-// specialist" is capped at the roster size (Prime MediTrust has 3).
-const staffSlot = new Date(Date.now() + 6 * 86400000).toISOString();
-const staffA = await probe('/api/book', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ...bookBody, staff_id: 100001000, start_time: staffSlot, idempotency_key: 'staff-a' }) });
-const staffB = await probe('/api/book', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ...bookBody, staff_id: 100001000, start_time: staffSlot, idempotency_key: 'staff-b' }) });
-ok('POST /api/book refuses a DOUBLE BOOKING of one specialist (409, no second record)',
-  staffA.status === 201 && staffB.status === 409, `first=${staffA.status} second=${staffB.status}`);
-
-const anySlot = new Date(Date.now() + 7 * 86400000).toISOString();
-const anyStatuses = [];
-for (let i = 0; i < 4; i += 1) {
-  const r = await probe('/api/book', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ...bookBody, start_time: anySlot, idempotency_key: `any-${i}` }) });
-  anyStatuses.push(r.status);
-}
-ok('POST /api/book caps "any specialist" at the roster size (3 booked, 4th refused)',
-  anyStatuses.slice(0, 3).every((st) => st === 201) && anyStatuses[3] === 409, anyStatuses.join(','));
-
+ok('POST /api/book fails closed without a configured database', bookRes.status === 503 && !bookRes.body?.booking, `status=${bookRes.status}`);
 const past = await probe('/api/book', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ...bookBody, start_time: new Date(Date.now() - 86400000).toISOString(), idempotency_key: 'past-probe' }) });
 ok('POST /api/book rejects a PAST slot', past.status === 400, `status=${past.status}`);
-const noEmail = await probe('/api/book', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ...bookBody, customer_email: 'not-an-email', idempotency_key: 'bad-email' }) });
-ok('POST /api/book rejects an invalid customer email', noEmail.status === 400, `status=${noEmail.status}`);
-const badService = await probe('/api/book', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ...bookBody, service_id: 999999999, idempotency_key: 'bad-svc' }) });
-ok('POST /api/book rejects a service that does not belong to the business', badService.status === 404, `status=${badService.status}`);
+const liveAttempt = await probe('/api/book', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({ ...bookBody, business_id:'live-unpartnered', idempotency_key:'google-probe' }) });
+ok('Unpartnered Google listings cannot create real bookings', liveAttempt.status === 400 && !liveAttempt.body?.booking, `status=${liveAttempt.status}`);
 
 const demoFetches = apiCalls.filter((c) => /id=demo-/.test(c.path));
 ok('Demo tenant entities are never fetched from the server (they resolve locally)',

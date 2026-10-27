@@ -16,10 +16,11 @@ export default async function handler(req, res) {
     const uid = auth.user.id;
     const role = auth.profile?.role || 'customer';
     const audience = role === 'admin' ? 'admin' : 'customer';
+    const operator = auth.profile?.is_operator === true;
 
     if (req.method === 'GET') {
       const { data, error } = await supabase.from('notifications').select('*')
-        .or(`user_id.eq.${uid},and(user_id.is.null,audience.eq.${audience})`)
+        .or(operator ? `user_id.eq.${uid},and(user_id.is.null,audience.eq.admin)` : `user_id.eq.${uid}`)
         .order('created_at', { ascending: false }).limit(30);
       if (error) throw error;
       return res.status(200).json(data);
@@ -27,9 +28,10 @@ export default async function handler(req, res) {
     if (req.method === 'PUT') {
       const { id } = req.body || {};
       if (!id) return res.status(400).json({ error: 'Notification id is required' });
-      const { data: row } = await supabase.from('notifications').select('id,user_id,audience').eq('id', id).single();
+      const { data: row, error: findError } = await supabase.from('notifications').select('id,user_id,audience').eq('id', id).maybeSingle();
+      if (findError) throw findError;
       if (!row) return res.status(404).json({ error: 'Not found' });
-      const owned = row.user_id === uid || (!row.user_id && row.audience === audience);
+      const owned = row.user_id === uid || (operator && !row.user_id && row.audience === audience);
       if (!owned) return res.status(403).json({ error: 'Not your notification' });
       const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
       if (error) throw error;

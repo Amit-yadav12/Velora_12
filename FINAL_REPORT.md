@@ -1,210 +1,60 @@
-# Velora — engineering report for this revision
+# Velora — implementation and verification report
 
-**Branch:** `arena/5a0170f1-velora-12` (from `main` @ `dc719ed`)
-**Base stack preserved:** React 19 + TypeScript (strict) + Vite 7 + Supabase Postgres/Auth/Realtime + serverless `api/*` + Netlify/Vercel hosting.
+**Working branch:** `arena/127595f5-velora-12`
 
-This document records what was actually changed and verified in this pass. It deliberately contains no screenshots of unverified pages, no coverage percentages, no user counts and no live-integration claims that were not exercised.
+**Base:** `119781653a1ca4d546d73ccf7568385f681e2850` on `main`
 
----
+**Status:** changes are on [`Velora_12` pull request #15](https://github.com/Amit-yadav12/Velora_12/pull/15). No migration has been applied to a live Supabase project and no production deployment has been performed. This is `Velora_12`, not the separately requested `Velora_Hack` repository. See [HACKATHON_AUDIT.md](HACKATHON_AUDIT.md) for the distinct target-repository and live-demo audit.
 
-## 1. Verified results
+## What changed
 
-All commands run in this workspace, in this order, on the final working tree:
+- Added a five-step business create/edit experience, including business details, photos/logo, location confirmation, services, staff, hours and holidays. New images are uploaded to the authenticated owner's Supabase Storage folder and verified for ownership, existence, file signature and size before they are saved. Owners remain responsible for the image subject and rights.
+- Added Google Maps/Places integrations with a draggable pin, location search and error states, plus an attributed OpenStreetMap fallback when tiles are reachable. An owner-confirmed pin is not described as provider-verified unless the server verifies it against Google.
+- Added the additive `supabase/migrations/0005_launch_security_and_booking.sql` migration and regenerated `supabase/APPLY_ALL.sql`. The migration introduces scoped business ownership/operator access, Storage policies, transactional business saves, booking allocation safeguards and an exclusion constraint. It does not reset existing data.
+- Real bookings require an authenticated user, a registered business and service, available capacity, and a configured signing secret. Reservations and related invoice/history rows are committed transactionally. Tickets are server-signed and checked against current booking state; check-in requires an authorized business owner or operator. Real staff currently share business hours; individual staff schedules and service assignments are not persisted.
+- Removed or labelled misleading synthetic/live fallbacks, invented travel estimates and unconfigured Calendar success. Email and Calendar are best effort; provider acceptance is not proof of delivery, and logged unsent email attempts do not automatically retry.
+- Corrected the nullable map-score handling and added regressions. No `fit_score` field was found in this checked-out source; the nullable map field in this application is `ai_score`. The separately audited `Velora_Hack` source has a different, still-unfixed `fit_score` build error.
+- Fixed ticket URL extraction so lowercase `s` no longer truncates scanned or pasted QR links. Camera streams that resolve after closing/unmounting the check-in dialog are stopped; stale detector results cannot submit. The new camera tests use jsdom and mocked media/API calls, not a physical camera.
+- Added a guard to the generated fresh-project bootstrap: it refuses to run when `public` already contains an RLS policy or relation, before any application DDL. The historical 0001 migration remains unchanged and still drops all public policies if run directly. Do not run it on an existing/shared database; follow the incremental upgrade instructions.
+- Added an Indian-inspired AI illustration **only** for the synthetic “MI Road Electrician on Call” listing. It is labelled as an illustration, not a photograph of an actual business. Other businesses' images have not been changed by this image update.
 
-| Command | Result | Notes |
-|---|---|---|
-| `npm ci` | ✅ | Lockfile install, 280 packages, **0 vulnerabilities** |
-| `npm run lint` | ✅ | ESLint 9, errors fail (no disables added) |
-| `npm run build` | ✅ | `tsc -b` strict + Vite production build |
-| `npm run sql:check` | ✅ | `APPLY_ALL.sql` in sync with `supabase/migrations/` (4 migrations) |
-| `npm run verify:demo` | ✅ 99/99 | Demo engine + check-in planner + ₹ comparison maths + demo auth (4/4) |
-| `npm run verify:integrations` | ✅ 135/135 | Calendar/email/QR/**server check-in proof**/IST/booking guards/security/SQL invariants |
-| `npm run verify:app` | ✅ 149/149 | Real `App.tsx` on a real Vite dev server + real `/api/*` handlers under jsdom |
-| `npm audit` | ✅ | 0 vulnerabilities (was 13: 1 critical, 11 high, 1 moderate) |
+### Main files
 
-GitHub Actions on this branch: **verify job green** (lint → typecheck/build → sql:check → demo engine → integration suite → app/API harness). Netlify built a deploy preview of this branch (`deploy-preview-14--velora-ai-in`) successfully — evidence that the production build also runs on the real host — but the preview URL is not reachable from this sandbox, so the deployed UI itself was **not** visually verified. A second linked Netlify project (`velora-ai-com`) fails its deploy previews identically on earlier PRs; that is pre-existing and unrelated to this change.
+| Area | Files |
+|---|---|
+| Onboarding and media | `src/pages/business/BusinessOnboarding.tsx`, `src/components/premium/ImageUploader.tsx`, `src/lib/businessMedia.ts`, `api/register-business.js`, `api/_lib/business-input.js`, `api/_lib/business-media.js` |
+| Maps and location | `src/components/premium/InteractiveMap.tsx`, `src/lib/mapsLoader.ts`, `src/contexts/LocationContext.tsx`, `api/{geocode,places,place-photo}.js`, `api/_lib/maps.js` |
+| Booking, QR and access | `api/{book,bookings,business-slots,smart-slots,verify-booking,my-bookings,admin}.js`, `api/_lib/{auth,qr,public-business}.js`, `src/services/verify.ts`, `src/components/console/CheckInDialog.tsx`, `src/pages/admin/AdminAppointments.tsx`, `supabase/migrations/0005_launch_security_and_booking.sql` |
+| Sample illustration | `public/biz/mi-road-electrician-illustration.jpg`, `api/_lib/synthetic.js`, `src/lib/{synthetic,miRoadElectrician,hybridData,smartSearch}.ts`, customer discovery/detail components |
+| Verification and docs | `scripts/test-launch-sql.mjs`, `scripts/test-launch-api.mjs`, `scripts/test-checkin-camera.mjs`, `scripts/build-sql.mjs`, `scripts/{test-demo-engine,verify-integrations,verify-app}.mjs`, `README.md`, `DEPLOY.md`, `JUDGE_DEMO.md`, `.env.example`, `HACKATHON_AUDIT.md` |
 
-Evidence limits: jsdom (no browser binary in this sandbox), and no Supabase project, mail provider or Google credentials are available — so database/RLS and provider behaviour are verified through code paths, stubs and honest-fallback assertions, not live calls. The historical demo URL was **not** reachable from this sandbox and is not claimed to serve this revision.
+The complete changed-file list is available with `git status --short`.
 
----
+## Local verification
 
-## 2. Confirmed defects fixed
+Commands run after a clean `npm ci` on Node 22.22.3:
 
-### 2.1 Slots were stored 5½ hours late (correctness, primary flow)
-`api/_lib/synthetic.js`, `api/business-slots.js`, `api/smart-slots.js` and `src/lib/synthetic.ts` built a "10:00" slot with `new Date('YYYY-MM-DD')` + `setHours(10)` — i.e. **10:00 in the runtime's zone**. Netlify/Vercel run in UTC, so a customer tapping "10:00 am" created a booking at **15:30 IST**, and the label shown came from the host's zone rather than IST.
+| Check | Result |
+|---|---|
+| `npm ci` | Passed; 281 packages installed, 0 vulnerabilities reported. |
+| `npm run lint` | Passed. |
+| `npm run build` | Passed. Both a configured HTTPS `APP_URL` build and an unconfigured build were checked: static canonical, Open Graph and JSON-LD origins are injected only when a valid origin is configured. |
+| `npm run sql:check` | Passed; the SQL bundle matches the migration files. |
+| `npm run verify` | Passed: 111 demo checks, 4 demo-auth checks, 119 integration checks, 30 isolated SQL checks, 60 mocked API/input checks, 4 mocked camera lifecycle checks and 147 app checks. |
+| `npm audit --audit-level=low` | Passed; 0 vulnerabilities. |
+| `git diff --check` and API syntax check | Passed. |
 
-Fixed with a single IST primitive module (`api/_lib/ist.js`, mirrored by the existing `src/lib/india.ts` + `src/lib/format.ts`): every slot is anchored at `+05:30` and every human-facing time is formatted in `Asia/Kolkata`. Also fixed in the same pass:
+The SQL suite runs migrations 0001–0004 followed by 0005 twice in PGlite with Supabase auth/storage stubs. Separately, it checks a fresh full bootstrap and verifies that the generated bootstrap refuses an unrelated existing policy or table before making schema changes. The suite also checks rollback, preserved legacy records, ownership/RLS, booking conflicts and exclusion constraints. It is not a live Supabase test or a true concurrent-transaction test. API, camera and provider tests use mocks.
 
-* `api/heatmap.js` bucketed bookings by the **UTC** weekday/hour (`getDay()`/`getHours()`), skewing evening bookings into the next day.
-* Heatmap/forecast day lists used `toISOString().slice(0,10)` — the UTC date — so between 00:00 and 05:30 IST the whole forecast was a day behind.
-* `api/discover.js` and `src/lib/hybridData.ts` computed "next available" with local-time arithmetic while open/closed logic used IST.
-* `api/bookings.js` wrote reschedule times into history/notifications/emails with `toLocaleString()` (server zone).
-* `api/admin.js` "today" counted UTC days.
-* `src/lib/demoStore.ts` labelled slots from the device zone.
+Headless Chromium was used to check the local demo on desktop and at 375 px. The MI Road card and detail page load the new image, identify it as an AI illustration and show no page errors or horizontal overflow. Earlier browser checks covered demo onboarding refusal, a demo booking/QR, mocked onboarding failure and success, and console/service-photo interactions; intercepted responses do not establish live provider success.
 
-Regression coverage: `verify:integrations` §4b (13 assertions incl. "a 10:00 slot is stored as 04:30Z on a UTC host", client/server parity, forecast weekday/date parity) and the existing IST round-trip test in `verify:demo`.
+## Configuration and rollout still required
 
-### 2.2 A flaky, self-contradicting regression test
-`verify:demo`'s "off-duty specialist blocks their slot" picked "today + 2 days" and asserted a specific staff member was off that day. It passed when that date happened to be a Sunday (the CI run in September) and **failed on any other weekday** — it did so on this checkout. Rewritten to derive both an on-duty and an off-duty date from the roster itself, and to assert both directions (off day → all slots blocked; working day → free slots offered). This is why the suite went 65/1 → 76/0.
+1. Back up and test the additive migrations on a staging Supabase project before applying them to production. Configure Auth, a `business-media` Storage bucket/policies, and an explicit trusted operator using `supabase/PROMOTE_ADMIN.sql` as documented in `DEPLOY.md`.
+2. Set the server-only Supabase service-role key and stable `QR_SIGNING_SECRET`, public Supabase client settings, and a valid `APP_URL`. Never expose server secrets through `VITE_*` variables.
+3. Configure and restrict Google Maps/Places keys if those features are wanted; configure mail and Calendar providers and scheduled reminders as needed. The unconfigured demo does not provide real publication, tickets, email or calendar delivery.
+4. Verify real Supabase Auth/Storage/RLS, live Maps/Places, email, Calendar, camera scanning, and actual concurrent reservations against staging. No credentials or live services were available in this workspace. Staff scheduling, storage cleanup, moderation, distributed rate limiting, provider retries and operational monitoring remain deployment responsibilities.
 
-### 2.3 `bookings.status` could not represent `pending`
-The schema's `CHECK` constraint allowed six values while both the client state machine (`src/lib/bookingStatus.ts`) and the server (`api/bookings.js`) model `pending → confirmed`. Any persisted "booking request" was rejected by Postgres; only the local demo dataset could represent it. Migration `0004_booking_lifecycle.sql` widens the constraint.
+## CI
 
-### 2.4 `service_id` was always written as `NULL`
-`api/book.js` inserted `service_id: null` for every booking, losing the service linkage of real businesses (FK-safe only because synthetic ids are not rows). Now persisted when the service genuinely comes from `business_services`, and kept `NULL` for synthetic/live snapshots.
-
-### 2.5 Idempotency keys were global
-The replay cache keyed only on the client-supplied key, so two different customers using the same key could receive each other's booking payload. Keys are now namespaced by the authenticated user id (or the booking email). Covered by a new assertion.
-
-### 2.6 SQL bundle silently dropped new migrations
-`scripts/build-sql.mjs` hardcoded a three-file list, so a fourth migration would never reach `APPLY_ALL.sql` (and `sql:check` would still pass). Migration discovery is now filesystem-based and ordered; the invariant test discovers migrations the same way and asserts the `pending` status and service-only invoice writes land in the bundle.
-
-### 2.7 Error internals leaked to clients
-Eleven handlers returned `err.message` on 500 (driver/schema detail). All now go through `safeError` (4xx messages pass through, 500s are generic and logged server-side).
-
-### 2.8 Blanket wildcard CORS
-`Access-Control-Allow-Origin: *` on every response. Now: echo only configured origins (`APP_URL` / `ALLOWED_ORIGINS`), no header for unknown browser origins, wildcard fallback retained for unconfigured preview/demo deployments so the product stays usable.
-
-### 2.9 Any console user could act on any business's bookings
-The console uses one `admin` role for both the platform operator and every business owner, and `GET /api/bookings` returned **all** bookings while mutations only checked `role === 'admin'`. Ownership (`businesses.owner_user_id`) is now resolved server-side: an owner lists and mutates only their own business's appointments; a caller who owns no business is the platform operator. Unauthorised mutations return 403 before any state change.
-
-### 2.10 Invoice rows were writable by anyone
-`invoices` shipped with `insert with check (true)`. Tightened to service-role only (they are only ever written by the API).
-
-### 2.11 Misleading product claims
-* "AI picked / AI recommends / AI picks" for a deterministic slot-and-listing heuristic → **"Best time", "Top match · match 87/100", "Velora picks"**, each with a tooltip naming the actual signals and an explicit "transparent heuristic, not a trained model".
-* "…% loved this week" for a synthetic popularity prior → **"Estimated demand 62/100"**.
-* "~12 min wait · 3 in queue" → **"~12 min estimated wait"** with a note that no live sensor feed exists.
-* "Open now (live)" was printed for locally derived opening hours → "(live)" only for genuine Google Places listings.
-* "Calendar sync" promised in the booking panel regardless of configuration → removed; the README documents when calendar/email actually deliver.
-* Heatmap "AI tip" → "Tip", plus "Estimated from booking history and a baseline forecast — not live sensor data."
-
-### 2.12 Map marker contract
-The map layer's `MapBusiness` no longer duplicates (and drifts from) the domain model. `src/lib/mapData.ts` owns the marker contract with the nullability made explicit (`ai_score: number | null`, coordinates and rating guaranteed finite), and `toMapBusinesses()` normalises at the data boundary — rows without usable coordinates are dropped instead of being plotted at 0,0 with `undefined` ratings. Covered by 8 runtime assertions (`verify:demo` §15) plus strict compilation.
-
----
-
-## 3. UX / accessibility changes
-
-* **Explore**: 46 categories no longer pour into one rail — the core set is shown with a "More (36)" toggle, and the active category stays visible. Search input/clear, filters (`aria-expanded`/`aria-controls`), sort and view toggles now carry labels/pressed state.
-* **Business detail**: phones got an immediate primary action at the top that jumps to the booking panel (the panel sits below services, photos, forecast and reviews), with `scroll-mt` so the sticky header doesn't cover it. Date field is labelled "(IST)".
-* **Modal**: real dialog semantics (`role="dialog"`, `aria-modal`, `aria-labelledby`), focus moved into the panel and restored on close, Tab cycling trapped, Escape closes, background scroll locked.
-* **Home**: greeting uses the IST hour rather than the device clock.
-* **Honesty in-place**: the concierge states it is rule-based and that every booking is validated server-side; score badges are labelled and announced for screen readers.
-* Existing strengths preserved: design tokens, reduced-motion support, skip link, focus-visible rings, skeleton/empty/error states, keyboard-operable controls.
-
----
-
-## 4. Dependency security
-
-`npm audit fix` was used **without** `--force`; declared ranges only changed where a security floor was required.
-
-| Package | Before | After | Exposure |
-|---|---|---|---|
-| `dompurify` (via `jspdf`) | 3.4.11 — **critical** | 3.4.17 | Client (PDF export sanitisation) |
-| `react-router-dom` / `react-router` (direct) | 7.13.1 | 7.18.4 | Client routing — several XSS/DoS/open-redirect advisories |
-| `vite` (direct, dev) | 7.3.6 | 7.3.7 | Dev server only |
-| `postcss`, `undici`, `zod`, `nanoid`, `js-yaml`, `browserslist`, `brace-expansion`, `source-map-js`, `baseline-browser-mapping` | vulnerable versions | patched in-range | Transitive/tooling |
-
-Result: `npm audit` → **0 vulnerabilities**. `package.json` now declares `react-router-dom ^7.18.4` and `vite ^7.3.7` so the patched floor is explicit. No `--force`, no major upgrades, no test or type-checking relaxation.
-
----
-
-## 5. Still not verified / known limitations
-
-| Item | Status | Why it matters |
-|---|---|---|
-| Live Netlify deployment serving this revision | **Not verified** | No network access to that host from the sandbox; deploy from this repo and set `APP_URL`/`VITE_APP_URL`. QR links follow the configured origin. |
-| Supabase RLS behaviour against a live database | **Not verified** (SQL reviewed, bundle in sync) | Requires a project; `APPLY_ALL.sql` is the tested artefact. |
-| Email delivery, Google Calendar events, Places lookups | **Credit-gated** | Code paths verified with stubs; without credentials the app reports "queued"/"not configured" and offers Gmail/ICS fallbacks. |
-| Real browser layout at 375/768/1440 px | **Not verified** | jsdom exercises interactions, not pixels. |
-| Payment | **Not implemented** | Invoices/GST are documents only. Not presented as a working gateway. |
-| Guest email ownership | **Not verified** | No verification link flow; documented. |
-| Concurrency across serverless instances | **Best effort** | Slot ledger + DB clash query handle retries/double-clicks; a single-resource deployment should add the documented Postgres exclusion constraint. |
-| Rate limiting | **In-memory per instance** | Blunts casual abuse only; documented shared-store upgrade. |
-| Screen-reader audit | **Not done** | Semantic HTML and labels improved, no AT audit performed. |
-
----
-
-## 6. Judge demo (≈3 minutes)
-
-1. `/welcome` → **Customer → Continue as demo customer** (no signup).
-2. Home → change city → search "salon" → Explore filters + match score tooltip (it names its own signals).
-3. Open **Aurora Luxe Salon & Spa** → service → specialist → pick a slot ("Best time" is explained) → **Review & book** → confirm.
-4. Ticket: reference + GST invoice + QR. Open `/verify/<token>` — valid; change one character — rejected; cancel the booking in the console — verification reports "cancelled".
-5. `/welcome` → **Business → Continue as demo business** → `/admin`: the same booking is present; confirm it and watch `/appointments` update without a reload.
-6. Console → Services: deactivate a service → it disappears from customer discovery immediately. Reset demo when finished.
-
-Questions to expect, and the honest answers: the ranking and slot picker are **documented heuristics** (weights visible in `src/lib/hybridData.ts`, no model); the LLM is optional and only rewrites chat wording; concurrency is guarded by an idempotency key, a capacity-aware slot ledger and a DB clash query, with the documented single-instance caveat; QR verification is HMAC-SHA256 with expiry and a live status overlay; email/calendar are real integrations that degrade transparently when unconfigured.
-
----
-
-## 7. Second pass — "100/100" mission (check-in, ₹ compare, brand, mobile)
-
-This pass added product surface rather than re-fixing the previous one. Everything below is in the same working tree as §1's last run.
-
-### 7.1 Door check-in is now a verified flow, not a status button
-
-| Layer | What was added | Why it matters |
-|---|---|---|
-| API (`api/bookings.js`) | `action: 'check_in'` verifies the scanned ticket **server-side** (`verifyBookingToken`), requires staff, requires the ticket's `ref` to equal the row's `ref`, re-checks `canTransition`, is idempotent (`already_checked_in` → 200, no second write), writes `booking_history` + `audit_logs` + both notifications | Before this, check-in was only reachable as a generic `status` flip by an admin — the QR ticket was verified for *display* but never required as *proof* at the door |
-| Decision logic (`src/lib/checkInPlan.ts`) | Pure mapper from a `VerifyResult` + the operator's bookings to a verdict: `verified / already_checked_in / invalid / expired / cancelled / pending / not_found / unsupported` | The security-relevant branches are unit-testable with no DOM and no browser-only imports |
-| Orchestration (`src/services/checkIn.ts`) | `checkInFromTicket()` = verify → plan → apply; demo rows transition through the shared local store, server rows call the API **with the ticket**; never throws | A failed verification cannot mutate state; a failed save returns a message and leaves the booking unchanged |
-| Console UI (`src/components/console/CheckInDialog.tsx`) | **Verify ticket** button on Appointments → paste or scan; `BarcodeDetector` camera as a progressive enhancement; `aria-live` verdict panel; "already checked in" and "not confirmed yet" states; link to open the appointment | Paste always works, so the flow is usable on iOS Safari and testable in jsdom |
-| Manual override | Row action kept, but relabelled *"Check in without ticket (manual override)"* | Honest: staff can still admit a guest who lost their phone, and it is visibly the unverified path |
-
-Coverage added: 11 planner assertions (`verify:demo`), 10 server-invariant assertions on the check-in branch (`verify:integrations`), and 12 DOM assertions driving the real dialog — wrong ticket refused and state untouched, real ticket checked in and persisted, customer notified, rescan idempotent, pending refused (`verify:app`).
-
-### 7.2 Comparing businesses and prices in ₹
-
-`src/lib/compare.ts` (pure) + `src/components/premium/CompareSheet.tsx` + shortlist toggles on `DiscoverCard` and a sticky tray in `Explore`.
-
-* Real data only: starting price per business and a **service-by-service matrix** from each business's own catalogue. Cheapest cell is marked, the **actual spread** is quoted in rupees, and a business that doesn't list a service shows `—` (never ₹0, never an "estimated saving").
-* Capped at 3, ephemeral (component state only — no storage, no account, no tracking).
-* Phone layout stacks one card per business; the table appears from `sm` up, so 375 px never scrolls sideways.
-* 12 maths assertions (`verify:demo`) + 10 DOM assertions (`verify:app`).
-
-### 7.3 Brand: reproducible 3D assets
-
-`scripts/brand/make-assets.sh` regenerates `icon-192.png` (192², ~118 KB), `icon-512.png` (512², ~175 KB — now the declared size; it was a 1024² image mislabelled 512), a new `apple-touch-icon.png` (180²) and `og-image.png` (**1200×630 — the size `index.html` has always declared**; the old file was 1376×768).
-
-The mark is the supplied Velora "V" ribbon: mint→teal gradient, ribbon fold, specular highlight, indigo/violet ambient glow on deep navy. Deterministic script + bundled Inter subset (SIL OFL, `scripts/brand/fonts/OFL.txt`). Type is now real Inter rather than whatever font ImageMagick found — the old card silently dropped `₹` from the strapline because the latin subset has no rupee glyph; the strapline is set in DejaVu and renders `₹` correctly. In-app the same mark stays inline SVG (`src/components/Logo.tsx`), so it survives sandboxed previews and needs no network request.
-
-### 7.4 Mobile, accessibility and the 375 px contract
-
-Structural assertions were added because jsdom cannot measure pixels: the appointments table is inside a horizontal scroller with secondary columns hidden below `md`; every icon-only console button carries `aria-label`/`title`; the compare sheet's phone/desktop split is asserted; the comparison tray is sticky; the shell ships a responsive viewport, manifest and touch icon. A newly found defect was fixed here: the check-in dialog had been nested inside the appointment-detail `Modal`, so its content was rendered inside a `role="dialog"` with **no `role="dialog"` of its own and no focus trap** — both are now independent dialogs.
-
-### 7.5 Scorecard after this pass
-
-| Category | Weight | Score | Evidence / gap |
-|---|---|---|---|
-| Functional completeness & reliability | 25 | 22 | Discover → compare → book → ticket → console → **verified check-in** is one continuous journey, all asserted end-to-end; −3 for no live Supabase/RLS run and no payment |
-| UI/UX, a11y, responsive | 20 | 16 | Distinctive brand, dimensional logo, premium cards, real skeletons, focus-trapped dialogs, labelled icons, mobile split, sticky tray; −4 because no browser/screenshot QA and no screen-reader audit was possible here |
-| Technical implementation & architecture | 15 | 13 | Pure decision modules (`checkInPlan`, `compare`), one data layer, state machine mirrored client/server, generated SQL bundle, type-safe marker contract; −2 for in-memory rate limiting/idempotency |
-| Security, privacy, data integrity | 15 | 13 | Ticket-as-credential check-in, staff-only + ownership checks, HMAC with expiry, audit trail, RLS tightening, CORS allowlist, 0 dependency vulns; −2 for unverified live RLS and cross-instance concurrency |
-| Innovation & genuine AI | 10 | 6 | Honest multi-signal ranking, availability heuristic, verified-ticket door flow; no trained model, and none claimed |
-| Testing / reproducibility / docs | 10 | 9 | 387 offline assertions incl. new security, money maths and asset contracts; CI green; deterministic asset script; README + judge script + report match the code |
-| Impact & validation | 5 | 2 | Clear India-first problem and a coherent value prop; still **no real users, pilots or metrics** — none invented |
-
-**≈81/100** on this rubric. The gap to 90+ is concentrated in the two things this sandbox cannot produce: a live, populated deployment (real Supabase rows, RLS exercised) and real user validation. Everything a judge can run offline is green.
-
-### 7.6 What is still not verified
-
-* The Netlify preview of this branch builds, but the URL is unreachable from this sandbox (no egress) — the deployed UI is **not** visually verified.
-* No Supabase project, mail provider, Google key or OpenAI key here: those paths remain code-path/stub-verified with honest fallbacks.
-* Camera scanning cannot be exercised without a browser + camera; only its absence-path and the identical paste path are tested.
-* No screen-reader or pixel-diff audit was performed.
-
----
-
-## 8. First-pass scorecard (historical, superseded by §7.5)
-
-| Category | Weight | Assessment | Evidence |
-|---|---|---|---|
-| Functional correctness | 25% | Strong | 318 assertions, real app + real handlers; end-to-end booking/ticket/console flows green; timezone and idempotency defects fixed |
-| UX / design / a11y / responsive | 20% | Good | Coherent design system, real loading/empty/error states, mobile booking entry, dialog semantics, reduced motion; no visual regression testing available |
-| Architecture & maintainability | 15% | Strong | Single data layer, shared IST module, single marker contract, state machine mirrored server-side, generated SQL bundle |
-| Security & data integrity | 15% | Good | Server-side authz + ownership scoping, RLS tightening, HMAC tickets, CORS allowlist, error hygiene, 0 known dependency vulns; live RLS and cross-instance concurrency unverified |
-| Innovation / defensible AI | 10% | Moderate | Transparent heuristic ranking + honest labelling + optional LLM; no trained model, and the product no longer implies one |
-| Reproducibility / CI / docs | 10% | Strong | `npm ci` → lint → build → sql:check → verify all green locally and in CI workflow; README/DEPLOY rewritten to match reality |
-| Impact clarity | 5% | Moderate | Clear India-first problem framing; no real users or pilots, and none claimed |
+[Pull request #15](https://github.com/Amit-yadav12/Velora_12/pull/15) runs the workflow with the high/critical dependency audit and launch/camera regressions. [CI run 40467590054](https://github.com/Amit-yadav12/Velora_12/actions/runs/40467590054) passed for the initial code commit `0534412`; subsequent commits can trigger new runs, so consult the PR for current status. Netlify deploy previews are separate from a production deployment.

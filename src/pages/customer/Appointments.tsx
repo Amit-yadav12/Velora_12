@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
-import { Calendar, MapPin, Clock, Navigation, X, CalendarClock, Loader2, Star, ChevronDown, Car, QrCode, CalendarPlus, Download, ExternalLink } from 'lucide-react';
+import { Calendar, MapPin, Clock, Navigation, X, CalendarClock, Loader2, ChevronDown, Car, QrCode, CalendarPlus, Download, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import supabase from '../../lib/supabase';
+import supabase, { isDemoMode } from '../../lib/supabase';
 import { useLocation } from '../../contexts/LocationContext';
 import { mapsDirections } from '../../lib/product';
 import { apiGet, apiSend } from '../../lib/api';
@@ -16,7 +16,6 @@ import { listLocalBookings, transitionLocalBooking, updateLocalBooking } from '.
 import { localVerifyUrl } from '../../lib/demoStore';
 import { isCancellable } from '../../lib/bookingStatus';
 import { googleCalendarUrl } from '../../lib/calendar';
-import { publicOrigin } from '../../lib/site';
 import { downloadBlob, svgBlob } from '../../lib/download';
 import { Modal } from '../../components/ui';
 import { errMsg, type ConsoleBooking, type TravelPlan } from '../../lib/types';
@@ -46,9 +45,9 @@ function LeaveNow({ bookingRef, origin }: { bookingRef: string; origin?: { lat: 
     <div className={`rounded-xl border p-3 flex items-center gap-3 ${plan.should_leave_now ? 'bg-red-500/10 border-red-500/20' : 'bg-[var(--color-brand-blue)]/10 border-[var(--color-brand-blue)]/20'}`}>
       <Car className={`h-4 w-4 shrink-0 ${plan.should_leave_now ? 'text-red-400' : 'text-[var(--color-brand-blue)]'}`} />
       <div className="flex-1 min-w-0 text-xs">
-        {plan.should_leave_now ? <p className="font-medium text-red-400">Leave now! ~{plan.travel_min} min in current traffic.</p>
+        {plan.should_leave_now ? <p className="font-medium text-red-400">Leave now! ~{plan.travel_min} min estimated travel.</p>
           : soon ? <p className="text-muted"><span className="font-medium text-[var(--text)]">Leave by {plan.leave_label}</span> · ~{plan.travel_min} min travel + buffer</p>
-          : <p className="text-muted">~{plan.travel_min} min travel · we'll remind you when to leave</p>}
+          : <p className="text-muted">~{plan.travel_min} min estimated travel · check your departure time</p>}
       </div>
     </div>
   );
@@ -59,6 +58,7 @@ export default function Appointments() {
   const { location } = useLocation();
   const [bookings, setBookings] = useState<ConsoleBooking[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [tab, setTab] = useState<'upcoming' | 'past'>('upcoming');
   const [resched, setResched] = useState<ConsoleBooking | null>(null);
   const [newTime, setNewTime] = useState('');
@@ -71,13 +71,14 @@ export default function Appointments() {
 
   const load = useCallback(async () => {
     const email = profile?.email || user?.email || '';
-    const d = await apiGet<ConsoleBooking[]>(`/api/my-bookings?email=${encodeURIComponent(email)}`).catch(() => []);
+    setLoadError('');
+    const d = await apiGet<ConsoleBooking[]>(`/api/my-bookings?email=${encodeURIComponent(email)}`).catch(() => { if (!isDemoMode) setLoadError('Your bookings could not be loaded. Please try again.'); return []; });
     const server = Array.isArray(d) ? d : [];
     // Merge local/demo bookings (synthetic + offline continuity), de-duped by ref.
     // Always scoped to the SIGNED-IN customer's email — demo or production — so
     // one customer can never see another customer's appointments. (Bookings
     // created without an email are treated as belonging to the current user.)
-    const local = listLocalBookings(email).map((b) => ({
+    const local = (isDemoMode ? listLocalBookings(email) : []).map((b) => ({
       id: b.id, ref: b.ref, service_name: b.service_name, employee_name: b.staff_name,
       resource_name: b.business_name, start_time: b.start_time, end_time: b.end_time,
       status: b.status, price: b.price, location: b.location, local: true,
@@ -99,7 +100,7 @@ export default function Appointments() {
       // Validated state-machine transition (pending|confirmed → cancelled).
       ok = transitionLocalBooking(id, 'cancelled') !== null;
     } else {
-      try { await apiSend('/api/bookings', 'PUT', { id, action: 'cancel' }); }
+      try { await apiSend('/api/bookings', 'PUT', { id, action: 'cancel' }, { timeout: 30000 }); }
       catch { ok = false; }
     }
     if (ok) { toast('Booking cancelled', 'info'); load(); }
@@ -116,7 +117,7 @@ export default function Appointments() {
       const url = lb?.qr_salt ? localVerifyUrl(lb.ref, lb.qr_salt) : null;
       if (url) return url;
     }
-    return `${publicOrigin()}/appointments`;
+    return ''; // Never present a generic page as a signed ticket.
   }, [ticket, profile?.email, user?.email]);
 
   const downloadTicketQr = async () => {
@@ -168,7 +169,7 @@ export default function Appointments() {
         if (clashes.length > 0) { setErr('That time is already booked. Pick another slot.'); return; }
         updateLocalBooking(resched.id, { start_time: iso, end_time: endIso });
       } else {
-        await apiSend('/api/bookings', 'PUT', { id: resched.id, action: 'reschedule', start_time: iso });
+        await apiSend('/api/bookings', 'PUT', { id: resched.id, action: 'reschedule', start_time: iso }, { timeout: 30000 });
       }
       setResched(null); load(); toast('Booking rescheduled', 'success');
     }
@@ -199,14 +200,15 @@ export default function Appointments() {
   return (
     <div>
       <h1 className="text-2xl font-semibold tracking-tight mb-1">My appointments</h1>
-      <p className="text-sm text-dim mb-5">Manage your bookings, reschedule or cancel anytime.</p>
+      <p className="text-sm text-dim mb-5">Manage your bookings; cancellation policies may apply.</p>
       <div className="inline-flex rounded-xl border border-app p-1 mb-6">
         {(['upcoming', 'past'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} className={`px-5 py-2 text-sm rounded-lg capitalize transition-all ${tab === t ? 'grad-btn text-white' : 'text-muted'}`}>{t} {t === 'upcoming' && upcoming.length > 0 && `(${upcoming.length})`}</button>
         ))}
       </div>
 
-      {loading ? <div className="grid place-items-center py-20"><Loader2 className="h-6 w-6 animate-spin text-dim" /></div> : list.length === 0 ? (
+      {loadError && <div role="alert" className="card p-4 text-sm text-red-400 mb-4">{loadError} <button onClick={load} className="underline ml-2">Retry</button></div>}
+      {loading ? <div className="grid place-items-center py-20"><Loader2 className="h-6 w-6 animate-spin text-dim" /></div> : loadError ? null : list.length === 0 ? (
         <div className="card p-12 text-center">
           <div className="h-12 w-12 rounded-2xl bg-surface grid place-items-center mx-auto mb-3"><Calendar className="h-6 w-6 text-dim" /></div>
           <p className="font-medium">No {tab} appointments</p>
@@ -229,6 +231,7 @@ export default function Appointments() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-medium">{b.service_name}</h3>
+                      {b.local && <span className="text-[11px] px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-300">Sample request</span>}
                       <span className={`text-[11px] px-2 py-0.5 rounded-lg capitalize ${b.status === 'cancelled' ? 'bg-red-500/15 text-red-400' : b.status === 'completed' ? 'bg-emerald-500/15 text-emerald-400' : b.status === 'pending' ? 'bg-amber-500/15 text-amber-400' : 'bg-blue-500/15 text-blue-400'}`}>{b.status.replace('_', ' ')}</span>
                     </div>
                     <p className="text-sm text-dim">{b.resource_name}{b.employee_name ? ` · ${b.employee_name}` : ''}</p>
@@ -243,28 +246,26 @@ export default function Appointments() {
                 {!past && isCancellable(b.status) && (
                   <div className="mt-3 pt-3 border-t border-app flex flex-wrap gap-2 items-center">
                     <button onClick={() => setTicket(b)} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><QrCode className="h-3.5 w-3.5" /> Ticket</button>
-                    {b.location && <a href={mapsDirections(b.location)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><Navigation className="h-3.5 w-3.5" /> Directions</a>}
-                    <a href={gcalLink(b)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><CalendarPlus className="h-3.5 w-3.5" /> Calendar</a>
+                    {!b.local && b.location && <a href={mapsDirections(b.location)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><Navigation className="h-3.5 w-3.5" /> Directions</a>}
+                    {!b.local && <a href={gcalLink(b)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><CalendarPlus className="h-3.5 w-3.5" /> Calendar</a>}
                     <button onClick={() => { setResched(b); setNewTime(istDateTimeLocal(b.start_time)); }} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-[var(--border-strong)]"><CalendarClock className="h-3.5 w-3.5" /> Reschedule</button>
                     <button onClick={() => cancel(b.id)} className="inline-flex items-center gap-1.5 text-xs rounded-lg border border-app px-3 py-1.5 hover:border-red-400/50 hover:text-red-400"><X className="h-3.5 w-3.5" /> Cancel</button>
                     <button onClick={() => setExpanded(e => e === b.id ? null : b.id)} className="ml-auto inline-flex items-center gap-1 text-xs text-[var(--color-brand-indigo)] font-medium">Track {expanded === b.id ? <ChevronDown className="h-3.5 w-3.5 rotate-180 transition-transform" /> : <ChevronDown className="h-3.5 w-3.5 transition-transform" />}</button>
                   </div>
                 )}
                 {!past && b.status === 'pending' && (
-                  <p className="mt-2 text-[11px] text-amber-400/90">Awaiting confirmation from {b.resource_name} — you'll see the update here instantly.</p>
+                  <p className="mt-2 text-[11px] text-amber-400/90">{b.local ? 'Sample request — no real business was notified.' : `Awaiting confirmation from ${b.resource_name}.`}</p>
                 )}
                 <AnimatePresence>
                   {!past && expanded === b.id && (
                     <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.25, ease: [0.22,1,0.36,1] }} className="mt-3 space-y-3 overflow-hidden">
                       <ProgressTracker status={b.status} startTime={b.start_time} />
-                      <QueueTracker startTime={b.start_time} />
-                      <LeaveNow bookingRef={String(b.ref || '')} origin={location} />
+                      {b.local && <QueueTracker startTime={b.start_time} />}
+                      {!b.local && <LeaveNow bookingRef={String(b.ref || '')} origin={location} />}
                     </motion.div>
                   )}
                 </AnimatePresence>
-                {past && b.status === 'completed' && (
-                  <div className="mt-3 pt-3 border-t border-app flex items-center gap-1"><span className="text-xs text-dim mr-1">Rate:</span>{[1,2,3,4,5].map(s => <Star key={s} className="h-4 w-4 text-amber-400" />)}</div>
-                )}
+
               </motion.div>
             );
           })}
@@ -300,9 +301,9 @@ export default function Appointments() {
                 <p className="font-mono text-xs text-dim">{ticket.ref}</p>
               </div>
             </div>
-            <p className="text-xs text-dim">Show this QR at check-in. It contains a secure verification token — never your personal details.</p>
+            <p className="text-xs text-dim">{!ticketQr ? 'Ticket unavailable. Refresh your bookings or contact support.' : ticket.local ? 'Sample ticket only — not valid for a real check-in.' : 'Show this signed QR at check-in. It contains no personal contact details.'}</p>
             <div className="flex gap-2.5">
-              <button onClick={downloadTicketQr} className="flex-1 rounded-xl border border-app py-2.5 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><Download className="h-4 w-4" /> Download PNG</button>
+              {ticketQr && <button onClick={downloadTicketQr} className="flex-1 rounded-xl border border-app py-2.5 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><Download className="h-4 w-4" /> Download PNG</button>}
               {ticketQr.includes('/verify/') && <a href={ticketQr} target="_blank" rel="noreferrer" className="flex-1 rounded-xl border border-app py-2.5 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><ExternalLink className="h-4 w-4" /> Verify</a>}
             </div>
           </div>

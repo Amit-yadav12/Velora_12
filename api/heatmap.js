@@ -10,6 +10,9 @@ export default async function handler(req, res) {
   cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (!enforceRateLimit(req, res, 'heatmap', { limit: 120, windowMs: 60_000 })) return;
+  // This legacy predictor blends synthetic occupancy into its output. Never
+  // present it as a real-business forecast on a configured deployment.
+  if (isDatabaseConfigured()) return res.status(503).json({ error: 'Availability forecast is not available.' });
   try {
     const { business_id } = req.query;
     // Synthetic businesses get deterministic predictions instantly.

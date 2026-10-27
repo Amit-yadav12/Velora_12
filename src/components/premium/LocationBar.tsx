@@ -11,16 +11,24 @@ export default function LocationBar() {
   const [q, setQ] = useState('');
   const [preds, setPreds] = useState<Coords[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchNotice, setSearchNotice] = useState('');
   const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const controller = new AbortController();
+    let live = true;
     const t = setTimeout(async () => {
-      if (q.length < 2) { setPreds([]); return; }
+      if (q.trim().length < 3) { setPreds([]); setSearchNotice(''); setLoading(false); return; }
       setLoading(true);
-      try { const d = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`).then(r => r.json()); setPreds(d.predictions || []); }
-      catch { setPreds([]); } finally { setLoading(false); }
+      try {
+        const response = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`, { signal: controller.signal });
+        if (!response.ok) throw new Error('Address search unavailable');
+        const data = await response.json();
+        if (live) { setPreds(data.predictions || []); setSearchNotice(data.unavailable ? 'Address search unavailable. Choose a city below.' : ''); }
+      } catch { if (live) { setPreds([]); setSearchNotice('Address search unavailable. Choose a city below.'); } }
+      finally { if (live) setLoading(false); }
     }, 300);
-    return () => clearTimeout(t);
+    return () => { live = false; clearTimeout(t); controller.abort(); };
   }, [q]);
 
   useEffect(() => {
@@ -36,10 +44,10 @@ export default function LocationBar() {
   useEffect(() => {
     setQ('');
     setPreds([]);
-    setLoading(false);
+    setLoading(false); setSearchNotice('');
   }, [open]);
 
-  const label = city.name;
+  const label = isLive ? city.name : location?.label || city.name;
   const sub = isLive && location ? ' · GPS on' : '';
 
   return (
@@ -61,7 +69,8 @@ export default function LocationBar() {
               {loading && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-dim" />}
               {!loading && q && <button onClick={() => { setQ(''); setPreds([]); }} className="absolute right-3 top-1/2 -translate-y-1/2"><X className="h-3.5 w-3.5 text-dim" /></button>}
             </div>
-            {!q && (
+            {searchNotice && <p role="status" className="px-3 py-2 text-xs text-amber-400">{searchNotice}</p>}
+            {(!q || searchNotice) && (
               <div className="mt-2 px-1">
                 <p className="text-[10px] uppercase tracking-wide text-dim px-2 mb-1.5">Popular cities</p>
                 <div className="flex flex-wrap gap-1.5">
@@ -76,7 +85,7 @@ export default function LocationBar() {
                 <button key={i} onClick={() => {
                   // City predictions pin the city; addresses set a manual point.
                   const first = (p.label || '').split(',')[0].trim();
-                  const asCity = getCity(first) || (p.city ? getCity(p.city) : null);
+                  const asCity = getCity(first);
                   if (asCity) setCity(asCity.name);
                   else setManual({ ...p, label: p.label?.split(',').slice(0, 2).join(',') });
                   setOpen(false); setQ(''); setPreds([]);

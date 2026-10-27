@@ -49,9 +49,7 @@ function ensurePreviewEnv() {
       }
     } catch { /* ignore */ }
   }
-  if (!process.env.GOOGLE_MAPS_API_KEY && process.env.VITE_GOOGLE_MAPS_API_KEY) {
-    process.env.GOOGLE_MAPS_API_KEY = process.env.VITE_GOOGLE_MAPS_API_KEY;
-  }
+
   // Dummy backend env so server handlers boot in pure-synthetic preview mode.
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://demo.local';
@@ -145,6 +143,7 @@ export function devApi() {
             nodeRes.end(JSON.stringify(o ?? null));
             return res;
           },
+          send: (s) => { nodeRes.end(s); return res; },
           end: (s) => {
             nodeRes.end(s);
             return res;

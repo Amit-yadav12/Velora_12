@@ -24,6 +24,7 @@ const DESCRIPTIONS = {
   '0002_business_registration_role_lock.sql': 'ownership columns + role-lock trigger',
   '0003_rls_tightening.sql': 'removes the permissive anon policies',
   '0004_booking_lifecycle.sql': 'pending status + service-only invoice writes',
+  '0005_launch_security_and_booking.sql': 'tenant isolation + transactional bookings',
 };
 
 const headerFor = (files) => `-- ============================================================================
@@ -39,13 +40,34 @@ const headerFor = (files) => `-- ===============================================
 -- WHAT IT DOES
 --   Applies every migration in supabase/migrations/ in order:
 ${files.map((f) => `--     ${f.padEnd(42)} ${DESCRIPTIONS[f] || ''}`.trimEnd()).join('\n')}
---   Order matters: 0001 drops and recreates every policy in public, so any
---   later tightening migration MUST run after it or the change is lost.
+--   Order matters: the historical 0001 drops every policy in public. This
+--   bundle aborts before DDL when public policies or relations already exist.
+--   Do NOT rerun it on an existing or partially migrated project. Back up and
+--   apply only the missing incremental migrations after reviewing their impact.
+--   Running historical 0001 directly does NOT include the bootstrap guard.
 --
--- Idempotent: safe to re-run, and safe against a partially-migrated project.
 -- GENERATED from the migration files by scripts/build-sql.mjs — edit the
 -- migrations, not this file (verify:integrations fails if they drift).
 -- ============================================================================
+
+`;
+
+// Keep historical migration bytes unchanged while preventing the generated
+// fresh-project bootstrap from silently removing policies belonging to another
+// app (or custom Velora policies). This intentionally refuses reruns.
+const FRESH_PROJECT_GUARD = `do $velora_fresh_project_guard$
+begin
+  if exists (select 1 from pg_policies where schemaname = 'public') then
+    raise exception 'APPLY_ALL.sql requires a fresh project without existing public RLS policies; back up and apply incremental migrations instead';
+  end if;
+  if exists (
+    select 1 from pg_catalog.pg_class c join pg_catalog.pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind in ('r', 'p', 'v', 'm', 'f', 'S')
+  ) then
+    raise exception 'APPLY_ALL.sql requires a fresh project with an empty public schema; back up and apply incremental migrations instead';
+  end if;
+end
+$velora_fresh_project_guard$;
 
 `;
 
@@ -64,7 +86,7 @@ where table_schema = 'public'
 `;
 
 export function renderApplyAll() {
-  const parts = [headerFor(MIGRATIONS)];
+  const parts = [headerFor(MIGRATIONS), FRESH_PROJECT_GUARD];
   for (const file of MIGRATIONS) {
     const body = readFileSync(join(MIG_DIR, file), 'utf8').trimEnd();
     parts.push(`-- ============================================================================\n-- >>> ${file}\n-- ============================================================================\n\n${body}\n\n`);

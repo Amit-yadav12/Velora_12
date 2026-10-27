@@ -1,4 +1,5 @@
-import supabase from './db-client.js';
+import { publicBusiness } from './_lib/public-business.js';
+import supabase, { isDatabaseConfigured } from './db-client.js';
 import { cors, enforceRateLimit, safeError } from './_lib/security.js';
 import { getAuth } from './_lib/auth.js';
 
@@ -36,13 +37,13 @@ export default async function handler(req, res) {
       const { data } = await supabase.from('recently_viewed').select('business_id').eq('user_id', uid).order('viewed_at', { ascending: false }).limit(8);
       const ids = (data || []).map((r) => r.business_id);
       if (!ids.length) return res.status(200).json([]);
-      const { data: biz } = await supabase.from('businesses').select('*').in('id', ids);
+      const { data: biz } = await supabase.from('businesses').select('*').in('id', ids).eq('active', true);
       // Synthetic ecosystem ids resolve deterministically (no DB rows needed).
       const { syntheticBusiness, isSyntheticId } = await import('./_lib/synthetic.js');
       const ordered = ids.map((id) => {
         const db = (biz || []).find((b) => String(b.id) === String(id));
-        if (db) return db;
-        if (isSyntheticId(id)) return syntheticBusiness(id);
+        if (db) return publicBusiness(db);
+        if (!isDatabaseConfigured() && isSyntheticId(id)) return syntheticBusiness(id);
         return null;
       }).filter(Boolean);
       return res.status(200).json(ordered);

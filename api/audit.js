@@ -1,6 +1,6 @@
 import supabase from './db-client.js';
 import { cors, safeError } from './_lib/security.js';
-import { getAuth, requireRole } from './_lib/auth.js';
+import { getAuth, requireRole, businessScope } from './_lib/auth.js';
 
 export default async function handler(req, res) {
   cors(res, req);
@@ -10,7 +10,10 @@ export default async function handler(req, res) {
       // Admin-only in production; allow read if authed admin, else limited demo view.
       const auth = await getAuth(req);
       const gate = requireRole(auth, ['admin']);
-      const limit = gate.ok ? 100 : 20;
+      if (!gate.ok) return res.status(gate.status).json({ error: gate.error });
+      const scope = await businessScope(auth);
+      if (!scope.operator) return res.status(403).json({ error: 'Platform operator access required.' });
+      const limit = 100;
       const { data, error } = await supabase.from('audit_logs').select('*').order('created_at', { ascending: false }).limit(limit);
       if (error) throw error;
       return res.status(200).json(data);

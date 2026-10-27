@@ -1,31 +1,15 @@
-// Google Maps Platform: travel-time estimate between employee + location.
-// Uses the Distance Matrix API when a key is configured; otherwise falls back
-// to a deterministic haversine-based estimate so pricing never blocks.
-
-function haversineKm(a, b) {
-  const R = 6371;
-  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
-  const s = Math.sin(dLat / 2) ** 2 + Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
-}
-
+// Only report a driving time when Google Distance Matrix returned one.
+// A straight-line guess is not live traffic or a provider result.
 export async function travelTimeMin(origin, dest) {
+  if (!origin || !dest || !Number.isFinite(Number(origin.lat)) || !Number.isFinite(Number(origin.lng)) || !Number.isFinite(Number(dest.lat)) || !Number.isFinite(Number(dest.lng))) return 0;
+  const key = process.env.GOOGLE_MAPS_API_KEY;
+  if (!key) return 0;
   try {
-    if (!origin || !dest || origin.lat == null || dest.lat == null) return 0;
-    const key = process.env.GOOGLE_MAPS_API_KEY || process.env.VITE_GOOGLE_MAPS_API_KEY;
-    if (key) {
-      const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin.lat},${origin.lng}&destinations=${dest.lat},${dest.lng}&mode=driving&key=${key}`;
-      const r = await fetch(url);
-      const j = await r.json();
-      const el = j?.rows?.[0]?.elements?.[0];
-      if (el?.duration?.value) return Math.round(el.duration.value / 60);
-    }
-    // Fallback: ~40 km/h average urban speed.
-    const km = haversineKm(origin, dest);
-    return Math.round((km / 40) * 60);
-  } catch (e) {
-    console.error('[maps:error]', e.message);
-    return 0;
-  }
+    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${origin.lat},${origin.lng}&destinations=${dest.lat},${dest.lng}&mode=driving&key=${encodeURIComponent(key)}`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return 0;
+    const j = await r.json();
+    const el = j?.rows?.[0]?.elements?.[0];
+    return j.status === 'OK' && el?.status === 'OK' && el.duration?.value > 0 ? Math.max(1, Math.round(el.duration.value / 60)) : 0;
+  } catch (e) { console.error('[maps:error]', e.message); return 0; }
 }

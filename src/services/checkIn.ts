@@ -54,7 +54,7 @@ export async function checkInFromTicket(input: string, { bookings, apply }: Chec
     return {
       ok: false, code: 'failed', booking: plan.booking, ref: plan.ref,
       title: 'Check-in did not save',
-      message: errMsg(e) || 'The server rejected the check-in. The booking is unchanged — try again.',
+      message: errMsg(e) || 'Could not confirm the response. Refresh the appointment before trying again.',
     };
   }
 }

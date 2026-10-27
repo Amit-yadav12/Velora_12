@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Search, Navigation, ExternalLink, Loader2, MapPin, Star, X } from 'lucide-react';
 import { googleEmbedUrl, fetchLivePlaces, openGoogleMaps, type LivePlace, type MapCenter } from '../../lib/googleMaps';
-import { imgOnError } from '../../lib/product';
 
 // Real Google Maps discovery — keyless embed centered on the active city
 // (or live GPS location), with live business search layered on top.
@@ -110,7 +109,7 @@ export default function GoogleMapEmbed({ center, city, category, onSelectLive }:
               className="glass flex w-full items-center gap-3 rounded-2xl p-2 text-left"
             >
               {p.photos?.[0] ? (
-                <img src={p.photos[0]} alt={p.name} className="h-11 w-11 shrink-0 rounded-xl object-cover" loading="lazy" onError={imgOnError(p.category || '')} />
+                <img src={p.photos[0]} alt={p.name} className="h-11 w-11 shrink-0 rounded-xl object-cover" loading="lazy" onError={e => { e.currentTarget.style.display = 'none'; }} />
               ) : (
                 <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-surface"><MapPin className="h-4 w-4 text-dim" /></div>
               )}

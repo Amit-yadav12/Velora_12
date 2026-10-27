@@ -1,8 +1,9 @@
+import { apiGet, apiSend } from '../../lib/api';
 import { useEffect, useState } from 'react';
 import { istDateTime } from '../../lib/format';
 import { motion } from 'framer-motion';
 import { Bell, Check, Info, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import supabase from '../../lib/supabase';
+import supabase, { isDemoMode } from '../../lib/supabase';
 import { useLocation } from '../../contexts/LocationContext';
 import { markLocalNotificationRead, listLocalNotificationsFor } from '../../lib/offlineStore';
 import { onNotifsChanged } from '../../services/events';
@@ -15,16 +16,18 @@ export default function Notifications() {
   const { city } = useLocation();
   const [items, setItems] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const load = () => {
     // Customer-audience ONLY — business-side notifications are never shown here.
-    const local = listLocalNotificationsFor('customer');
-    fetch('/api/notifications?audience=customer').then(r => r.json()).then(d => {
+    setError(false);
+    const local = isDemoMode ? listLocalNotificationsFor('customer') : [];
+    apiGet<NotificationRow[]>('/api/notifications?audience=customer').then(d => {
       const server = Array.isArray(d) ? d.filter((n: NotificationRow) => n.audience !== 'admin') : [];
       const seen = new Set(server.map((n: NotificationRow) => `${n.title}|${n.body}`));
       const merged = [...server, ...local.filter((n) => !seen.has(`${n.title}|${n.body}`))]
         .sort((a: NotificationRow, b: NotificationRow) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       setItems(merged); setLoading(false);
-    }).catch(() => { setItems(local); setLoading(false); });
+    }).catch(() => { setItems(local); if (!isDemoMode) setError(true); setLoading(false); });
   };
   useEffect(() => { load(); }, [city.name]);
   useEffect(() => {
@@ -36,7 +39,7 @@ export default function Notifications() {
     const target = items.find((n) => String(n.id) === String(id));
     if (target?.local) markLocalNotificationRead(String(id));
     else {
-      try { await fetch('/api/notifications', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); } catch { /* non-fatal */ }
+      try { await apiSend('/api/notifications', 'PUT', { id }); } catch { /* non-fatal */ }
     }
     load();
   };
@@ -45,7 +48,8 @@ export default function Notifications() {
     <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl font-semibold tracking-tight mb-1">Notifications</h1>
       <p className="text-sm text-dim mb-5">Booking confirmations, reminders and updates.</p>
-      {loading ? <div className="card h-24 animate-pulse" /> : items.length === 0 ? (
+      {error && <p role="alert" className="card p-4 mb-4 text-sm text-red-400">Notifications could not be loaded. <button onClick={load} className="underline">Retry</button></p>}
+      {loading ? <div className="card h-24 animate-pulse" /> : error ? null : items.length === 0 ? (
         <div className="card p-12 text-center"><div className="h-12 w-12 rounded-2xl bg-surface grid place-items-center mx-auto mb-3"><Bell className="h-6 w-6 text-dim" /></div><p className="font-medium">You're all caught up</p><p className="text-sm text-dim mt-1">New notifications will appear here.</p></div>
       ) : (
         <div className="space-y-2">

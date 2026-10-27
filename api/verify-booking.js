@@ -1,10 +1,6 @@
-// Public QR verification: GET /api/verify-booking?token=v1...
-// Validates the HMAC signature + expiry, then overlays the LIVE booking status
-// from the database when available. Returns only public-safe fields (ref,
-// business, service, date, status) — never email, phone, or user ids.
-import supabase from './db-client.js';
+import supabase, { isDatabaseConfigured } from './db-client.js';
 import { cors, enforceRateLimit, safeError } from './_lib/security.js';
-import { verifyBookingToken } from './_lib/qr.js';
+import { verifyBookingToken, qrSigningReady } from './_lib/qr.js';
 
 export default async function handler(req, res) {
   cors(res, req);
@@ -12,61 +8,20 @@ export default async function handler(req, res) {
   try {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
     if (!enforceRateLimit(req, res, 'verify-booking', { limit: 120, windowMs: 60_000 })) return;
-
-    const token = req.query.token;
-    if (!token) return res.status(400).json({ valid: false, reason: 'missing_token' });
-    const v = verifyBookingToken(token);
-    if (!v.ok) {
-      const messages = {
-        malformed: 'This QR code is not a valid Velora ticket.',
-        invalid_signature: 'This ticket failed verification — it may have been altered.',
-        expired: 'This ticket has expired.',
-        legacy: 'This ticket was issued before verification was enabled and cannot be checked.',
-      };
-      return res.status(200).json({ valid: false, reason: v.reason, message: messages[v.reason] });
-    }
-
-    const d = v.data;
-    const booking = {
-      ref: d.ref,
-      business: d.biz || null,
-      service: d.svc || null,
-      start_time: d.at || null,
-    };
-
-    // Live status overlay from DB (authoritative when reachable).
-    try {
-      const { data: row } = await supabase
-        .from('bookings')
-        .select('ref,status,start_time')
-        .eq('ref', d.ref)
-        .single();
-      if (row) {
-        if (row.status === 'cancelled') {
-          return res.status(200).json({
-            valid: false, reason: 'cancelled', status: 'cancelled',
-            message: 'This booking was cancelled.', booking,
-            checked_at: new Date().toISOString(),
-          });
-        }
-        return res.status(200).json({
-          valid: true, status: row.status || 'confirmed', booking,
-          checked_at: new Date().toISOString(),
-        });
-      }
-    } catch (e) {
-      console.error('[verify-booking:db]', e.message);
-    }
-
-    // No DB row (demo/local booking or DB unreachable): the signed token
-    // itself is the proof — signature + expiry already validated above.
-    return res.status(200).json({
-      valid: true, status: 'confirmed', demo: true, booking,
-      message: 'Signature verified. Live status unavailable offline.',
-      checked_at: new Date().toISOString(),
-    });
+    if (!req.query.token) return res.status(400).json({ valid: false, reason: 'missing_token' });
+    if (isDatabaseConfigured() && !qrSigningReady()) return res.status(503).json({ valid: false, reason: 'unavailable', message: 'Live ticket verification is unavailable. Please try again.' });
+    const v = verifyBookingToken(req.query.token);
+    if (!v.ok) return res.status(200).json({ valid: false, reason: v.reason, message: 'This ticket is invalid, altered or expired.' });
+    if (!isDatabaseConfigured() || !qrSigningReady()) return res.status(503).json({ valid: false, reason: 'unavailable', message: 'Live ticket verification is unavailable. Please try again.' });
+    const { data: row, error } = await supabase.from('bookings').select('id,ref,status,start_time,resource_name,service_name').eq('id', v.data.id).eq('ref', v.data.ref).maybeSingle();
+    if (error) throw error;
+    if (!row) return res.status(200).json({ valid: false, reason: 'not_found', message: 'No matching appointment exists.' });
+    if (new Date(row.start_time).getTime() !== new Date(v.data.at).getTime()) return res.status(200).json({ valid: false, reason: 'outdated', message: 'This appointment changed. Open the latest ticket from booking history.' });
+    const booking = { ref: row.ref, business: row.resource_name, service: row.service_name, start_time: row.start_time };
+    if (['cancelled', 'no_show', 'completed'].includes(row.status)) return res.status(200).json({ valid: false, reason: row.status, status: row.status, booking, message: 'This appointment is no longer valid.' });
+    return res.status(200).json({ valid: true, status: row.status, booking, checked_at: new Date().toISOString() });
   } catch (err) {
     const s = safeError(err, 'verify-booking:error');
-    res.status(s.status).json({ error: s.error });
+    return res.status(s.status).json({ error: s.error, valid: false });
   }
 }

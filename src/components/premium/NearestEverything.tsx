@@ -6,6 +6,7 @@ import { categoryIcon, categoryColor, imgOnError } from '../../lib/product';
 import { formatDistance, formatTravel } from '../../lib/geo';
 import { fetchNearest } from '../../lib/hybridData';
 import type { NearestData } from '../../lib/types';
+import { isMiRoadElectricianSample, MI_ROAD_ELECTRICIAN_ALT, withMiRoadElectricianImage } from '../../lib/miRoadElectrician';
 
 // "Nearest everything" — the single closest option in each key category.
 export default function NearestEverything({ lat, lng, city }: { lat: number; lng: number; city?: string }) {
@@ -25,7 +26,7 @@ export default function NearestEverything({ lat, lng, city }: { lat: number; lng
   if (!data?.nearest_per_category?.length) return null;
 
   const items = data.nearest_per_category.slice(0, 8);
-  const overall = data.overall_nearest;
+  const overall = data.overall_nearest ? withMiRoadElectricianImage(data.overall_nearest) : null;
 
   return (
     <div>
@@ -36,12 +37,13 @@ export default function NearestEverything({ lat, lng, city }: { lat: number; lng
             className="relative overflow-hidden rounded-2xl grad-btn p-5 text-white">
             <div className="absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10 blur-2xl" />
             <div className="relative flex items-center gap-4">
-              <img src={overall.image_url} alt={overall.name} onError={imgOnError(overall.category)} className="h-16 w-16 rounded-2xl object-cover ring-2 ring-white/30" />
+              <img src={overall.image_url} alt={isMiRoadElectricianSample(overall) ? MI_ROAD_ELECTRICIAN_ALT : overall.name} onError={imgOnError(overall.category)} className={`h-16 w-16 rounded-2xl object-cover ring-2 ring-white/30 ${isMiRoadElectricianSample(overall) ? 'object-left' : ''}`} />
               <div className="flex-1 min-w-0">
                 <p className="text-xs text-white/80 flex items-center gap-1"><Navigation className="h-3 w-3" /> Closest to you{city ? ` in ${city}` : ''}</p>
                 <p className="font-semibold text-lg leading-tight truncate">{overall.name}</p>
+                {isMiRoadElectricianSample(overall) && <p className="text-[10px] text-white/80">Sample · AI illustration</p>}
                 <p className="text-sm text-white/85 flex items-center gap-2">
-                  {overall.category} · <MapPin className="h-3 w-3" /> {formatDistance(overall.distance_km)} · <Clock className="h-3 w-3" /> ~{formatTravel(overall.travel_min)}
+                  {overall.category} · <MapPin className="h-3 w-3" /> {formatDistance(overall.distance_km)} {overall.travel_min != null && <> · <Clock className="h-3 w-3" /> ~{formatTravel(overall.travel_min)}</>}
                 </p>
               </div>
               <div className="text-right hidden sm:block">
@@ -70,7 +72,7 @@ export default function NearestEverything({ lat, lng, city }: { lat: number; lng
                 <p className="mt-2 text-sm font-medium leading-tight line-clamp-1">{b.name}</p>
                 <p className="mt-1 text-xs text-dim flex items-center gap-1">
                   <MapPin className="h-3 w-3 shrink-0" />{formatDistance(b.distance_km)}
-                  <span className="text-dim/50">·</span>~{formatTravel(b.travel_min)}
+                  {b.travel_min != null && <><span className="text-dim/50">·</span>~{formatTravel(b.travel_min)}</>}
                 </p>
               </motion.div>
             </Link>

@@ -1,3 +1,4 @@
+import { istDateTime } from '../../lib/format';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -20,6 +21,8 @@ interface Props {
   emailStatus?: string;
   /** True only when server-side reminders were actually persisted. */
   remindersScheduled?: boolean;
+  /** Sample bookings are local to this browser and are not valid real tickets. */
+  demo?: boolean;
   onDone?: () => void;
   onClose?: () => void;
 }
@@ -34,11 +37,11 @@ function gcalLink(b: TicketBooking, biz: Business) {
   });
 }
 
-export default function SuccessExperience({ booking, business, invoice, mapsLink, qrPayload, gmailComposeUrl, emailStatus, remindersScheduled, onDone, onClose }: Props) {
+export default function SuccessExperience({ booking, business, invoice, mapsLink, qrPayload, gmailComposeUrl, emailStatus, remindersScheduled, demo = false, onDone, onClose }: Props) {
   const nav = useNavigate();
   const done = onDone || onClose || (() => nav('/'));
   // Honest email badge: only claim a send when a provider actually accepted it.
-  const emailSent = emailStatus === 'sending' || emailStatus === 'resend' || emailStatus === 'sendgrid' || emailStatus === 'smtp-relay';
+  const emailSent = emailStatus === 'resend' || emailStatus === 'sendgrid' || emailStatus === 'smtp-relay';
   const emailQueued = emailStatus === 'queued';
   const [particles, setParticles] = useState<{ x: number; d: number; c: string; s: number }[]>([]);
   const [pdfLoading, setPdfLoading] = useState(false);
@@ -55,7 +58,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
     const doc = new jsPDF();
     doc.setFillColor(99, 102, 241); doc.rect(0, 0, 210, 40, 'F');
     doc.setTextColor(255); doc.setFontSize(22); doc.text('VELORA', 20, 25);
-    doc.setFontSize(11); doc.text('Booking Confirmation', 20, 33);
+    doc.setFontSize(11); doc.text(demo ? 'DEMO - NOT A REAL BOOKING' : 'Booking Confirmation', 20, 33);
     doc.setTextColor(20); doc.setFontSize(16); doc.text(booking.service_name, 20, 58);
     doc.setFontSize(11); doc.setTextColor(90);
     const rows: [string, string][] = [
@@ -63,7 +66,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
       ['Business', business.name],
       ['Address', business.address || '-'],
       ...(booking.employee_name ? [['Specialist', booking.employee_name] as [string, string]] : []),
-      ['Date & Time', new Date(booking.start_time).toLocaleString()],
+      ['Date & Time', istDateTime(booking.start_time)],
       ['Invoice', invoice.number],
       ['Total', inr(invoice.total)],
     ];
@@ -71,7 +74,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
     rows.forEach(([k, v]) => { doc.setTextColor(140); doc.text(k, 20, y); doc.setTextColor(30); doc.text(String(v), 80, y); y += 10; });
     if (qrPayload && qrPayload.startsWith('http')) { doc.setTextColor(100); doc.setFontSize(9); doc.text('Verify ticket: ' + qrPayload, 20, y + 2, { maxWidth: 170 }); y += 8; }
     doc.setDrawColor(220); doc.line(20, y, 190, y);
-    doc.setTextColor(150); doc.setFontSize(9); doc.text('Present this confirmation or your QR ticket at check-in. Thank you for booking with Velora.', 20, y + 12, { maxWidth: 170 });
+    doc.setTextColor(150); doc.setFontSize(9); doc.text(demo ? 'Demo only. Not a real appointment or valid check-in ticket.' : 'Present your QR ticket at check-in. Thank you for booking with Velora.', 20, y + 12, { maxWidth: 170 });
     // Download it ourselves: jsPDF's internal save() silently no-ops in some
     // environments (and gives no signal when it does), so the anchor path is
     // the single, predictable download route for both PDF and QR.
@@ -80,7 +83,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
   };
 
   const share = async () => {
-    const data = { title: 'My Velora booking', text: `${booking.service_name} at ${business.name} on ${new Date(booking.start_time).toLocaleString()} — ${booking.ref}`, url: publicOrigin() };
+    const data = { title: demo ? 'Velora demo request' : 'My Velora booking', text: `${demo ? 'DEMO ONLY — not an appointment. ' : ''}${booking.service_name} at ${business.name} on ${istDateTime(booking.start_time)} — ${booking.ref}`, url: publicOrigin() };
     try { if (navigator.share) await navigator.share(data); else { await navigator.clipboard.writeText(`${data.text} ${data.url}`); } } catch { /* cancelled */ }
   };
 
@@ -125,7 +128,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
   };
 
   // Prefer the server-stored QR payload so the ticket matches DB records.
-  const qrData = String(qrPayload || (booking?.ref ? `${publicOrigin()}/appointments` : 'velora-ticket')).slice(0, 800);
+  const qrData = String(qrPayload || '').slice(0, 1600);
   const isPending = booking?.status === 'pending';
   const total = Number(invoice?.total ?? invoice?.amount ?? booking?.price ?? 0);
 
@@ -150,12 +153,12 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
           {isPending ? <Clock className="relative h-10 w-10 text-white" strokeWidth={2.5} /> : <Check className="relative h-10 w-10 text-white" strokeWidth={3} />}
         </motion.div>
         <motion.h1 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="text-3xl sm:text-4xl font-semibold tracking-tight text-center">
-          {isPending ? 'Booking received! 🎉' : "You're all set! 🎉"}
+          {demo ? 'Demo request saved' : isPending ? 'Booking request received' : 'Your appointment is confirmed'}
         </motion.h1>
         <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }} className="text-muted mt-2 text-center">
-          {isPending
-            ? `${business?.name || 'The business'} has your request — they'll confirm shortly. You'll see the update here and in your bookings.`
-            : 'Your appointment is confirmed. Add it to your calendar below.'}
+          {demo ? 'This sample is saved on this device only. It is not a real appointment or valid check-in ticket.' : isPending
+            ? 'Your request is awaiting confirmation from the business.'
+            : 'Your appointment is saved. Add it to your calendar below.'}
         </motion.p>
 
         {/* Ticket card */}
@@ -175,32 +178,32 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
                 <p className="font-semibold text-base">{booking.service_name}</p>
                 <p className="flex items-center gap-2 text-muted"><Sparkles className="h-4 w-4 text-[var(--color-brand-indigo)]" />{business.name}</p>
                 {booking.employee_name && <p className="flex items-center gap-2 text-muted"><User className="h-4 w-4" />{booking.employee_name}</p>}
-                <p className="flex items-center gap-2 text-muted"><Clock className="h-4 w-4" />{new Date(booking.start_time).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</p>
+                <p className="flex items-center gap-2 text-muted"><Clock className="h-4 w-4" />{istDateTime(booking.start_time)}</p>
                 <p className="flex items-center gap-2 text-muted"><MapPin className="h-4 w-4" /><span className="truncate">{business.address}</span></p>
               </div>
-              <div className="shrink-0 text-center">
+              {qrData && <div className="shrink-0 text-center">
                 <div className="p-2 rounded-xl bg-white" data-qr>{qrData ? <QRCodeSVG value={qrData} size={92} level="M" /> : <QrCode className="h-16 w-16 text-dim" />}</div>
-                <p className="text-[10px] text-dim mt-1.5">Scan at check-in</p>
+                <p className="text-[10px] text-dim mt-1.5">{demo ? 'Demo QR only' : 'Scan at check-in'}</p>
                 {qrData.startsWith('http') && <a href={qrData} target="_blank" rel="noreferrer" className="text-[10px] text-[var(--color-brand-indigo)] underline underline-offset-2">Verify ticket</a>}
-              </div>
+              </div>}
             </div>
             <div className="mt-4 pt-4 border-t border-app flex items-center justify-between">
               <span className="text-sm text-dim">Total</span><span className="font-semibold">{inr(total)}</span>
             </div>
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {isPending ? (
+              {demo ? <span className="text-xs text-amber-400">Sample only · no business notification sent</span> : isPending ? (
                 <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-400"><Clock className="h-3 w-3" /> Awaiting business confirmation</span>
               ) : emailSent ? (
-                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400"><Check className="h-3 w-3" /> Confirmation email sent</span>
+                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400"><Check className="h-3 w-3" /> Email accepted by provider</span>
               ) : emailQueued ? (
-                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-400"><Mail className="h-3 w-3" /> Confirmation queued — email provider pending</span>
+                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-400"><Mail className="h-3 w-3" /> Email recorded in log · not sent</span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-400"><Mail className="h-3 w-3" /> No email provider configured — see options below</span>
+                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-400"><Mail className="h-3 w-3" /> {emailStatus === 'failed' ? 'Email delivery failed · view your booking here' : 'Email delivery not confirmed · view your booking here'}</span>
               )}
               {remindersScheduled ? (
-                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400"><Check className="h-3 w-3" /> Reminders scheduled</span>
+                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400"><Check className="h-3 w-3" /> Reminder records saved · delivery not verified</span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400"><Check className="h-3 w-3" /> In-app updates on</span>
+                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400"><Clock className="h-3 w-3" /> Check your bookings for updates</span>
               )}
             </div>
           </div>
@@ -208,11 +211,11 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
 
         {/* Actions */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }} className="mt-6 w-full max-w-md grid grid-cols-2 gap-2.5">
-          <a href={gcalLink(booking, business)} target="_blank" rel="noreferrer" className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><CalendarPlus className="h-4 w-4" /> Add to Google Calendar</a>
-          <a href={mapsLink} target="_blank" rel="noreferrer" className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><Navigation className="h-4 w-4" /> Directions</a>
+          {!demo && <a href={gcalLink(booking, business)} target="_blank" rel="noreferrer" className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><CalendarPlus className="h-4 w-4" /> Add to Google Calendar</a>}
+          {!demo && <a href={mapsLink} target="_blank" rel="noreferrer" className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><Navigation className="h-4 w-4" /> Directions</a>}
           <button onClick={share} className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><Share2 className="h-4 w-4" /> Share</button>
           <button onClick={downloadPdf} disabled={pdfLoading} className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)] disabled:opacity-60">{pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} PDF</button>
-          <button onClick={downloadQr} className="col-span-2 rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><QrCode className="h-4 w-4" /> Download QR ticket (PNG)</button>
+          {qrData && <button onClick={downloadQr} className="col-span-2 rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><QrCode className="h-4 w-4" /> Download QR ticket (PNG)</button>}
         </motion.div>
         {gmailComposeUrl && (
           <motion.a initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }} href={gmailComposeUrl} target="_blank" rel="noreferrer"

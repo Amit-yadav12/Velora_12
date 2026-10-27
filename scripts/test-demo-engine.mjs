@@ -47,6 +47,32 @@ ok('Full Indian address includes PIN and India', /302001/.test(demoStore.demoFul
 ok('PIN validator', india.isValidIndianPin('302001') && !india.isValidIndianPin('012345') && !india.isValidIndianPin('12345'));
 ok('Phone validator', india.isValidIndianPhone('+91 98290 41100') && india.isValidIndianPhone('9829041100') && !india.isValidIndianPhone('12345'));
 
+console.log('\n—— 1b. MI Road electrician illustration ——');
+const serverSynthetic = await import(run('api/_lib/synthetic.js'));
+const clientSynthetic = await import(run('src/lib/synthetic.ts'));
+const miRoad = await import(run('src/lib/miRoadElectrician.ts'));
+const fs = await import('node:fs');
+const serverElectricians = serverSynthetic.cityBusinesses('Jaipur', { category: 'Electricians' });
+const clientElectricians = clientSynthetic.getCityBusinesses('Jaipur', { category: 'Electricians' });
+const serverListing = serverElectricians.find((b) => b.id === miRoad.MI_ROAD_ELECTRICIAN_ID);
+const clientListing = clientSynthetic.getSyntheticBusiness(miRoad.MI_ROAD_ELECTRICIAN_ID);
+ok('Selected sample has the same name and image in discovery and detail', serverListing?.name === clientListing?.name && serverListing?.image_url === miRoad.MI_ROAD_ELECTRICIAN_IMAGE && clientListing?.image_url === miRoad.MI_ROAD_ELECTRICIAN_IMAGE);
+ok('Selected sample gallery contains one illustration', JSON.stringify(clientListing?.photos) === JSON.stringify([miRoad.MI_ROAD_ELECTRICIAN_IMAGE]));
+ok('Other sample electricians are unchanged', [...serverElectricians, ...clientElectricians].filter((b) => b.id !== miRoad.MI_ROAD_ELECTRICIAN_ID).every((b) => b.image_url === '/biz/education.jpg'));
+ok('Illustration is an existing JPEG asset', fs.readFileSync(resolve(ROOT, `public${miRoad.MI_ROAD_ELECTRICIAN_IMAGE}`)).subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff])));
+const staleSample = miRoad.withMiRoadElectricianImage({ id: miRoad.MI_ROAD_ELECTRICIAN_ID, synthetic: true, name: 'MI Road Wiring Experts', image_url: '/biz/education.jpg', photos: ['/biz/education.jpg'] });
+ok('Cached sample refreshes its illustration and listing name', staleSample.image_url === miRoad.MI_ROAD_ELECTRICIAN_IMAGE && staleSample.name === serverListing.name && staleSample.photos.length === 1);
+const realBusiness = { id: miRoad.MI_ROAD_ELECTRICIAN_ID, name: 'A real business', image_url: 'https://example.com/owner.jpg' };
+ok('Real businesses with the same numeric ID are never overwritten', miRoad.withMiRoadElectricianImage(realBusiness) === realBusiness);
+const search = await import(run('src/lib/smartSearch.ts'));
+localStorage.setItem('velora-recent-views', JSON.stringify([
+  { id: miRoad.MI_ROAD_ELECTRICIAN_ID, name: 'MI Road Wiring Experts', category: 'Electricians', image_url: '/biz/education.jpg', at: Date.now() },
+  { id: miRoad.MI_ROAD_ELECTRICIAN_ID, name: 'Real Electrician', category: 'Electricians', synthetic: false, image_url: 'https://example.com/owner.jpg', at: Date.now() },
+]));
+const recents = search.readRecentViews();
+ok('Old sample recents update without changing real photos', recents[0].image_url === miRoad.MI_ROAD_ELECTRICIAN_IMAGE && recents[0].synthetic && recents[1].image_url === 'https://example.com/owner.jpg');
+localStorage.removeItem('velora-recent-views');
+
 console.log('\n—— 2. Business / service / staff CRUD (demo dataset) ——');
 const newBiz = demoStore.saveDemoBusiness({ name: 'Test Studio', category: 'Gyms', city: 'Jaipur' });
 ok('Add business persists', demoStore.listDemoBusinesses().some((b) => b.id === newBiz.id));
@@ -212,12 +238,12 @@ console.log('\n—— 12. Deactivated business leaves customer discovery ——'
 demoStore.resetDemo();
 const hybrid = await import(run('src/lib/hybridData.ts'));
 globalThis.fetch = async () => { throw new Error('offline'); }; // offline path = real fallback behavior
-const disc1 = await hybrid.fetchDiscover({ city: 'Jaipur', lat: 26.9124, lng: 75.7873, sort: 'ai', q: 'deactivate-test-a' });
+const disc1 = await hybrid.fetchDiscover({ city: 'Jaipur', lat: 26.9124, lng: 75.7873, sort: 'ai' });
 const bizCountBefore = disc1.results.filter((b) => String(b.id).startsWith('demo-biz-')).length;
 ok('Demo businesses present in discovery', bizCountBefore >= 22, `got ${bizCountBefore}`);
 const targetId = disc1.results.filter((b) => String(b.id).startsWith('demo-biz-'))[0].id;
 demoStore.updateDemoBusiness(String(targetId), { active: false });
-const disc2 = await hybrid.fetchDiscover({ city: 'Jaipur', lat: 26.9124, lng: 75.7873, sort: 'ai', q: 'deactivate-test-b' });
+const disc2 = await hybrid.fetchDiscover({ city: 'Jaipur', lat: 26.9124, lng: 75.7873, sort: 'ai' });
 ok('Deactivated business gone from customer discovery', !disc2.results.some((b) => String(b.id) === String(targetId)));
 const detail = await hybrid.fetchBusiness(targetId, 'Jaipur');
 ok('Deactivated business profile is not openable', detail === null);
@@ -239,6 +265,22 @@ const vTok = vb.qr_payload.split('/verify/')[1];
 const vRes = await verify.verifyToken(vTok);
 ok('Valid token verifies', vRes.valid === true && vRes.booking?.ref === vb.booking.ref);
 ok('Verification exposes only public fields (no email/PII)', vRes.booking && !('customer_email' in (vRes.booking || {})));
+// A ticket scanned from a QR is a URL, not just a token. Lowercase `s` is a
+// normal base64url character and must not truncate the scanned signature.
+ok('Ticket URL keeps lowercase s and strips query/fragment', verify.tokenFromInput('https://example.com/verify/v1.sample.signature?source=qr#ticket') === 'v1.sample.signature');
+ok('Ticket URL stops at whitespace and decodes its path', verify.tokenFromInput('https://example.com/verify/v1%2Esample%2Esignature  extra') === 'v1.sample.signature');
+ok('A raw ticket token remains intact', verify.tokenFromInput('  v1.sample.signature  ') === 'v1.sample.signature');
+const signedToken = 'v1.sample.signature';
+let requestedToken = null;
+globalThis.fetch = async (url) => {
+  requestedToken = new URL(String(url), 'http://localhost').searchParams.get('token');
+  return { ok: true, json: async () => ({ valid: true }) };
+};
+const scanned = await verify.verifyToken(`https://example.com/verify/${signedToken}?source=qr`);
+ok('Scanned ticket URL reaches the verification API untruncated', scanned.valid && requestedToken === signedToken);
+globalThis.fetch = undefined;
+const vUrlRes = await verify.verifyToken(vb.qr_payload);
+ok('A full local-demo QR URL verifies like its raw token', vUrlRes.valid === true && vUrlRes.booking?.ref === vb.booking.ref);
 offlineStore.transitionLocalBooking(vb.booking.id, 'cancelled');
 const vCanc = await verify.verifyToken(vTok);
 ok('Cancelled booking → invalid verdict', vCanc.valid === false && vCanc.reason === 'cancelled');

@@ -176,11 +176,11 @@ await withEnv({
   const f = stubFetch(() => jsonResponse({ id: 'should-not-be-called' }));
   const res = await calendar.createCalendarEvent({ summary: 'Unconfigured', start: '2026-03-02T04:30:00.000Z', end: '2026-03-02T05:15:00.000Z' });
   ok('no network call is attempted', f.calls.length === 0, `calls=${f.calls.length}`);
-  ok('fallback is explicitly labelled configuration-dependent',
-    res.provider === 'log-fallback' && res.configured === false, JSON.stringify(res));
-  ok('fallback id is a placeholder, never a Google id', String(res.eventId).startsWith('evt_'), String(res.eventId));
+  ok('missing configuration is explicitly reported',
+    res.provider === 'none' && res.configured === false && !res.ok, JSON.stringify(res));
+  ok('no event id is invented without Google', res.eventId === null, String(res.eventId));
   const del = await calendar.deleteCalendarEvent('evt_abc');
-  ok('placeholder events are not deleted on Google', del.provider === 'log-fallback' && f.calls.length === 0, JSON.stringify(del));
+  ok('placeholder events are not deleted on Google', del.provider === 'none' && !del.ok && f.calls.length === 0, JSON.stringify(del));
   f.restore();
   calendar.__resetCalendarAuthCache();
 });
@@ -199,7 +199,7 @@ section('2. Email delivery — provider precedence + honesty');
 
 await withEnv({ RESEND_API_KEY: null, SENDGRID_API_KEY: null, SMTP_RELAY_URL: null }, async () => {
   const r = await sendEmail(mailArgs);
-  ok('no provider configured → queued, not "sent"', r.status === 'queued' && r.provider === 'queued', JSON.stringify(r));
+  ok('no provider configured → unsent; queue is reported only if logged', r.provider === 'queued' && (r.status === 'queued' ? r.logged : r.status === 'not_recorded' && !r.logged) && !r.ok, JSON.stringify(r));
   ok('queued is not reported as a delivered email', r.provider !== 'resend' && r.provider !== 'sendgrid');
 });
 await withEnv({ RESEND_API_KEY: 're_test', SENDGRID_API_KEY: null, SMTP_RELAY_URL: null }, async () => {
@@ -283,7 +283,7 @@ ok('check_in verifies the scanned ticket signature server-side',
   /verifyBookingToken\(ticket\)/.test(checkInBlock), 'no verifyBookingToken call');
 ok('check_in refuses a missing ticket instead of trusting a status flip',
   /assert\(ticket,/.test(checkInBlock));
-ok('check_in is staff-only', /assert\(isAdmin/.test(checkInBlock));
+ok('check_in is staff-only', /assert\(staffAccess/.test(checkInBlock));
 ok('the ticket must belong to the row being checked in',
   /verified\.data\.ref/.test(checkInBlock) && /status\(409\)/.test(checkInBlock));
 ok('re-scanning is idempotent (no second state change)',
@@ -395,128 +395,40 @@ ok('Google Calendar link is pre-filled with the slot',
 /* ========================================================================== */
 /* 5. Booking pipeline guards                                                 */
 /* ========================================================================== */
-section('5. Booking pipeline — idempotency + double-booking');
+section('5. Booking pipeline — fail closed without a real database');
 const bookHandler = (await import('../api/book.js')).default;
-const { syntheticBusiness } = await import('../api/_lib/synthetic.js');
-const biz = syntheticBusiness(100000);
-ok('synthetic fixture business resolved', !!biz && Array.isArray(biz.services) && biz.services.length > 0,
-  JSON.stringify(biz && { id: biz.id, services: biz.services?.length, staff: biz.staff?.length }));
-
-const futureIso = (hoursAhead = 30) => new Date(Date.now() + hoursAhead * 3600 * 1000).toISOString();
-const svc = biz.services[0];
-const staffA = (biz.staff || [])[0];
-const baseBody = () => ({
-  business_id: biz.id, service_id: svc.id,
-  customer_name: 'Integration Test', customer_email: 'integration@example.in',
-  start_time: futureIso(),
-});
-
-// 5a. Idempotency: the same key replays the original booking, no duplicate.
-const idemKey = `itest-${Date.now()}`;
-const body1 = { ...baseBody(), idempotency_key: idemKey };
-const r1 = fakeRes();
-await bookHandler(fakeReq(body1), r1);
-ok('first booking is created (201)', r1.statusCode === 201, `status=${r1.statusCode} ${JSON.stringify(r1.body)}`);
-const ref1 = r1.body?.booking?.ref;
-ok('booking carries a VL- reference', /^VL-[A-Z0-9]{6}$/.test(String(ref1)), String(ref1));
-ok('QR payload is returned with the booking', /\/verify\/v1\./.test(String(r1.body?.qr_payload)), String(r1.body?.qr_payload));
-const r2 = fakeRes();
-await bookHandler(fakeReq({ ...body1, start_time: body1.start_time }), r2);
-ok('the same idempotency key replays (200)', r2.statusCode === 200, `status=${r2.statusCode}`);
-ok('the replay is flagged as deduplicated', r2.body?.deduplicated === true, JSON.stringify(r2.body?.deduplicated));
-ok('the replay returns the SAME booking (no duplicate)', r2.body?.booking?.ref === ref1,
-  `${r2.body?.booking?.ref} vs ${ref1}`);
-
-// 5a2. Idempotency keys are namespaced per caller: two customers who happen to
-//      send the same key must NOT receive each other's booking.
-const sharedKey = `shared-${Date.now()}`;
-const crossA = fakeRes();
-await bookHandler(fakeReq({ ...baseBody(), customer_email: 'iso-a@example.in', start_time: futureIso(60), idempotency_key: sharedKey }), crossA);
-const crossB = fakeRes();
-await bookHandler(fakeReq({ ...baseBody(), customer_email: 'iso-b@example.in', start_time: futureIso(61), idempotency_key: sharedKey }), crossB);
-ok('the same key from a different customer is not a replay',
-  crossA.statusCode === 201 && crossB.statusCode === 201 && crossB.body?.deduplicated !== true,
-  `A=${crossA.statusCode} B=${crossB.statusCode} dedup=${crossB.body?.deduplicated}`);
-ok('different customers get different bookings', crossA.body?.booking?.ref !== crossB.body?.booking?.ref,
-  `${crossA.body?.booking?.ref} vs ${crossB.body?.booking?.ref}`);
-
-// 5b. A named specialist cannot be double-booked in an overlapping slot.
-const clashStart = futureIso(40);
-const okRes = fakeRes();
-await bookHandler(fakeReq({ ...baseBody(), start_time: clashStart, staff_id: staffA?.id }), okRes);
-ok('named specialist booked once', okRes.statusCode === 201, `status=${okRes.statusCode} ${JSON.stringify(okRes.body)}`);
-const clashRes = fakeRes();
-await bookHandler(fakeReq({
-  ...baseBody(), start_time: clashStart, staff_id: staffA?.id,
-  customer_email: 'second@example.in', idempotency_key: `itest-clash-${Date.now()}`,
-}), clashRes);
-ok('the same specialist in the same slot is refused (409)', clashRes.statusCode === 409,
-  `status=${clashRes.statusCode} ${JSON.stringify(clashRes.body)}`);
-
-// 5c. Validation guards.
+const future = new Date(Date.now() + 86400000).toISOString();
+const fixture = { business_id: 100000, service_id: 1000001, customer_name: 'Integration Test', customer_email: 'integration@example.in', start_time: future, idempotency_key: 'retry-key' };
+const missingDb = fakeRes();
+await bookHandler(fakeReq(fixture), missingDb);
+ok('unconfigured database refuses synthetic reservations', missingDb.statusCode === 503 && !missingDb.body?.booking,
+  `status=${missingDb.statusCode} ${JSON.stringify(missingDb.body)}`);
+const live = fakeRes();
+await bookHandler(fakeReq({ ...fixture, business_id: 'live-unpartnered-google-place' }), live);
+ok('unpartnered Google listings cannot be booked', live.statusCode === 400 && !live.body?.booking);
 const pastRes = fakeRes();
-await bookHandler(fakeReq({ ...baseBody(), start_time: new Date(Date.now() - 7200_000).toISOString() }), pastRes);
-ok('a past slot is refused', pastRes.statusCode === 400 && /past/i.test(String(pastRes.body?.error)),
-  `status=${pastRes.statusCode} ${JSON.stringify(pastRes.body)}`);
-const badMail = fakeRes();
-await bookHandler(fakeReq({ ...baseBody(), customer_email: 'not-an-email' }), badMail);
-ok('an invalid email is refused', badMail.statusCode === 400 && /email/i.test(String(badMail.body?.error)),
-  `status=${badMail.statusCode} ${JSON.stringify(badMail.body)}`);
-const badSvc = fakeRes();
-await bookHandler(fakeReq({ ...baseBody(), service_id: 99999999 }), badSvc);
-ok('a service that is not on the business is refused', badSvc.statusCode === 404, `status=${badSvc.statusCode}`);
+await bookHandler(fakeReq({ ...fixture, start_time: new Date(Date.now() - 7200000).toISOString() }), pastRes);
+ok('a past slot is refused', pastRes.statusCode === 400 && /future/i.test(String(pastRes.body?.error)));
+const { bookingRpcError } = await import('../api/book.js');
+ok('database overlap maps to a conflict', bookingRpcError({ code: '23P01' })?.status === 409);
+ok('unknown database errors do not masquerade as a reservation', bookingRpcError({ code: 'XX000' }) === null);
 
 /* ========================================================================== */
-/* 6. Demo console provisioning — the branch demo-mode tests never reach       */
+/* 6. Shared demo credentials are blocked on configured deployments          */
 /* ========================================================================== */
-section('6. Demo sign-in — console role grant is never swallowed');
-
-// src/lib/demoAuth.ts is loaded through a real Vite module graph with its two
-// collaborators (supabase client + api client) replaced by stubs, so the actual
-// provisioning branch runs in NON-demo mode — the mode a deployed site uses.
+section('6. Demo credentials cannot reach production auth');
 const { createServer } = await import('vite');
 const viteServer = await createServer({
-  root: ROOT,
-  logLevel: 'silent',
-  configFile: false,
-  server: { middlewareMode: true, hmr: false },
-  appType: 'custom',
-  resolve: {
-    alias: [
-      { find: './supabase', replacement: join(ROOT, 'scripts/__stubs__/demo-supabase-stub.mjs') },
-      { find: './api', replacement: join(ROOT, 'scripts/__stubs__/demo-api-stub.mjs') },
-    ],
-  },
+  root: ROOT, logLevel: 'silent', configFile: false,
+  server: { middlewareMode: true, hmr: false }, appType: 'custom',
+  resolve: { alias: [{ find: './supabase', replacement: join(ROOT, 'scripts/__stubs__/demo-supabase-stub.mjs') }] },
 });
 const demoAuth = await viteServer.ssrLoadModule('/src/lib/demoAuth.ts');
-const runDemo = async (scenario) => {
-  globalThis.__provisionScenario = scenario;
-  try { return await demoAuth.signInDemo('admin'); } finally { delete globalThis.__provisionScenario; }
-};
-
-let d = await runDemo('ok');
-ok('a successful grant reports provision.ok', d.provision?.ok === true && d.email === 'admin@velora.ai',
-  JSON.stringify(d));
-d = await runDemo('409');
-ok('a 409 grant failure is reported, not swallowed', d.provision?.ok === false && d.provision?.status === 409,
-  JSON.stringify(d.provision));
-ok('a 409 maps to the APPLY_ALL.sql instruction', /APPLY_ALL\.sql/.test(String(d.provision?.hint)), String(d.provision?.hint));
-d = await runDemo('503');
-ok('a 503 maps to the missing-credentials instruction',
-  /SUPABASE_SERVICE_ROLE_KEY/.test(String(d.provision?.hint)), String(d.provision?.hint));
-d = await runDemo('401');
-ok('a 401 maps to the rotate-the-key instruction', /rotate/i.test(String(d.provision?.hint)), String(d.provision?.hint));
-d = await runDemo('429');
-ok('a 429 maps to a back-off instruction', /wait a minute/i.test(String(d.provision?.hint)), String(d.provision?.hint));
-d = await runDemo('network');
-ok('an unreachable function still returns a hint (no silent bounce)',
-  d.provision?.ok === false && String(d.provision?.hint).length > 10 && d.provision?.status === undefined,
-  JSON.stringify(d.provision));
-d = await runDemo('unexpected');
-ok('an unexpected 200 body is treated as a failure', d.provision?.ok === false, JSON.stringify(d.provision));
-ok('provisionHint covers the unmapped case with PROMOTE_ADMIN.sql',
-  /PROMOTE_ADMIN\.sql/.test(demoAuth.provisionHint(undefined, 'something odd')),
-  demoAuth.provisionHint(undefined, 'something odd'));
+let rejected = false;
+globalThis.__demoAuthCalls = 0;
+try { await demoAuth.signInDemo('admin'); } catch (e) { rejected = /only in the local preview/i.test(e.message); }
+ok('configured projects reject public demo credentials before contacting Auth', rejected && globalThis.__demoAuthCalls === 0);
+delete globalThis.__demoAuthCalls;
 await viteServer.close();
 
 /* ========================================================================== */
@@ -551,7 +463,8 @@ await withEnv({ APP_URL: null, ALLOWED_ORIGINS: null }, async () => {
     r.headers['Access-Control-Allow-Origin'] === '*');
 });
 
-ok('platform operator (owns no business) may operate anywhere', canOperateOn([], 'Aurora Luxe') === true);
+ok('empty ownership does not imply operator authority', canOperateOn([], 'Aurora Luxe') === false);
+ok('explicit platform operator may operate anywhere', canOperateOn([], 'Aurora Luxe', true) === true);
 ok('an owner may operate on their own business', canOperateOn(['Aurora Luxe'], 'aurora luxe') === true);
 ok('an owner may NOT operate on another business', canOperateOn(['Aurora Luxe'], 'Apex Physio') === false);
 
@@ -646,8 +559,8 @@ ok('netlify.toml no longer hardcodes the deploy domain', !/velora-ai-in\.netlify
 ok('netlify.toml pins a Vite-7-compatible Node', /NODE_VERSION\s*=\s*"(2[2-9]|3\d)"/.test(toml), toml.match(/NODE_VERSION.*/)?.[0] || '');
 ok('the QR helper has no hardcoded deploy domain', !/velora-ai-in\.netlify\.app/.test(read('api/_lib/qr.js')));
 ok('the ICS generator has no hardcoded deploy domain', !/velora-ai-in\.netlify\.app/.test(read('src/lib/calendar.ts')));
-ok('demo sign-in surfaces provisioning failures',
-  /provision:\s*\{/.test(read('src/lib/demoAuth.ts')) && !/catch\s*\{\s*\/\/ Server keeps control/.test(read('src/lib/demoAuth.ts')));
+ok('shared demo sign-in is guarded on configured deployments',
+  /if \(!isDemoMode\) throw/.test(read('src/lib/demoAuth.ts')));
 ok('.env.example documents the calendar refresh chain',
   /GOOGLE_CALENDAR_REFRESH_TOKEN/.test(read('.env.example')) && /GOOGLE_CLIENT_SECRET/.test(read('.env.example')));
 const pkg = JSON.parse(read('package.json'));

@@ -1,28 +1,14 @@
-/**
- * Last-resort origin, used ONLY when there is neither VITE_APP_URL nor a
- * non-local window origin (i.e. local dev). A deployed build always resolves
- * `publicOrigin()` from its own host, so this never leaks into production URLs.
- */
-export const LIVE_URL = 'https://velora-ai-in.netlify.app';
-
 function envAppUrl(): string {
-  try {
-    const v = import.meta.env?.VITE_APP_URL || '';
-    return String(v).replace(/\/$/, '');
-  } catch {
-    return '';
-  }
+  try { return String(import.meta.env?.VITE_APP_URL || '').replace(/\/$/, ''); }
+  catch { return ''; }
 }
 
-/** Public origin for Calendar, share, emails. Localhost falls back to Netlify. */
+/** Use this deployment's configured or actual origin; never a historical site. */
 export function publicOrigin(): string {
-  const fromEnv = envAppUrl();
-  if (fromEnv) return fromEnv;
-  try {
-    const o = typeof window !== 'undefined' ? window.location.origin : '';
-    if (o && !/localhost|127\.0\.0\.1|0\.0\.0\.0|:5173|:4173/i.test(o)) return o.replace(/\/$/, '');
-  } catch { /* ignore */ }
-  return LIVE_URL;
+  const configured = envAppUrl();
+  if (configured) return configured;
+  try { return typeof window !== 'undefined' ? window.location.origin.replace(/\/$/, '') : ''; }
+  catch { return ''; }
 }
 
 /**

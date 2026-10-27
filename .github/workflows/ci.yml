@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Dependency audit (high and critical)
+        run: npm audit --audit-level=high
+
       - name: Lint
         run: npm run lint
 
@@ -40,6 +43,9 @@ jobs:
 
       - name: Integration suite (calendar OAuth, email, QR, IST, booking guards)
         run: npm run verify:integrations
+
+      - name: Launch database and API regressions (isolated PostgreSQL + mocks)
+        run: npm run verify:launch
 
       - name: Full app + API harness
         run: npm run verify:app

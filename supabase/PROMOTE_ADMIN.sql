@@ -28,7 +28,7 @@ set local request.jwt.claims = '{"role":"service_role"}';
 
 do $$
 declare
-  admin_email text := 'admin@velora.ai';   -- <<< CHANGE THIS
+  admin_email text := 'CHANGE_ME@example.com';   -- <<< CHANGE THIS
   uid uuid;
   found int;
 begin
@@ -36,6 +36,10 @@ begin
   from auth.users u
   where lower(u.email) = lower(admin_email)
   limit 1;
+
+  if lower(admin_email) in ('change_me@example.com', 'admin@velora.ai') then
+    raise exception 'Set admin_email to a private operator account, not the public demo account';
+  end if;
 
   if uid is null then
     raise notice 'NOT PROMOTED: % has no auth user yet. Sign up in the app with that email, then re-run this file.', admin_email;
@@ -46,7 +50,7 @@ begin
   -- Disable it for the update path so this works on every Supabase version.
   alter table public.profiles disable trigger protect_profile_role;
 
-  insert into public.profiles (id, email, full_name, role)
+  insert into public.profiles (id, email, full_name, role, is_operator)
   values (
     uid,
     admin_email,
@@ -54,10 +58,10 @@ begin
       (select raw_user_meta_data ->> 'full_name' from auth.users where id = uid),
       split_part(admin_email, '@', 1)
     ),
-    'admin'
+    'admin', true
   )
   on conflict (id) do update
-    set role = 'admin',
+    set role = 'admin', is_operator = true,
         full_name = coalesce(public.profiles.full_name, excluded.full_name);
 
   alter table public.profiles enable trigger protect_profile_role;
@@ -76,7 +80,7 @@ end $$;
 commit;
 
 -- Verify: this row must show role = admin.
-select email, role, created_at
+select email, role, is_operator, created_at
 from public.profiles
 where role = 'admin'
 order by created_at;

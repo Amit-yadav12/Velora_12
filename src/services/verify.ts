@@ -18,7 +18,7 @@ export interface VerifyResult {
 
 export function tokenFromInput(input: string): string {
   const t = (input || '').trim();
-  const m = t.match(/\/verify\/([^?#\\s]+)/);
+  const m = t.match(/\/verify\/([^/?#\s]+)/);
   const raw = m ? m[1] : t;
   try {
     return decodeURIComponent(raw);

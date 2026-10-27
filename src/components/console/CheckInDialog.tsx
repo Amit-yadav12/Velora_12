@@ -43,13 +43,17 @@ export default function CheckInDialog({ open, onClose, bookings, onCheckedIn, on
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
+  // Invalidates pending permission requests and detector calls on close/unmount.
+  const scanVersionRef = useRef(0);
   const canScan = typeof window !== 'undefined' && !!detectorCtor() && !!navigator?.mediaDevices?.getUserMedia;
 
   const stopScan = () => {
+    scanVersionRef.current += 1;
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
     setScanning(false);
   };
 
@@ -73,20 +77,34 @@ export default function CheckInDialog({ open, onClose, bookings, onCheckedIn, on
   const startScan = async () => {
     const Detector = detectorCtor();
     if (!Detector) return;
+    stopScan();
+    const version = ++scanVersionRef.current;
     setScanNote('');
     setScanning(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play().catch(() => {});
+      // Permission may be granted after the dialog has closed, unmounted or
+      // started a newer scan. Do not leave that late camera stream running.
+      if (version !== scanVersionRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
       }
+      streamRef.current = stream;
       const detector = new Detector({ formats: ['qr_code'] });
+      const active = () => version === scanVersionRef.current && streamRef.current === stream;
       const tick = async () => {
-        if (!streamRef.current || !videoRef.current) return;
+        if (!active()) return;
+        const video = videoRef.current;
+        // getUserMedia can resolve before React mounts the preview element.
+        if (!video) { rafRef.current = requestAnimationFrame(tick); return; }
+        if (video.srcObject !== stream) {
+          video.srcObject = stream;
+          await video.play().catch(() => {});
+          if (!active()) return;
+        }
         try {
-          const codes = await detector.detect(videoRef.current);
+          const codes = await detector.detect(video);
+          if (!active()) return;
           const raw = codes[0]?.rawValue;
           if (raw) {
             stopScan();
@@ -95,10 +113,11 @@ export default function CheckInDialog({ open, onClose, bookings, onCheckedIn, on
             return;
           }
         } catch { /* a dropped frame is not an error */ }
-        rafRef.current = requestAnimationFrame(tick);
+        if (active()) rafRef.current = requestAnimationFrame(tick);
       };
       rafRef.current = requestAnimationFrame(tick);
     } catch {
+      if (version !== scanVersionRef.current) return;
       stopScan();
       setScanNote('Camera access was blocked. Paste the ticket link instead — it verifies exactly the same way.');
     }

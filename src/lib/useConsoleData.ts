@@ -4,7 +4,7 @@
 // source of truth. Subscriptions (Supabase realtime + local event bus) are
 // registered once per page and always cleaned up.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import supabase from './supabase';
+import supabase, { isDemoMode } from './supabase';
 import { apiGet } from './api';
 import { listLocalBookings } from './offlineStore';
 import { listDemoBusinesses, listDemoServices, listDemoStaff, listDemoCustomers } from './demoStore';
@@ -22,12 +22,13 @@ export interface ConsoleData {
   staff: BusinessStaff[];
   customers: CustomerRecord[];
   loading: boolean;
+  error: boolean;
   reload: () => void;
 }
 
 export function useConsoleData(city?: string): ConsoleData {
   const [data, setData] = useState<Omit<ConsoleData, 'reload'>>({
-    bookings: [], businesses: [], services: [], staff: [], customers: [], loading: true,
+    bookings: [], businesses: [], services: [], staff: [], customers: [], loading: true, error: false,
   });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -35,7 +36,7 @@ export function useConsoleData(city?: string): ConsoleData {
     // Fail-soft parallel loads: each source degrades independently.
     const [serverBookings, serverBiz, serverServices, serverStaff, serverCustomers] = await Promise.all([
       apiGet<ConsoleBooking[]>('/api/bookings').catch(() => null),
-      city ? apiGet<Business[]>(`/api/businesses?city=${encodeURIComponent(city)}`).catch(() => null) : apiGet<Business[]>('/api/admin?resource=business').catch(() => null),
+      apiGet<Business[]>('/api/admin?resource=business').catch(() => null),
       apiGet<BusinessService[]>('/api/admin?resource=services').catch(() => null),
       apiGet<BusinessStaff[]>('/api/admin?resource=staff').catch(() => null),
       apiGet<ExplicitCustomer[]>('/api/admin?resource=customers').catch(() => null),
@@ -43,7 +44,7 @@ export function useConsoleData(city?: string): ConsoleData {
 
     // Bookings: server + demo tenant, de-duplicated by ref (server wins).
     const serverB: ConsoleBooking[] = Array.isArray(serverBookings) ? serverBookings : [];
-    const localB = listLocalBookings().map((b) => ({
+    const localB = (isDemoMode ? listLocalBookings() : []).map((b) => ({
       id: b.id, ref: b.ref,
       customer_name: b.customer_name || 'Guest', customer_email: b.customer_email || '',
       customer_phone: b.customer_phone || null,
@@ -59,9 +60,9 @@ export function useConsoleData(city?: string): ConsoleData {
     const bookings: ConsoleBooking[] = [...serverB, ...localB.filter((b) => !refs.has(b.ref))];
 
     // Businesses / services / staff: demo tenant merged with server rows.
-    const demoBiz = listDemoBusinesses(city, true);
-    const demoSvc = listDemoServices().map((s) => ({ ...s, demo: true }));
-    const demoStaff = listDemoStaff().map((s) => ({ ...s, demo: true }));
+    const demoBiz = isDemoMode ? listDemoBusinesses(city, true) : [];
+    const demoSvc = (isDemoMode ? listDemoServices() : []).map((s) => ({ ...s, demo: true }));
+    const demoStaff = (isDemoMode ? listDemoStaff() : []).map((s) => ({ ...s, demo: true }));
     const serverBizRows: Business[] = Array.isArray(serverBiz) ? serverBiz : [];
     const serverSvcRows: BusinessService[] = Array.isArray(serverServices) ? serverServices : [];
     const serverStaffRows: BusinessStaff[] = Array.isArray(serverStaff) ? serverStaff : [];
@@ -77,11 +78,11 @@ export function useConsoleData(city?: string): ConsoleData {
       ...(Array.isArray(serverCustomers) ? serverCustomers : []).map((c) => ({
         id: c.id, email: c.email, full_name: c.full_name, phone: c.phone, created_at: c.created_at,
       })),
-      ...listDemoCustomers().map((c) => ({ id: c.id, email: c.email, full_name: c.name, phone: c.phone, created_at: c.created_at })),
+      ...(isDemoMode ? listDemoCustomers() : []).map((c) => ({ id: c.id, email: c.email, full_name: c.name, phone: c.phone, created_at: c.created_at })),
     ];
     const customers = deriveCustomers(bookings, explicit);
 
-    setData({ bookings, businesses, services, staff, customers, loading: false });
+    setData({ bookings, businesses, services, staff, customers, loading: false, error: !isDemoMode && [serverBookings, serverBiz, serverServices, serverStaff, serverCustomers].some((result) => result === null) });
   }, [city]);
 
   useEffect(() => { load(); }, [load]);

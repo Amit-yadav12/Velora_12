@@ -4,7 +4,7 @@ import {
   IndianRupee, Users, UserCog, Sparkles, Star, Clock, TrendingUp,
   CheckCircle2, XCircle, ArrowUpRight, Activity, CalendarClock,
 } from 'lucide-react';
-import { PageHeader, Spinner, StatusBadge, EmptyState, StatCard, btnGhost, btnPrimary, DemoBadge, Modal } from '../../components/ui';
+import { PageHeader, Spinner, ConsoleUnavailable, StatusBadge, EmptyState, StatCard, btnGhost, btnPrimary, DemoBadge, Modal } from '../../components/ui';
 import { useConsoleData } from '../../lib/useConsoleData';
 import { revenueMetrics } from '../../lib/metrics';
 import { useLocation } from '../../contexts/LocationContext';
@@ -19,7 +19,7 @@ import type { ConsoleBooking, ReviewRow } from '../../lib/types';
 
 export default function AdminDashboard() {
   const { city } = useLocation();
-  const { bookings, businesses, services, staff, customers, loading, reload } = useConsoleData(city.name);
+  const { bookings, businesses, services, staff, customers, loading, error, reload } = useConsoleData(city.name);
   const [resetOpen, setResetOpen] = useState(false);
   const [busy, setBusy] = useState<string | number | null>(null);
 
@@ -91,6 +91,7 @@ export default function AdminDashboard() {
   };
 
   if (loading) return <Spinner />;
+  if (error) return <ConsoleUnavailable retry={reload} />;
 
   const cards = [
     { label: 'Total sales', value: m.salesCount, icon: TrendingUp, color: '#60a5fa', sub: `${m.completedCount} completed` },
