@@ -34,7 +34,7 @@ export default function DiscoverCard({ b, active, onHover, compact, onCompare, c
       <div className="flex gap-3 p-3">
         <div className="relative shrink-0">
           <div className={`rounded-xl bg-gradient-to-br from-indigo-900 to-emerald-950 overflow-hidden ${compact ? 'h-20 w-20' : 'h-24 w-24'}`}>{b.image_url && <img src={b.image_url} alt={isIllustratedSample ? MI_ROAD_ELECTRICIAN_ALT : b.name} onError={e => { e.currentTarget.style.display = 'none'; }} className={`h-full w-full object-cover ${isIllustratedSample ? 'object-left' : ''}`} loading="lazy" />}</div>
-          {(b.ai_score ?? 0) >= 75 && <div title={`Velora match score ${b.ai_score}/100 — a heuristic using rating, straight-line distance, opening hours and featured status`} aria-label={`Velora match score ${b.ai_score} out of 100`} className="absolute -top-1.5 -left-1.5 grad-btn text-white text-[9px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5"><Sparkles className="h-2.5 w-2.5" aria-hidden="true" /><span aria-hidden="true">{b.ai_score}<span className="opacity-70">/100</span></span></div>}
+          {(b.ai_score ?? 0) >= 75 && <div title={`Velora match score ${b.ai_score}/100 — a heuristic using rating, straight-line distance, opening hours and featured status`} role="img" aria-label={`Velora match score ${b.ai_score} out of 100`} className="absolute -top-1.5 -left-1.5 grad-btn text-white text-[9px] font-semibold px-1.5 py-0.5 rounded-full flex items-center gap-0.5"><Sparkles className="h-2.5 w-2.5" aria-hidden="true" /><span aria-hidden="true">{b.ai_score}<span className="opacity-70">/100</span></span></div>}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">

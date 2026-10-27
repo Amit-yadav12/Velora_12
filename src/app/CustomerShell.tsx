@@ -68,7 +68,7 @@ export default function CustomerShell({ children }: { children: React.ReactNode 
       <motion.header initial={{ y: -60, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         className="sticky top-0 z-40 px-4 pt-3">
         <div className="mx-auto max-w-6xl glass rounded-2xl px-4 py-2.5 flex items-center gap-3 shadow-lg">
-          <Link to="/" className="flex items-center gap-2">
+          <Link to="/" aria-label="Velora home" className="flex items-center gap-2">
             <LogoMark size={32} />
             <span className="font-semibold tracking-tight hidden sm:block">Velora</span>
           </Link>
