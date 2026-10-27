@@ -292,7 +292,7 @@ export default function Appointments() {
           <div className="space-y-4">
             <div className="flex items-center gap-4">
               <div className="p-2.5 rounded-2xl bg-white shrink-0" data-ticket-qr>
-                {ticketQr ? <QRCodeSVG value={ticketQr} size={110} level="M" /> : <QrCode className="h-16 w-16 text-dim" />}
+                {ticketQr ? <QRCodeSVG value={ticketQr} size={110} level="M" title={`Booking ticket QR code for ${ticket.ref}`} /> : <QrCode className="h-16 w-16 text-dim" />}
               </div>
               <div className="min-w-0 text-sm space-y-1">
                 <p className="font-semibold text-base">{ticket.service_name}</p>

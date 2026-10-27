@@ -182,7 +182,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
                 <p className="flex items-center gap-2 text-muted"><MapPin className="h-4 w-4" /><span className="truncate">{business.address}</span></p>
               </div>
               {qrData && <div className="shrink-0 text-center">
-                <div className="p-2 rounded-xl bg-white" data-qr>{qrData ? <QRCodeSVG value={qrData} size={92} level="M" /> : <QrCode className="h-16 w-16 text-dim" />}</div>
+                <div className="p-2 rounded-xl bg-white" data-qr>{qrData ? <QRCodeSVG value={qrData} size={92} level="M" title={`Booking ticket QR code for ${booking.ref}`} /> : <QrCode className="h-16 w-16 text-dim" />}</div>
                 <p className="text-[10px] text-dim mt-1.5">{demo ? 'Demo QR only' : 'Scan at check-in'}</p>
                 {qrData.startsWith('http') && <a href={qrData} target="_blank" rel="noreferrer" className="text-[10px] text-[var(--text-link-strong)] underline underline-offset-2">Verify ticket</a>}
               </div>}
