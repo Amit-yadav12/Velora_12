@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { X, type LucideIcon } from 'lucide-react';
 
 export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: ReactNode }) {
@@ -24,7 +24,7 @@ export function StatusBadge({ status }: { status: string }) {
 /** Small chip marking entities that belong to the isolated demo tenant. */
 export function DemoBadge({ label = 'Demo' }: { label?: string }) {
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-[var(--color-brand-violet)]/15 text-[var(--color-brand-violet)] border border-[var(--color-brand-violet)]/25">
+    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-[var(--color-brand-violet)]/15 text-[var(--text-link-strong)] border border-[var(--color-brand-violet)]/25">
       {label}
     </span>
   );
@@ -52,8 +52,9 @@ export function EmptyState({ title, sub, action }: { title: string; sub?: string
 export function StatCard({ label, value, icon: Icon, color = '#818cf8', sub, delay = 0 }: {
   label: string; value: ReactNode; icon: LucideIcon; color?: string; sub?: string; delay?: number;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
-    <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay }} className="card p-5 group hover:border-[var(--border-strong)] transition-colors">
+    <motion.div initial={{ opacity: 1, y: reduceMotion ? 0 : 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: reduceMotion ? 0 : delay }} className="card p-5 group hover:border-[var(--border-strong)] transition-colors">
       <div className="h-9 w-9 rounded-xl grid place-items-center mb-3" style={{ background: `${color}22` }}>
         <Icon className="h-4 w-4" style={{ color }} />
       </div>
