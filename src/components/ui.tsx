@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, type LucideIcon } from 'lucide-react';
 
@@ -61,27 +61,53 @@ export function StatCard({ label, value, icon: Icon, color = '#818cf8', sub, del
 }
 
 /** Consistent modal shell — glass, rounded, animated, scroll-safe on mobile. */
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function Modal({ open, onClose, title, children, wide }: {
   open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   useEffect(() => {
     if (!open) return;
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
+    const previous = document.activeElement as HTMLElement | null;
+    const bodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusables = () => Array.from(panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) || []);
+    focusables()[0]?.focus();
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.preventDefault(); onClose(); return; }
+      if (e.key !== 'Tab') return;
+      const list = focusables();
+      if (list.length === 0) return;
+      const first = list[0];
+      const last = list[list.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    window.addEventListener('keydown', h, true);
+    return () => {
+      window.removeEventListener('keydown', h, true);
+      document.body.style.overflow = bodyOverflow;
+      previous?.focus?.();
+    };
   }, [open, onClose]);
   return (
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-[80] grid place-items-center p-4 overflow-y-auto">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
           <motion.div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
             initial={{ scale: 0.95, opacity: 0, y: 12 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 12 }}
             transition={{ type: 'spring', damping: 26, stiffness: 320 }}
             className={`relative glass rounded-2xl border border-app shadow-2xl w-full ${wide ? 'max-w-2xl' : 'max-w-md'} my-8`}
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-app sticky top-0 glass rounded-t-2xl z-10">
-              <h3 className="font-semibold">{title}</h3>
+              <h3 id={titleId} className="font-semibold">{title}</h3>
               <button aria-label="Close" onClick={onClose} className="h-8 w-8 grid place-items-center rounded-lg border border-app hover:border-[var(--border-strong)] transition-colors"><X className="h-4 w-4" /></button>
             </div>
             <div className="p-6">{children}</div>

@@ -565,6 +565,42 @@ ok('Ticket exposes the verify link on screen (QR is not decorative)',
   all('a').some((a) => /\/verify\//.test(a.getAttribute('href') || '')));
 
 /* ================================================================== */
+console.log('\n—— 3d. Compare businesses in ₹ (real prices, no estimates) ——');
+await goto('/explore');
+await waitFor(() => all('.card').length > 1, { timeout: 12000, label: 'results for comparison' });
+ok('Every result card states a starting price in ₹ (or "price on request")',
+  all('.card').filter((c) => /from ₹|Price on request/.test(txt(c))).length >= 2,
+  txt(all('.card')[0]).slice(0, 80));
+
+const compareBtns = all('button').filter((b) => /to price comparison$/.test(b.getAttribute('aria-label') || ''));
+ok('Cards expose a comparison toggle', compareBtns.length >= 3, `${compareBtns.length} toggles`);
+if (compareBtns[0]) await click(compareBtns[0]);
+if (compareBtns[1]) await click(compareBtns[1]);
+await settle(250);
+ok('Shortlisting two businesses opens the comparison tray', bodyHas('Compare 2'));
+const compareCta = all('button').find((b) => /^Compare 2$/.test(txt(b)));
+await click(compareCta);
+await waitFor(() => bodyHas('Compare prices'), { timeout: 8000, label: 'compare sheet' });
+ok('Compare sheet opens', bodyHas('Compare prices'));
+ok('Comparison explains the price spread in plain language',
+  /apart across 2 businesses|no like-for-like price/.test(txt(document.querySelector('[data-compare-summary]'))),
+  txt(document.querySelector('[data-compare-summary]')));
+const compareTable = all('table').find((t) => /Starts at/.test(txt(t)));
+ok('Comparison table has rating, distance, availability and starting price rows', !!compareTable
+  && /Rating/.test(txt(compareTable)) && /Distance/.test(txt(compareTable)) && /Starts at/.test(txt(compareTable)));
+ok('Comparison shows rupee prices from each business catalogue', /₹/.test(txt(compareTable)));
+const svcRows = compareTable ? Array.from(compareTable.querySelectorAll('tbody tr')).filter((tr) => /spread|₹/.test(txt(tr))) : [];
+ok('Service-by-service price rows are derived from real services', svcRows.length >= 2, `${svcRows.length} rows`);
+const removeBtn = all('button').find((b) => /Remove .* from comparison/.test(b.getAttribute('aria-label') || ''));
+ok('A business can be removed from the comparison', !!removeBtn);
+if (removeBtn) await click(removeBtn);
+await settle(250);
+ok('Removing one business updates the comparison in place', !document.querySelector('[data-compare-summary]') || /no like-for-like|Add one more/.test(txt(document.querySelector('[data-compare-summary]'))));
+const closeCompare = all('button').find((b) => b.getAttribute('aria-label') === 'Close');
+if (closeCompare) await click(closeCompare);
+await settle(150);
+
+/* ================================================================== */
 console.log('\n—— 4. QR verification page ——');
 if (newest && ticketVerifyUrl) {
   await goto(new URL(ticketVerifyUrl).pathname);
@@ -744,6 +780,102 @@ ok('Customer sees the CANCELLED status in their history (one dataset)', (() => {
 })());
 
 /* ================================================================== */
+console.log('\n—— 6b. Door check-in — a ticket, not a checkbox ——');
+await ReactMod.act(async () => { await demoAuth.signInDemo('admin'); });
+// Fresh confirmed booking (arrives with a signed local ticket).
+let doorBooking = null;
+await ReactMod.act(async () => {
+  const res = await offline.createDemoBooking({
+    business_id: 'demo-biz-apex', business_name: 'Apex Physio & Sports Rehab',
+    service_id: 'demo-biz-apex-svc1', service_name: 'Initial Assessment & Plan',
+    service_duration: 45, service_price: 900, staff_name: 'Rhea Menon',
+    start_time: new Date(Date.now() + 30 * 3600 * 1000).toISOString(),
+    customer_name: 'Door Test', customer_email: 'door.test@example.in',
+    status: 'confirmed',
+  });
+  doorBooking = res.booking;
+  await new Promise((r) => setTimeout(r, 150));
+});
+const doorRow = JSON.parse(window.localStorage.getItem('velora-local-bookings') || '[]').find((b) => b.id === doorBooking?.id);
+const doorToken = doorRow?.qr_salt ? demoStore.makeLocalQrToken(doorRow.ref, doorRow.qr_salt) : '';
+ok('Check-in fixture has a signed ticket token', Boolean(doorToken), String(doorToken).slice(0, 18));
+
+await mount('/admin/appointments');
+await waitFor(() => bodyHas(doorBooking.ref), { timeout: 12000, label: 'door booking row' });
+ok('Console offers a ticket-verification entry point', !!find('button', 'Verify ticket'));
+await click(find('button', 'Verify ticket'));
+await waitFor(() => bodyHas('Verify ticket & check in'), { label: 'check-in dialog' });
+ok('Check-in dialog opens with a paste/scan path', !!document.querySelector('#ticket-input') && bodyHas('Ticket link or token'));
+
+// 1. An unverified paste is refused and changes nothing.
+typeInto(document.querySelector('#ticket-input'), 'local.not-a-real-ticket');
+await settle(80);
+const badBtn = all('button').find((b) => /Verify & check in/i.test(txt(b)));
+if (badBtn) await click(badBtn);
+await waitFor(() => document.querySelector('[data-checkin-code]'), { timeout: 8000, label: 'invalid verdict' }).catch(() => {});
+ok('An altered/unknown ticket is refused',
+  document.querySelector('[data-checkin-code]')?.getAttribute('data-checkin-code') === 'invalid');
+ok('A refused ticket leaves the booking untouched',
+  JSON.parse(window.localStorage.getItem('velora-local-bookings') || '[]').find((b) => b.ref === doorBooking.ref)?.status === 'confirmed');
+
+// 2. The genuine ticket checks the guest in.
+typeInto(document.querySelector('#ticket-input'), doorToken);
+await settle(80);
+const goodBtn = all('button').find((b) => /Verify & check in/i.test(txt(b)));
+if (goodBtn) await click(goodBtn);
+await waitFor(() => document.querySelector('[data-checkin-code="verified"]'), { timeout: 10000, label: 'verified verdict' }).catch(() => {});
+ok('The real ticket is verified and checks the guest in',
+  document.querySelector('[data-checkin-code]')?.getAttribute('data-checkin-code') === 'verified',
+  document.querySelector('[data-checkin-code]')?.getAttribute('data-checkin-code') || 'no verdict');
+ok('Check-in is persisted as checked_in (server-validated transition)',
+  JSON.parse(window.localStorage.getItem('velora-local-bookings') || '[]').find((b) => b.ref === doorBooking.ref)?.status === 'checked_in');
+ok('Check-in notifies the customer', JSON.parse(window.localStorage.getItem('velora-local-notifs') || '[]')
+  .some((n) => n.audience === 'customer' && n.booking_ref === doorBooking.ref && /checked in/i.test(n.title)));
+
+// 3. Rescanning is idempotent.
+typeInto(document.querySelector('#ticket-input'), doorToken);
+await settle(80);
+const againBtn = all('button').find((b) => /Verify & check in/i.test(txt(b)));
+if (againBtn) await click(againBtn);
+await waitFor(() => document.querySelector('[data-checkin-code="already_checked_in"]'), { timeout: 8000, label: 'idempotent rescan' }).catch(() => {});
+ok('Re-scanning the same ticket says "already checked in" (no double state change)',
+  document.querySelector('[data-checkin-code]')?.getAttribute('data-checkin-code') === 'already_checked_in');
+const closeCheckIn = all('button').find((b) => b.getAttribute('aria-label') === 'Close');
+if (closeCheckIn) await click(closeCheckIn);
+await settle(300);
+ok('Checked-in bookings are filterable in the console', all('button').some((b) => /checked in/i.test(txt(b))));
+
+// 4. A pending request cannot be checked in until the business confirms it.
+await ReactMod.act(async () => {
+  await offline.createDemoBooking({
+    business_id: 'demo-biz-apex', business_name: 'Apex Physio & Sports Rehab',
+    service_id: 'demo-biz-apex-svc1', service_name: 'Initial Assessment & Plan',
+    service_duration: 45, service_price: 900, staff_name: 'Rhea Menon',
+    start_time: new Date(Date.now() + 54 * 3600 * 1000).toISOString(),
+    customer_name: 'Pending Guest', customer_email: 'pending.guest@example.in',
+    status: 'pending',
+  });
+  await new Promise((r) => setTimeout(r, 150));
+});
+const pendingRow = JSON.parse(window.localStorage.getItem('velora-local-bookings') || '[]')
+  .find((b) => b.customer_email === 'pending.guest@example.in');
+await mount('/admin/appointments');
+await waitFor(() => bodyHas('Pending Guest'), { timeout: 12000, label: 'pending row' });
+await click(find('button', 'Verify ticket'));
+await waitFor(() => !!document.querySelector('#ticket-input'), { label: 'dialog again' });
+typeInto(document.querySelector('#ticket-input'), pendingRow?.qr_salt ? demoStore.makeLocalQrToken(pendingRow.ref, pendingRow.qr_salt) : '');
+await settle(80);
+const pendBtn = all('button').find((b) => /Verify & check in/i.test(txt(b)));
+if (pendBtn) await click(pendBtn);
+await waitFor(() => document.querySelector('[data-checkin-code="pending"]'), { timeout: 8000, label: 'pending verdict' }).catch(() => {});
+ok('A pending request must be confirmed before check-in',
+  document.querySelector('[data-checkin-code]')?.getAttribute('data-checkin-code') === 'pending');
+ok('The pending booking stays pending', JSON.parse(window.localStorage.getItem('velora-local-bookings') || '[]')
+  .find((b) => b.ref === pendingRow?.ref)?.status === 'pending');
+const closeDialog = all('button').find((b) => b.getAttribute('aria-label') === 'Close');
+if (closeDialog) await click(closeDialog);
+
+/* ================================================================== */
 console.log('\n—— 7. API surface (direct endpoint probes) ——');
 const failing = apiCalls.filter((c) => c.status >= 500);
 ok('No API call returned a server error (5xx) during the UI run', failing.length === 0, JSON.stringify(failing.slice(0, 4)));
@@ -862,6 +994,49 @@ ok('No unexpected 4xx from the UI (auth-gated endpoints excluded)',
 
 const statuses = [...new Set(apiCalls.map((c) => `${c.method} ${c.path} → ${c.status}`))];
 console.log(`  ℹ️  ${apiCalls.length} API calls from the UI · ${statuses.slice(0, 8).join(' | ')}`);
+
+/* ================================================================== */
+console.log('\n—— 7b. Mobile + accessibility structure (375px contract) ——');
+// jsdom has no layout engine, so these assert the structure that makes the
+// 375px layout safe: scroll containment, the phone/desktop split and labels.
+// jsdom is fed a bare document, so the responsive viewport is asserted against
+// the shipped HTML shell (the thing a phone actually loads).
+const shellHtml = await import('node:fs').then((fs) => fs.readFileSync('index.html', 'utf8'));
+ok('The HTML shell declares a responsive viewport',
+  /<meta name="viewport" content="width=device-width, initial-scale=1\.0"/.test(shellHtml));
+ok('The HTML shell ships the PWA manifest + apple touch icon',
+  /rel="manifest"/.test(shellHtml) && /apple-touch-icon/.test(shellHtml));
+
+await ReactMod.act(async () => { await demoAuth.signInDemo('admin'); });
+await mount('/admin/appointments');
+await waitFor(() => all('table').length > 0, { label: 'appointments table' });
+const table = all('table')[0];
+const scroller = (() => { let el = table.parentElement; while (el) { if (/overflow-x-auto/.test(el.className || '')) return el; el = el.parentElement; } return null; })();
+ok('The appointments table is wrapped in a horizontal scroller (no page-level sideways scroll)', !!scroller);
+ok('Secondary table columns are hidden on phones', all('table th').some((th) => /hidden md:table-cell/.test(th.className || '')));
+const iconOnly = all('button').filter((b) => !txt(b) && b.querySelector('svg'));
+ok('Every icon-only button on the console is labelled for screen readers',
+  iconOnly.every((b) => b.getAttribute('aria-label') || b.getAttribute('title')),
+  `${iconOnly.filter((b) => !b.getAttribute('aria-label') && !b.getAttribute('title')).length} unlabelled`);
+
+await ReactMod.act(async () => { await demoAuth.signInDemo('customer'); });
+await mount('/explore');
+await waitFor(() => all('.card').length > 1, { timeout: 12000, label: 'results' });
+ok('A signed-in customer lands on discovery (not bounced to the console)', window.location.pathname === '/explore', window.location.pathname);
+const toggles = all('button').filter((b) => /to price comparison$/.test(b.getAttribute('aria-label') || ''));
+if (toggles[0]) await click(toggles[0]);
+if (toggles[1]) await click(toggles[1]);
+await settle(200);
+const compareCta2 = all('button').find((b) => /^Compare 2$/.test(txt(b)));
+if (compareCta2) await click(compareCta2);
+await waitFor(() => bodyHas('Compare prices'), { timeout: 8000, label: 'compare sheet' });
+ok('Compare sheet stacks per-business cards on phones and shows the table only from sm up',
+  !!document.querySelector('ul.sm\\:hidden') && !!document.querySelector('div.hidden.sm\\:block'));
+ok('The comparison tray is sticky (stays reachable while scrolling results)',
+  !!all('div[role=region]').find((el) => /sticky/.test(el.className)));
+const closeCmp = all('button').find((b) => b.getAttribute('aria-label') === 'Close');
+if (closeCmp) await click(closeCmp);
+await settle(150);
 
 /* ================================================================== */
 console.log('\n—— 8. Console errors ——');

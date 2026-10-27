@@ -1,5 +1,6 @@
+import { istTimeLabel } from './_lib/ist.js';
 import supabase from './db-client.js';
-import { cors, enforceRateLimit } from './_lib/security.js';
+import { cors, enforceRateLimit, safeError } from './_lib/security.js';
 import { getAuth } from './_lib/auth.js';
 import { travelTimeMin } from './_lib/maps.js';
 import { syntheticBusiness, isSyntheticId } from './_lib/synthetic.js';
@@ -9,7 +10,7 @@ import { syntheticBusiness, isSyntheticId } from './_lib/synthetic.js';
 // Booking lookups are authorization-checked (owner or admin) — a booking ref
 // must never reveal another customer's appointment details.
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   try {
     if (!enforceRateLimit(req, res, 'travel-planner', { limit: 60, windowMs: 60_000 })) return;
@@ -50,13 +51,14 @@ export default async function handler(req, res) {
     return res.status(200).json({
       business: biz.name, address: biz.address, travel_min: travel, buffer_min: buffer,
       leave_at: leaveAt.toISOString(),
-      leave_label: leaveAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+      leave_label: istTimeLabel(leaveAt),
       mins_until_leave: minsUntilLeave,
       should_leave_now: minsUntilLeave <= 5 && minsUntilLeave > -30,
       maps_link: `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz.address || biz.name)}`,
     });
   } catch (err) {
     console.error('[travel-planner:error]', err.message);
-    res.status(500).json({ error: err.message });
+    const s = safeError(err, 'travel-planner:error');
+    if (!res.headersSent) res.status(s.status).json({ error: s.error });
   }
 }

@@ -134,7 +134,8 @@ grep -c arena dist/index.html  # must be 0 (no dev-tracking)
 ### 6-A. Run Migration
 
 1. In Supabase dashboard → **SQL Editor → New query**
-2. Paste entire file `supabase/migrations/0001_velora_core.sql`
+2. Paste the whole of `supabase/APPLY_ALL.sql` (generated from `supabase/migrations/`
+   by `npm run sql:bundle` — it applies every migration in order, not just 0001)
 3. Click **Run**
 4. Verify 14 tables created:
    - `profiles`, `businesses`, `business_services`, `business_staff`,
@@ -285,7 +286,7 @@ reports a Google event that does not exist.
 
 ## 10. Final Checklist for Owner
 
-- [ ] Paste `supabase/APPLY_ALL.sql` into the SQL Editor + Run (applies 0001 + 0002 + 0003 in order; ends with a `velora_tables = 14` check)
+- [ ] Paste `supabase/APPLY_ALL.sql` into the SQL Editor + Run (applies every migration in `supabase/migrations/` in order — currently 0001…0004 — and ends with a `velora_tables = 14` check)
 - [ ] Run `supabase/PROMOTE_ADMIN.sql` with your admin email (grants the console role without fighting the role-lock trigger)
 - [ ] Turn OFF confirm-email (Auth → Configuration → Email Auth)
 - [ ] Set Site URL + Redirect URLs to the deployed origin (Auth → URL Configuration)

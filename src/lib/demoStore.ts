@@ -12,6 +12,7 @@ import {
   emitServicesChanged, emitStaffChanged,
 } from '../services/events';
 import { formatIndianAddress, istWallDate, istYmd } from './india';
+import { istTime } from './format';
 import { ticketOrigin } from './site';
 import { CATEGORY_DEFS } from './synthetic';
 import type { LocalBooking, LocalInvoice } from './offlineStore';
@@ -855,7 +856,7 @@ export function demoSlots(
       }
       slots.push({
         time: s.toISOString(),
-        label: s.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }),
+        label: istTime(s),
         status,
         available: !taken,
         wait_min: taken ? null : Math.min(35, crowd * 8),

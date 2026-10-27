@@ -1,12 +1,13 @@
 import supabase, { isDatabaseConfigured } from './db-client.js';
-import { cors, enforceRateLimit } from './_lib/security.js';
+import { cors, enforceRateLimit, safeError } from './_lib/security.js';
 import { syntheticHeatmap } from './_lib/synthetic.js';
+import { istDayOfMonth, istHour, istWeekdayIndex, istWeekdayLabel, istWallDate, istYmd } from './_lib/ist.js';
 
 // Live availability heatmap + AI availability predictor. Returns predicted
 // occupancy per day (next 14 days) and per hour, derived from real bookings.
 // Falls back to deterministic synthetic predictions when DB is unreachable.
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (!enforceRateLimit(req, res, 'heatmap', { limit: 120, windowMs: 60_000 })) return;
   try {
@@ -47,9 +48,15 @@ export default async function handler(req, res) {
     const hourCount = {};
     for (let h = 9; h <= 18; h++) hourCount[h] = 0;
     bookings.forEach((b) => {
+      // Bucket by the IST weekday/hour the business actually experiences.
+      // Using the runtime's local zone (UTC on serverless) shifted every
+      // evening booking into the wrong bucket — and past midnight, the
+      // wrong weekday.
       const d = new Date(b.start_time);
-      weekdayCount[d.getDay()]++;
-      const h = d.getHours();
+      if (Number.isNaN(d.getTime())) return;
+      const wd = istWeekdayIndex(d);
+      if (wd >= 0 && wd < 7) weekdayCount[wd]++;
+      const h = istHour(d);
       if (h in hourCount) hourCount[h]++;
     });
     // Blend with synthetic baseline so new businesses still show a forecast.
@@ -59,14 +66,15 @@ export default async function handler(req, res) {
 
     // Next 14 days predicted occupancy
     const days = [];
+    const todayYmd = istYmd();
     for (let i = 0; i < 14; i++) {
-      const d = new Date(); d.setDate(d.getDate() + i); d.setHours(0, 0, 0, 0);
-      const wd = d.getDay();
+      const d = new Date(istWallDate(todayYmd, 12, 0).getTime() + i * 86400000);
+      const wd = istWeekdayIndex(d);
       const base = weekdayCount[wd] / maxWd; // 0..1 historical tendency
       // add mild noise + weekend uplift
       const occ = Math.min(1, Math.max(0.08, base * 0.7 + (wd === 5 || wd === 6 ? 0.25 : 0.1) + (i === 0 ? 0.15 : 0)));
-      const blended = bookings.length > 5 ? occ : (occ * 0.4 + (synth.days[i].occupancy / 100) * 0.6);
-      days.push({ date: d.toISOString().slice(0, 10), weekday: d.toLocaleDateString([], { weekday: 'short' }), day: d.getDate(), occupancy: Math.round(blended * 100) });
+      const blended = bookings.length > 5 ? occ : (occ * 0.4 + ((synth.days[i]?.occupancy ?? 30) / 100) * 0.6);
+      days.push({ date: istYmd(d), weekday: istWeekdayLabel(d), day: istDayOfMonth(d), occupancy: Math.round(blended * 100) });
     }
     const hours = Object.entries(hourCount).map(([h, c]) => ({ hour: `${h}:00`, occupancy: Math.round((c / maxHr) * 100) }));
 
@@ -80,7 +88,8 @@ export default async function handler(req, res) {
     try {
       return res.status(200).json(syntheticHeatmap(0));
     } catch {
-      res.status(500).json({ error: err.message });
+      const s = safeError(err, 'heatmap:error');
+    if (!res.headersSent) res.status(s.status).json({ error: s.error });
     }
   }
 }

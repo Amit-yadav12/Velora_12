@@ -179,7 +179,26 @@ ok('Exactly one booking for that slot (no duplicate)', guardCount === 1, `got ${
 // (Arjun Rao works all 7 days — the roster is part of real availability.)
 const guardSlots2 = demoStore.demoSlots('demo-biz-aurora', guardSvc.id, guardDate, offlineStore.listLocalBookings().map((b) => ({ business_id: b.business_id, staff_name: b.staff_name, start_time: b.start_time, end_time: b.end_time, status: b.status })), 'Arjun Rao');
 ok('Another specialist can still take the same time', guardSlots2.find((s) => s.time === guardSlot.time)?.available === true);
-ok('A staff member off-duty that day blocks their slot', demoStore.demoSlots('demo-biz-aurora', guardSvc.id, guardDate, [], 'Kabir Singh').every((s) => !s.available || s.time !== guardSlot.time) || demoStore.demoSlots('demo-biz-aurora', guardSvc.id, guardDate, [], 'Kabir Singh').find((s) => s.time === guardSlot.time)?.available === false);
+// Roster check — derived from the roster itself, never a hardcoded date.
+// The previous version asked for a fixed "2 days from now", which happened to
+// be Kabir's off day in September (Sunday) but a working Thursday in October,
+// so the test failed depending on the calendar date it ran on. Now we look up
+// a day he is genuinely off and a day he genuinely works.
+const kabir = demoStore.listDemoStaff('demo-biz-aurora').find((s) => s.name === 'Kabir Singh');
+const dayNameOf = (ymd) => new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone: 'Asia/Kolkata' }).format(new Date(`${ymd}T12:00:00+05:30`));
+const isoDay = (offset) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(Date.now() + offset * 86400000));
+let offDay = null, onDay = null;
+for (let i = 2; i <= 15 && (!offDay || !onDay); i++) {
+  const d = isoDay(i);
+  const working = (kabir?.days || []).includes(dayNameOf(d));
+  if (!working && !offDay) offDay = d;
+  if (working && !onDay) onDay = d;
+}
+const offSlots = offDay ? demoStore.demoSlots('demo-biz-aurora', guardSvc.id, offDay, [], 'Kabir Singh') : [];
+const onSlots = onDay ? demoStore.demoSlots('demo-biz-aurora', guardSvc.id, onDay, [], 'Kabir Singh') : [];
+ok('Roster resolved for the off-duty check', !!kabir && !!offDay && !!onDay, `kabir=${!!kabir} off=${offDay} on=${onDay}`);
+ok('Off-duty specialist blocks every slot that day', offSlots.length > 0 && offSlots.every((s) => !s.available), `day=${offDay} slots=${offSlots.length}`);
+ok('Working specialist keeps their free slots', onSlots.some((s) => s.available), `day=${onDay}`);
 
 console.log('\n—— 11c. IST reschedule round-trip (no 5.5h shift) ——');
 const fmt = await import(run('src/lib/format.ts'));
@@ -230,6 +249,93 @@ console.log('\n—— 14. Notification audience isolation ——');
 const notifs = offlineStore.listLocalNotifications();
 ok('Customer never receives admin notifications', notifs.filter((n) => n.audience === 'admin').every((n) => n.audience !== 'customer'));
 ok('Booking created both-side notifications (customer + admin)', notifs.some((n) => n.audience === 'customer' && n.booking_ref) && notifs.some((n) => n.audience === 'admin' && n.booking_ref));
+
+console.log('\n—— 15. Map marker contract (nullable scores normalised at the boundary) ——');
+// Regression for the type-contract bug that broke the production build:
+// a ranking score that can be null must never leak into the map's stricter
+// marker type, and rows without usable coordinates must never be plotted.
+const mapData = await import(run('src/lib/mapData.ts'));
+const markers = mapData.toMapBusinesses([
+  { id: 1, name: 'Nearby Clinic', category: 'Clinics', rating: 4.6, lat: 26.9124, lng: 75.7873, ai_score: undefined },
+  { id: 2, name: 'No Score Salon', category: 'Salons', rating: 4.9, lat: 26.92, lng: 75.8, ai_score: null },
+  { id: 3, name: 'Missing Lat', category: 'Gyms', rating: 4.2, lng: 75.8 },
+  { id: 4, name: 'Null Coords', category: 'Spas', rating: 4.1, lat: null, lng: null },
+  { id: 5, name: 'Broken Score', category: 'Cafés', rating: 4.4, lat: 26.9, lng: 75.7, ai_score: NaN },
+]);
+ok('only geo-located listings become markers', markers.length === 3, `got ${markers.length}`);
+ok('missing coordinates are never plotted at 0,0', !markers.some((m) => m.id === 3 || m.id === 4));
+ok('undefined score normalises to null (nullable contract, not a lie)', markers[0].ai_score === null);
+ok('an explicit null score is preserved as null', markers[1].ai_score === null);
+ok('a non-finite score normalises to null', markers[2].ai_score === null);
+ok('every marker carries finite lat/lng/rating',
+  markers.every((m) => Number.isFinite(m.lat) && Number.isFinite(m.lng) && Number.isFinite(m.rating)));
+ok('hasMapCoords rejects out-of-range latitude', mapData.hasMapCoords({ lat: 120, lng: 75 }) === false);
+ok('marker order follows the discovery result order', markers.map((m) => m.id).join(',') === '1,2,5');
+
+console.log('\n—— 16. Door check-in planner (ticket → verdict, no DOM) ——');
+// The planner is the security-critical decision: a booking may only be marked
+// checked-in when its own ticket verified. These cases mirror every branch.
+const checkIn = await import(run('src/lib/checkInPlan.ts'));
+const mk = (ref, status, extra = {}) => ({
+  id: `local-${ref}`, ref, status, service_name: 'Signature Haircut & Styling',
+  customer_name: 'Demo Customer', start_time: new Date().toISOString(), local: true, ...extra,
+});
+const OK = { valid: true, booking: { ref: 'VL-OK1' } };
+const plan = (result, rows) => checkIn.planCheckIn(result, rows);
+
+ok('a valid ticket for a confirmed booking is accepted',
+  plan(OK, [mk('VL-OK1', 'confirmed')]).code === 'verified');
+ok('rescanning an already checked-in ticket is idempotent, not an error',
+  plan(OK, [mk('VL-OK1', 'checked_in')]).code === 'already_checked_in');
+ok('a cancelled booking is refused', plan(OK, [mk('VL-OK1', 'cancelled')]).code === 'cancelled');
+ok('a pending request must be confirmed first', plan(OK, [mk('VL-OK1', 'pending')]).code === 'pending');
+ok('a completed appointment cannot be checked in again',
+  plan(OK, [mk('VL-OK1', 'completed')]).code === 'unsupported');
+ok('an altered/unsigned ticket is refused',
+  plan({ valid: false, reason: 'invalid_signature' }, [mk('VL-OK1', 'confirmed')]).code === 'invalid');
+ok('an unparseable ticket is refused',
+  plan({ valid: false, reason: 'malformed' }, [mk('VL-OK1', 'confirmed')]).code === 'invalid');
+ok('an expired ticket is refused',
+  plan({ valid: false, reason: 'expired' }, [mk('VL-OK1', 'confirmed')]).code === 'expired');
+ok('a genuine ticket for someone else\'s booking is not matched',
+  plan(OK, [mk('VL-OTHER', 'confirmed')]).code === 'not_found');
+ok('a refused plan never carries an actionable booking',
+  plan({ valid: false, reason: 'invalid_signature' }, [mk('VL-OK1', 'confirmed')]).booking === undefined);
+ok('the planner explains itself in human language',
+  ['verified', 'pending', 'cancelled'].every((code) => {
+    const rows = [mk('VL-OK1', code === 'verified' ? 'confirmed' : code)];
+    const p = plan(OK, rows);
+    return p.title.length > 3 && p.message.length > 10;
+  }));
+
+console.log('\n—— 17. Price comparison maths (₹, like-for-like only) ——');
+const cmp = await import(run('src/lib/compare.ts'));
+const bizA = { id: 'a', name: 'A', rating: 4.6, distance_km: 1.2, open_now: true,
+  services: [{ id: 1, name: 'Haircut', price: 800, duration_min: 45 }, { id: 2, name: 'Spa', price: 2000, duration_min: 60 }] };
+const bizB = { id: 'b', name: 'B', rating: 4.2, distance_km: 3.4, open_now: false,
+  services: [{ id: 3, name: 'Haircut', price: 1100, duration_min: 40 }] };
+const matrix = cmp.buildComparison([bizA, bizB]);
+ok('comparison keeps one column per shortlisted business', matrix.columns.length === 2);
+ok('service union is derived, not hardcoded', matrix.services.map((r) => r.name).join(',') === 'Haircut,Spa');
+const haircut = matrix.services.find((r) => r.name === 'Haircut');
+ok('the cheapest business is marked per service', haircut.cheapest === 0, String(haircut.cheapest));
+ok('the price spread is the real difference (₹1100 − ₹800)', haircut.spread === 300, String(haircut.spread));
+ok('a business that does not list a service shows null, never ₹0',
+  matrix.services.find((r) => r.name === 'Spa').prices[1] === null);
+ok('starting price is the cheapest listed service',
+  matrix.columns[0].from === 800 && matrix.columns[1].from === 1100);
+ok('the summary states the widest real gap in rupees',
+  /₹300/.test(cmp.comparisonSummary(matrix)), cmp.comparisonSummary(matrix));
+ok('a single business yields a "add one more" prompt, not a bogus verdict',
+  /Add one more/.test(cmp.comparisonSummary(cmp.buildComparison([bizA]))));
+ok('no overlapping services → no invented saving',
+  /no like-for-like price/.test(cmp.comparisonSummary(cmp.buildComparison([
+    bizA, { id: 'c', name: 'C', rating: 4, services: [{ id: 9, name: 'Massage', price: 1500, duration_min: 60 }] },
+  ]))));
+ok('comparison is capped at three businesses', cmp.buildComparison([bizA, bizB, bizA, bizB]).columns.length === 3);
+ok('card price label uses rupee formatting', /^from ₹800$/.test(cmp.fromPriceLabel(bizA)), cmp.fromPriceLabel(bizA));
+ok('a business with no prices is labelled honestly, not ₹0',
+  cmp.fromPriceLabel({ id: 'z', name: 'Z', rating: 4 }) === 'Price on request');
 
 console.log('\n—— 11. Reset demo: isolated + restores clean state ——');
 demoStore.resetDemo();

@@ -54,7 +54,7 @@ function normalize(p, apiKey, category) {
 }
 
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (!enforceRateLimit(req, res, 'places', { limit: 120, windowMs: 60_000 })) return;
   try {

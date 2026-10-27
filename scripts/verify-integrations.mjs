@@ -12,10 +12,12 @@
 //      base URL (no stale domain baked into a ticket)
 //   4. India / Asia-Kolkata helpers — PIN, phone, address, IST wall-clock
 //   5. Booking pipeline guards — idempotent replay, double-booking refusal
-//   6. Repository invariants — SQL bundle in sync, no hardcoded deploy domain
+//   4b. IST slot grid + forecast dates — 10:00 stays 10:00 IST on a UTC host
+//   6. Security — CORS allowlist, ownership checks, error hygiene
+//   7. Repository invariants — SQL bundle in sync, no hardcoded deploy domain
 //
 // Run: npx tsx scripts/verify-integrations.mjs
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -265,6 +267,37 @@ await withEnv({ APP_URL: null, URL: null, DEPLOY_PRIME_URL: null, VERCEL_URL: nu
 });
 
 /* ========================================================================== */
+/* 3b. Door check-in — the ticket is proof, not decoration                    */
+/* ========================================================================== */
+section('3b. Door check-in requires a verifiable ticket');
+
+const bookingsApi = readFileSync(join(ROOT, 'api/bookings.js'), 'utf8');
+// Slice from the check_in branch to the *next* branch, so the assertion window
+// is exactly this action's code (the first 'status' hit is a guard earlier in
+// the file, which would give an empty window).
+const checkInStart = bookingsApi.indexOf("if (action === 'check_in')");
+const checkInEnd = bookingsApi.indexOf("if (action === 'status')", checkInStart);
+const checkInBlock = checkInStart < 0 ? '' : bookingsApi.slice(checkInStart, checkInEnd);
+ok('the API implements an explicit check_in action', checkInBlock.length > 200);
+ok('check_in verifies the scanned ticket signature server-side',
+  /verifyBookingToken\(ticket\)/.test(checkInBlock), 'no verifyBookingToken call');
+ok('check_in refuses a missing ticket instead of trusting a status flip',
+  /assert\(ticket,/.test(checkInBlock));
+ok('check_in is staff-only', /assert\(isAdmin/.test(checkInBlock));
+ok('the ticket must belong to the row being checked in',
+  /verified\.data\.ref/.test(checkInBlock) && /status\(409\)/.test(checkInBlock));
+ok('re-scanning is idempotent (no second state change)',
+  /already_checked_in/.test(checkInBlock));
+ok('the state machine still gates check_in',
+  /canTransition\(existing\.status, 'checked_in'\)/.test(checkInBlock));
+ok('check-in is audited', /audit\(actor, 'booking\.check_in'/.test(checkInBlock));
+ok('a failed verification never mutates the booking',
+  checkInBlock.indexOf('if (!verified.ok)') < checkInBlock.indexOf(".update({ status: 'checked_in'"));
+ok('the browser cannot mark a booking checked in without a ticket',
+  !/action: 'status', status: 'checked_in'/.test(readFileSync(join(ROOT, 'src/services/checkIn.ts'), 'utf8'))
+  && /ticket: token/.test(readFileSync(join(ROOT, 'src/services/checkIn.ts'), 'utf8')));
+
+/* ========================================================================== */
 /* 4. India / Asia-Kolkata helpers                                            */
 /* ========================================================================== */
 section('4. India-first validation + Asia/Kolkata time');
@@ -287,6 +320,62 @@ ok('istYmd renders the IST calendar date', /^\d{4}-\d{2}-\d{2}$/.test(india.istY
   india.istYmd(new Date('2026-03-01T20:00:00Z')));
 ok('a 20:00Z instant is already the next IST day',
   india.istYmd(new Date('2026-03-01T20:00:00Z')) === '2026-03-02', india.istYmd(new Date('2026-03-01T20:00:00Z')));
+
+/* ========================================================================== */
+/* 4b. IST slot grid + forecast calendar (regression: slots stored 5.5h late)  */
+/* ========================================================================== */
+section('4b. IST slot grid — wall clock, labels and forecast dates');
+
+const ist = await import('../api/_lib/ist.js');
+const { syntheticSlots, syntheticHeatmap } = await import('../api/_lib/synthetic.js');
+const clientSynthetic = await import('../src/lib/synthetic.ts');
+const clientFormat = await import('../src/lib/format.ts');
+
+// The runner is usually UTC (CI + serverless). These assertions therefore fail
+// on the old code, which built slots with `setHours()` in the runtime zone and
+// stored 10:00 IST as 10:00 UTC (15:30 IST for the business).
+const isUtcRunner = new Date().getTimezoneOffset() === 0;
+const slotDate = ist.istYmd(new Date(Date.now() + 2 * 86400000));
+const serverSlots = syntheticSlots(100001, slotDate, 30, '10:00', '13:00');
+ok('server slot grid is non-empty', serverSlots.length > 0, `got ${serverSlots.length}`);
+ok('every server slot lands on a 10:00–12:30 IST wall clock',
+  serverSlots.every((s) => {
+    const h = ist.istHour(s.time);
+    return h >= 10 && h < 13 && [0, 30].includes(ist.istMinute(s.time));
+  }),
+  JSON.stringify(serverSlots.slice(0, 3).map((s) => `${s.label} → ${s.time}`)));
+ok('first server slot is exactly 10:00 IST',
+  serverSlots[0]?.time === ist.istWallDate(slotDate, 10, 0).toISOString(),
+  `${serverSlots[0]?.time} vs ${ist.istWallDate(slotDate, 10, 0).toISOString()}`);
+ok('server slot labels are IST, not the runtime zone',
+  serverSlots.every((s) => s.label === ist.istTimeLabel(s.time)),
+  JSON.stringify(serverSlots.slice(0, 3).map((s) => `${s.label} vs ${ist.istTimeLabel(s.time)}`)));
+ok('a 10:00 slot label reads "10:00 am"', serverSlots[0]?.label === '10:00 am', serverSlots[0]?.label);
+if (isUtcRunner) {
+  ok('UTC runtime: 10:00 IST slot is stored as 04:30Z',
+    serverSlots[0]?.time === `${slotDate}T04:30:00.000Z`, serverSlots[0]?.time);
+}
+
+const clientSlots = clientSynthetic.getSyntheticSlots(100001, slotDate, 30, '10:00', '13:00');
+ok('client + server slot grids agree on instants and labels',
+  clientSlots.length === serverSlots.length
+  && clientSlots.every((s, i) => s.time === serverSlots[i].time && s.label === serverSlots[i].label),
+  `${clientSlots[0]?.time}/${serverSlots[0]?.time}`);
+ok('client slot labels match the IST formatter',
+  clientSlots.every((s) => s.label === clientFormat.istTime(s.time)), clientSlots[0]?.label);
+
+const forecastServer = syntheticHeatmap(100001);
+const forecastClient = clientSynthetic.getSyntheticHeatmap(100001);
+const istToday = ist.istYmd();
+ok('server forecast starts on today in IST', forecastServer.days[0]?.date === istToday, `${forecastServer.days[0]?.date} vs ${istToday}`);
+ok('client forecast starts on today in IST', forecastClient.days[0]?.date === istToday, `${forecastClient.days[0]?.date} vs ${istToday}`);
+ok('server forecast weekdays match the IST calendar',
+  forecastServer.days.slice(0, 14).every((d) => d.weekday === ist.istWeekdayLabel(new Date(`${d.date}T12:00:00+05:30`))),
+  JSON.stringify(forecastServer.days.slice(0, 3).map((d) => `${d.date}=${d.weekday}`)));
+ok('forecast covers 14 consecutive IST days',
+  forecastServer.days.length === 14
+  && new Set(forecastServer.days.map((d) => d.date)).size === 14,
+  `got ${forecastServer.days.length}`);
 
 const calLib = await import('../src/lib/calendar.ts');
 const ics = await calLib.icsBlob({
@@ -337,6 +426,19 @@ ok('the same idempotency key replays (200)', r2.statusCode === 200, `status=${r2
 ok('the replay is flagged as deduplicated', r2.body?.deduplicated === true, JSON.stringify(r2.body?.deduplicated));
 ok('the replay returns the SAME booking (no duplicate)', r2.body?.booking?.ref === ref1,
   `${r2.body?.booking?.ref} vs ${ref1}`);
+
+// 5a2. Idempotency keys are namespaced per caller: two customers who happen to
+//      send the same key must NOT receive each other's booking.
+const sharedKey = `shared-${Date.now()}`;
+const crossA = fakeRes();
+await bookHandler(fakeReq({ ...baseBody(), customer_email: 'iso-a@example.in', start_time: futureIso(60), idempotency_key: sharedKey }), crossA);
+const crossB = fakeRes();
+await bookHandler(fakeReq({ ...baseBody(), customer_email: 'iso-b@example.in', start_time: futureIso(61), idempotency_key: sharedKey }), crossB);
+ok('the same key from a different customer is not a replay',
+  crossA.statusCode === 201 && crossB.statusCode === 201 && crossB.body?.deduplicated !== true,
+  `A=${crossA.statusCode} B=${crossB.statusCode} dedup=${crossB.body?.deduplicated}`);
+ok('different customers get different bookings', crossA.body?.booking?.ref !== crossB.body?.booking?.ref,
+  `${crossA.body?.booking?.ref} vs ${crossB.body?.booking?.ref}`);
 
 // 5b. A named specialist cannot be double-booked in an overlapping slot.
 const clashStart = futureIso(40);
@@ -418,13 +520,64 @@ ok('provisionHint covers the unmapped case with PROMOTE_ADMIN.sql',
 await viteServer.close();
 
 /* ========================================================================== */
+/* 6. Security — CORS allowlist, object-level authz, error hygiene            */
+/* ========================================================================== */
+section('6. Security — CORS, ownership checks, error hygiene');
+
+const security = await import('../api/_lib/security.js');
+const { canOperateOn } = await import('../api/_lib/auth.js');
+
+await withEnv({ APP_URL: 'https://velora.example', ALLOWED_ORIGINS: null }, async () => {
+  const r = fakeRes();
+  security.cors(r, { headers: { origin: 'https://velora.example' } });
+  ok('CORS echoes a configured origin', r.headers['Access-Control-Allow-Origin'] === 'https://velora.example',
+    JSON.stringify(r.headers));
+  const evil = fakeRes();
+  security.cors(evil, { headers: { origin: 'https://evil.example' } });
+  ok('CORS does not grant an unknown browser origin', evil.headers['Access-Control-Allow-Origin'] === undefined,
+    JSON.stringify(evil.headers));
+  ok('CORS varies on Origin when it is selective', evil.headers.Vary === 'Origin');
+  const preflight = fakeRes();
+  security.cors(preflight, { headers: { origin: 'https://evil.example' } });
+  ok('preflight advertises the methods it actually allows',
+    /POST/.test(preflight.headers['Access-Control-Allow-Methods'])
+    && /Authorization/.test(preflight.headers['Access-Control-Allow-Headers']));
+});
+
+await withEnv({ APP_URL: null, ALLOWED_ORIGINS: null }, async () => {
+  const r = fakeRes();
+  security.cors(r, { headers: { origin: 'http://localhost:5173' } });
+  ok('unconfigured deployments keep the permissive fallback (preview stays usable)',
+    r.headers['Access-Control-Allow-Origin'] === '*');
+});
+
+ok('platform operator (owns no business) may operate anywhere', canOperateOn([], 'Aurora Luxe') === true);
+ok('an owner may operate on their own business', canOperateOn(['Aurora Luxe'], 'aurora luxe') === true);
+ok('an owner may NOT operate on another business', canOperateOn(['Aurora Luxe'], 'Apex Physio') === false);
+
+const generic = security.safeError(Object.assign(new Error('duplicate key value violates unique constraint'), { code: '23505' }), 'test');
+ok('unexpected server errors never echo driver detail', generic.status === 500 && !/duplicate key/i.test(generic.error), generic.error);
+const expected = security.safeError(Object.assign(new Error('That slot was just taken.'), { status: 409 }), 'test');
+ok('intentional 4xx messages reach the client', expected.status === 409 && expected.error === 'That slot was just taken.');
+ok('sanitizer neutralises angle brackets', !/[<>]/.test(security.sanitizeText('<script>alert(1)</script>') || ''));
+ok('rate limiter rejects after the configured budget', (() => {
+  const req = { headers: { 'x-forwarded-for': '198.51.100.7' }, socket: {} };
+  for (let i = 0; i < 3; i++) security.rateLimit(req, 'test-route', { limit: 3, windowMs: 60000 });
+  const hit = security.rateLimit(req, 'test-route', { limit: 3, windowMs: 60000 });
+  return hit && hit.status === 429 && hit.retryAfter >= 1;
+})());
+
+/* ========================================================================== */
 /* 7. Repository invariants                                                   */
 /* ========================================================================== */
 section('7. Repository invariants');
 const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 
 const applyAll = read('supabase/APPLY_ALL.sql');
-const migrations = ['0001_velora_core.sql', '0002_business_registration_role_lock.sql', '0003_rls_tightening.sql'];
+// Discovered, not hardcoded — a new migration must appear in the bootstrap
+// bundle or this check fails (the bundle script used to list files by hand).
+const migrations = readdirSync(join(ROOT, 'supabase/migrations'))
+  .filter((f) => /^\d{4}_.+\.sql$/.test(f)).sort();
 let inOrder = true, lastIdx = -1;
 for (const m of migrations) {
   const body = read(`supabase/migrations/${m}`).trimEnd();
@@ -443,6 +596,44 @@ ok('APPLY_ALL.sql creates all 14 core tables',
 ok('APPLY_ALL.sql enables realtime on bookings', /alter publication supabase_realtime add table public\.bookings/i.test(applyAll));
 ok('the RLS tightening runs after the permissive policies',
   applyAll.indexOf('booking_meta_select_own') > applyAll.indexOf('booking_meta_all_service'));
+ok('bookings.status accepts the pending request state the app models',
+  /check \(status in \('pending'/.test(applyAll), 'status CHECK missing pending');
+// 0001 created the permissive policy; 0004 must drop it AFTER that and replace
+// it with the service-role policy, or the hardening never takes effect.
+const permissiveInvoice = applyAll.indexOf('create policy "invoices_insert" on public.invoices for insert with check (true)');
+const invoiceDrop = applyAll.indexOf('drop policy if exists "invoices_insert" on public.invoices');
+const invoiceService = applyAll.indexOf('create policy "invoices_insert_service"');
+ok('invoice writes are service-role only',
+  permissiveInvoice >= 0 && invoiceDrop > permissiveInvoice && invoiceService > invoiceDrop,
+  `permissive@${permissiveInvoice} drop@${invoiceDrop} service@${invoiceService}`);
+
+/* --------------------------------------------------------------------------
+ * Brand assets: the declared sizes must match the files that actually ship.
+ * A PWA icon whose pixels disagree with the manifest is an install bug, and
+ * the OG card must be the 1200x630 the meta tags promise.
+ * -------------------------------------------------------------------------- */
+const pngSize = (file) => {
+  const buf = readFileSync(join(ROOT, 'public', file));
+  // IHDR width/height live at bytes 16..23 of every PNG.
+  return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20), bytes: buf.length, png: buf.slice(1, 4).toString() === 'PNG' };
+};
+const manifest = JSON.parse(read('public/manifest.webmanifest'));
+for (const icon of manifest.icons) {
+  const size = pngSize(icon.src.replace(/^\//, ''));
+  ok(`PWA icon ${icon.src} is a real PNG at its declared ${icon.sizes}`,
+    size.png && `${size.w}x${size.h}` === icon.sizes, `${size.w}x${size.h}`);
+}
+const og = pngSize('og-image.png');
+ok('Social card is the 1200x630 the meta tags declare', og.w === 1200 && og.h === 630, `${og.w}x${og.h}`);
+ok('Ship-weight sanity: icons and card stay small (no multi-megabyte blobs)', og.bytes < 900_000 && pngSize('icon-512.png').bytes < 400_000,
+  `og ${Math.round(og.bytes / 1024)}KB · 512 ${Math.round(pngSize('icon-512.png').bytes / 1024)}KB`);
+ok('Index.html points at the apple touch icon that exists', (() => {
+  const html = read('index.html');
+  const href = (html.match(/rel="apple-touch-icon"[^>]*href="([^"]+)"/) || [])[1];
+  return !!href && pngSize(href.replace(/^\//, '')).png;
+})());
+ok('The brand assets are reproducible from a committed script',
+  read('scripts/brand/make-assets.sh').includes('render_icon 512') && read('scripts/brand/fonts/OFL.txt').includes('SIL OPEN FONT LICENSE'));
 
 const promote = read('supabase/PROMOTE_ADMIN.sql');
 ok('PROMOTE_ADMIN.sql has no psql-only meta-commands', !/^\s*\\(set|i|c)\b/m.test(promote));

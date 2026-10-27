@@ -10,6 +10,7 @@
 
 import { CITIES, cityIndex } from './cities';
 import type { Business, BusinessService, BusinessStaff } from './product';
+import { ist, istTime, istWallDate, istWeekdayIndex, istYmd } from './format';
 
 // ---------------------------------------------------------------------------
 // Deterministic PRNG
@@ -1066,14 +1067,16 @@ export function getSyntheticSlots(bizId: number, dateStr: string, durationMin: n
   const openH = parseInt((openTime || '09:00').split(':')[0], 10);
   const closeH = openTime === '00:00' ? 24 : (parseInt((closeTime || '21:00').split(':')[0], 10) || 21);
   const now = Date.now();
-  const day = new Date(`${dateStr}T00:00:00`);
-  const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+  // Business hours are IST wall-clock: build the instant with +05:30 so a
+  // "10:00" slot is 10:00 IST on every device, not 10:00 in the runtime's zone.
+  const wd = istWeekdayIndex(istWallDate(dateStr, 12, 0));
+  const isWeekend = wd === 0 || wd === 6;
   const loadFactor = isWeekend ? 0.42 : 0.26;
   const slots: SyntheticSlot[] = [];
   for (let h = openH; h < closeH; h++) {
     for (const m of [0, 30]) {
-      const s = new Date(`${dateStr}T00:00:00`);
-      s.setHours(h, m, 0, 0);
+      const s = istWallDate(dateStr, h, m);
+      if (Number.isNaN(s.getTime())) continue;
       if (s.getTime() < now - 60000) continue;
       const peak = (h >= 11 && h <= 13) || (h >= 17 && h <= 19);
       const roll = rnd();
@@ -1090,7 +1093,7 @@ export function getSyntheticSlots(bizId: number, dateStr: string, durationMin: n
       }
       slots.push({
         time: s.toISOString(),
-        label: s.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }),
+        label: istTime(s),
         status, available: !taken, wait_min: wait, crowd, score: Math.round(score),
       });
     }
@@ -1109,17 +1112,19 @@ export function getSyntheticHeatmap(bizId: number | string): SyntheticHeatmap {
   const rnd = mulberry32(hashStr(`heat|${bizId}`));
   const bias = rnd() * 0.3;
   const days = [];
+  const todayYmd = istYmd();
   for (let i = 0; i < 14; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    d.setHours(0, 0, 0, 0);
-    const wd = d.getDay();
+    // Walk IST calendar days, never UTC days: at 02:00 IST the UTC date is
+    // still yesterday, which used to shift the whole forecast by one day.
+    const midnight = istWallDate(todayYmd, 12, 0);
+    const d = new Date(midnight.getTime() + i * 86400000);
+    const wd = istWeekdayIndex(d);
     const weekend = wd === 0 || wd === 6;
     const occ = Math.min(0.96, Math.max(0.08, (weekend ? 0.55 : 0.3) + bias + (rnd() - 0.5) * 0.3 + (i === 0 ? 0.12 : 0)));
     days.push({
-      date: d.toISOString().slice(0, 10),
-      weekday: d.toLocaleDateString('en-IN', { weekday: 'short' }),
-      day: d.getDate(),
+      date: istYmd(d),
+      weekday: ist(d, { weekday: 'short' }),
+      day: Number(ist(d, { day: 'numeric' })),
       occupancy: Math.round(occ * 100),
     });
   }

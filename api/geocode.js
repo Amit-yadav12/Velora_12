@@ -4,7 +4,7 @@ import { cors, sanitizeText , enforceRateLimit} from './_lib/security.js';
 // configured, else OpenStreetMap Nominatim (no key required). Returns a list
 // of { label, lat, lng } predictions.
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   try {
     const q = sanitizeText(req.query.q, 120);

@@ -1,5 +1,6 @@
+import { istDayBounds, istTimeLabel, istWallDate } from './_lib/ist.js';
 import supabase from './db-client.js';
-import { cors, enforceRateLimit } from './_lib/security.js';
+import { cors, enforceRateLimit, safeError } from './_lib/security.js';
 import { travelTimeMin } from './_lib/maps.js';
 import { syntheticBusiness, syntheticSlots, isSyntheticId } from './_lib/synthetic.js';
 
@@ -7,7 +8,7 @@ import { syntheticBusiness, syntheticSlots, isSyntheticId } from './_lib/synthet
 // availability, travel time, expected crowding and time-of-day preference.
 // Works for DB businesses AND synthetic ecosystem businesses.
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (!enforceRateLimit(req, res, 'smart-slots', { limit: 120, windowMs: 60_000 })) return;
   try {
@@ -52,10 +53,13 @@ export default async function handler(req, res) {
     const svc = effSvc;
     const dur = svc?.duration_min || 30;
 
-    const dayStart = new Date(day + 'T00:00:00');
-    const dayEnd = new Date(day + 'T23:59:59');
+    // IST day window (see ./_lib/ist.js) — the runtime clock is UTC.
+    const bounds = istDayBounds(day);
+    if (!bounds) return res.status(400).json({ error: 'date must be YYYY-MM-DD' });
     const { data: booked } = await supabase.from('bookings').select('start_time,end_time,status')
-      .eq('resource_name', effBiz.name).gte('start_time', dayStart.toISOString()).lte('start_time', dayEnd.toISOString()).neq('status', 'cancelled');
+      .eq('resource_name', effBiz.name)
+      .gte('start_time', bounds.start.toISOString()).lt('start_time', bounds.end.toISOString())
+      .neq('status', 'cancelled');
 
     // Travel time (Google Maps w/ fallback)
     let travel = 0;
@@ -69,7 +73,8 @@ export default async function handler(req, res) {
     const slots = [];
     for (let h = openH; h < closeH; h++) {
       for (const m of [0, 30]) {
-        const s = new Date(day + 'T00:00:00'); s.setHours(h, m, 0, 0);
+        const s = istWallDate(day, h, m);
+        if (Number.isNaN(s.getTime())) continue;
         const e = new Date(s.getTime() + dur * 60000);
         if (s.getTime() < now) continue;
         const taken = (booked || []).some((b) => new Date(b.start_time) < e && new Date(b.end_time) > s);
@@ -86,13 +91,14 @@ export default async function handler(req, res) {
           if (h >= 15 && h <= 16) score += 6;
           if (h >= 12 && h <= 13) score -= 6;
         }
-        slots.push({ time: s.toISOString(), label: s.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), status, available: !taken, wait_min: wait, crowd, score });
+        slots.push({ time: s.toISOString(), label: istTimeLabel(s), status, available: !taken, wait_min: wait, crowd, score });
       }
     }
     const best = [...slots].filter((s) => s.available).sort((a, b) => b.score - a.score).slice(0, 3);
     return res.status(200).json({ business: effBiz, service: svc, travel_min: travel, slots, recommended: best });
   } catch (err) {
     console.error('[smart-slots:error]', err.message);
-    res.status(500).json({ error: err.message });
+    const s = safeError(err, 'smart-slots:error');
+    if (!res.headersSent) res.status(s.status).json({ error: s.error });
   }
 }

@@ -3,8 +3,10 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { categoryColor } from '../../lib/product';
 import { Coords } from '../../lib/geo';
+import type { MapBusiness } from '../../lib/mapData';
 
-interface MapBusiness { id: number | string; name: string; lat?: number; lng?: number; category: string; rating: number; ai_score?: number; }
+// `MapBusiness` is the normalised marker contract (src/lib/mapData.ts): lat/lng
+// are guaranteed numbers here, so nothing nullable reaches Leaflet.
 
 // Lightweight, key-free interactive map (Leaflet + OSM tiles) with animated
 // pins, a pulsing "you are here" marker, and hover/active sync.
@@ -53,8 +55,7 @@ export default function MapView({ origin, businesses, activeId, onSelect, theme 
     markersRef.current = {};
     const pts: L.LatLngExpression[] = [[origin.lat, origin.lng]];
     businesses.forEach((b) => {
-      if (b.lat == null || b.lng == null) return;
-      const bLat: number = b.lat, bLng: number = b.lng;
+      const bLat = b.lat, bLng = b.lng;
       const color = categoryColor(b.category);
       const active = activeId === b.id;
       const icon = L.divIcon({ className: '', html: `<div style="transform:translate(-50%,-100%)"><div style="background:${active ? '#6366f1' : color};color:#fff;padding:3px 8px;border-radius:12px;font-size:11px;font-weight:600;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,0.3);border:2px solid #fff;transition:all .2s;transform:scale(${active ? 1.1 : 1})">${b.rating.toFixed(1)}★</div><div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #fff;margin:0 auto"></div></div>`, iconSize: [0, 0] });

@@ -47,6 +47,40 @@ export function istToday(): string {
   return parts;
 }
 
+/**
+ * IST wall-clock primitives. `istWallDate` and `istYmd` live in india.ts (one
+ * implementation, shared with phone/PIN validation) and are re-exported here so
+ * time formatting has a single import surface. Slot grids are defined in
+ * business wall-clock time and must be built with the IST offset — never with
+ * the browser's local zone, or a customer abroad books a different instant.
+ */
+export { istWallDate, istYmd } from './india';
+
+/** IST hour of day (0–23). */
+export function istHour(date: string | Date = new Date()): number {
+  const d = asDate(date);
+  if (!d) return NaN;
+  return Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: IST, hourCycle: 'h23', hour: '2-digit',
+  }).format(d));
+}
+
+const WEEKDAY_INDEX: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+
+/** IST minute of hour (0–59). */
+export function istMinute(date: string | Date = new Date()): number {
+  const d = asDate(date);
+  if (!d) return NaN;
+  return Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: IST, hourCycle: 'h23', minute: '2-digit',
+  }).format(d));
+}
+
+/** IST weekday, 0 = Sunday … 6 = Saturday (same convention as Date#getDay). */
+export function istWeekdayIndex(date: string | Date = new Date()): number {
+  return WEEKDAY_INDEX[ist(date, { weekday: 'short' })] ?? NaN;
+}
+
 /** IST wall-clock value for <input type="datetime-local">: YYYY-MM-DDTHH:mm. */
 export function istDateTimeLocal(d: string | Date): string {
   const date = asDate(d);

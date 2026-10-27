@@ -5,7 +5,7 @@
 // `npm run verify:integrations` fails if the checked-in copy is stale.
 //
 // Usage: npx tsx scripts/build-sql.mjs [--check]
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -13,13 +13,20 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MIG_DIR = join(ROOT, 'supabase', 'migrations');
 const OUT = join(ROOT, 'supabase', 'APPLY_ALL.sql');
 
-export const MIGRATIONS = [
-  '0001_velora_core.sql',
-  '0002_business_registration_role_lock.sql',
-  '0003_rls_tightening.sql',
-];
+// Discovered, never hand-listed: a new migration used to be silently omitted
+// from the bootstrap bundle unless someone remembered to edit this array.
+export const MIGRATIONS = readdirSync(MIG_DIR)
+  .filter((f) => /^\d{4}_.+\.sql$/.test(f))
+  .sort();
 
-const HEADER = `-- ============================================================================
+const DESCRIPTIONS = {
+  '0001_velora_core.sql': '14 tables, RLS, realtime, triggers',
+  '0002_business_registration_role_lock.sql': 'ownership columns + role-lock trigger',
+  '0003_rls_tightening.sql': 'removes the permissive anon policies',
+  '0004_booking_lifecycle.sql': 'pending status + service-only invoice writes',
+};
+
+const headerFor = (files) => `-- ============================================================================
 -- Velora AI OS — APPLY_ALL.sql
 -- One-paste database bootstrap for a FRESH Supabase project.
 --
@@ -31,11 +38,9 @@ const HEADER = `-- =============================================================
 --
 -- WHAT IT DOES
 --   Applies every migration in supabase/migrations/ in order:
---     0001_velora_core.sql                     14 tables, RLS, realtime, triggers
---     0002_business_registration_role_lock.sql ownership columns + role-lock trigger
---     0003_rls_tightening.sql                  removes the permissive anon policies
---   Order matters: 0001 drops and recreates every policy in public, so 0003
---   MUST run after it or the tightening is lost.
+${files.map((f) => `--     ${f.padEnd(42)} ${DESCRIPTIONS[f] || ''}`.trimEnd()).join('\n')}
+--   Order matters: 0001 drops and recreates every policy in public, so any
+--   later tightening migration MUST run after it or the change is lost.
 --
 -- Idempotent: safe to re-run, and safe against a partially-migrated project.
 -- GENERATED from the migration files by scripts/build-sql.mjs — edit the
@@ -59,7 +64,7 @@ where table_schema = 'public'
 `;
 
 export function renderApplyAll() {
-  const parts = [HEADER];
+  const parts = [headerFor(MIGRATIONS)];
   for (const file of MIGRATIONS) {
     const body = readFileSync(join(MIG_DIR, file), 'utf8').trimEnd();
     parts.push(`-- ============================================================================\n-- >>> ${file}\n-- ============================================================================\n\n${body}\n\n`);

@@ -7,7 +7,7 @@ import { cors, enforceRateLimit, safeError } from './_lib/security.js';
 import { verifyBookingToken } from './_lib/qr.js';
 
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   try {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });

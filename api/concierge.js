@@ -1,5 +1,5 @@
 import supabase from './db-client.js';
-import { cors, sanitizeText, isEmail , enforceRateLimit} from './_lib/security.js';
+import { cors, sanitizeText, isEmail , enforceRateLimit, safeError } from './_lib/security.js';
 import { getAuth } from './_lib/auth.js';
 import { cityBusinesses } from './_lib/synthetic.js';
 
@@ -30,7 +30,7 @@ function parseTimeOfDay(text) {
 }
 
 export default async function handler(req, res) {
-  cors(res);
+  cors(res, req);
   if (req.method === 'OPTIONS') return res.status(204).end();
   try {
     if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
@@ -127,6 +127,7 @@ export default async function handler(req, res) {
     return res.status(200).json({ intent, reply, action });
   } catch (err) {
     console.error('[concierge:error]', err.message);
-    res.status(500).json({ error: err.message });
+    const s = safeError(err, 'concierge:error');
+    if (!res.headersSent) res.status(s.status).json({ error: s.error });
   }
 }

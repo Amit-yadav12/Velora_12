@@ -15,7 +15,7 @@ export default function BookingTimeline({ slots, selected, onSelect, recommended
         <Legend color="#34d399" label="Available" />
         <Legend color="#f59e0b" label="Busy" />
         <Legend color="#ef4444" label="Booked" />
-        {recommended.length > 0 && <span className="ml-auto inline-flex items-center gap-1 text-[var(--color-brand-indigo)]"><Zap className="h-3.5 w-3.5" /> AI picks</span>}
+        {recommended.length > 0 && <span className="ml-auto inline-flex items-center gap-1 text-[var(--color-brand-indigo)]" title="Ranked on availability, crowding and time of day by Velora's slot heuristic."><Zap className="h-3.5 w-3.5" /> Velora picks</span>}
       </div>
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
         {slots.map((s, i) => <SlotButton key={s.time} slot={s} i={i} selected={selected === s.time} recommended={recSet.has(s.time)} onSelect={onSelect} />)}

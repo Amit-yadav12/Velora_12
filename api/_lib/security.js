@@ -37,10 +37,43 @@ export function clientIp(req) {
   return req.socket?.remoteAddress || 'unknown';
 }
 
-export function cors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+/**
+ * CORS for the JSON API.
+ *
+ * Every route authenticates with a bearer token (no cookies), so a wildcard
+ * origin is not a credential leak — but reflecting `*` still lets any site read
+ * public API responses and probe the surface. When the deployment declares its
+ * origins (APP_URL / ALLOWED_ORIGINS) we echo only those; a bare preview/demo
+ * environment without configuration keeps the permissive fallback so it stays
+ * usable. Requests with no Origin (curl, same-origin, server-to-server) are
+ * unaffected.
+ */
+const FALLBACK_ORIGIN = '*';
+export function allowedOrigins() {
+  const raw = [process.env.APP_URL, process.env.ALLOWED_ORIGINS]
+    .filter(Boolean).join(',');
+  return raw
+    .split(',')
+    .map((o) => o.trim().replace(/\/$/, ''))
+    .filter((o) => /^https?:\/\//i.test(o));
+}
+
+export function cors(res, req) {
+  const allowed = allowedOrigins();
+  const origin = req?.headers?.origin;
+  if (allowed.length === 0) {
+    res.setHeader('Access-Control-Allow-Origin', FALLBACK_ORIGIN);
+  } else if (origin && allowed.includes(String(origin).replace(/\/$/, ''))) {
+    res.setHeader('Access-Control-Allow-Origin', String(origin));
+    res.setHeader('Vary', 'Origin');
+  } else {
+    // Unknown browser origin: no ACAO header → the browser blocks the read.
+    // Non-browser callers are unaffected, as they never send an Origin.
+    res.setHeader('Vary', 'Origin');
+  }
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Idempotency-Key');
+  res.setHeader('Access-Control-Max-Age', '600');
   // basic hardening headers
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
