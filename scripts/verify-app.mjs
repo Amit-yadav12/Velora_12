@@ -194,9 +194,11 @@ const PORT = httpServer.address().port;
 const BASE = `http://127.0.0.1:${PORT}`;
 
 const apiCalls = [];
+const networkCalls = [];
 const nodeFetch = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
   const url = typeof input === 'string' ? input : input?.url || String(input);
+  networkCalls.push({ url, method: init?.method || 'GET' });
   // External services (Google Maps/Places/CDN) are out of scope here and behave
   // like a deployment without credentials: the call fails, the app must cope.
   if (/^https?:\/\//i.test(url) && !url.startsWith(BASE)) throw new TypeError('fetch failed');
@@ -242,6 +244,8 @@ ok('Customer app offers NO business-demo shortcut (console-only entry)',
 
 await goto('/welcome');
 ok('Welcome screen shows both role paths', !!find('button', 'Customer') && !!find('button', 'Business'));
+const welcomeGoogle = find('button', 'Continue with Google');
+ok('Google is visible, inert, and explains why on the role chooser', !!welcomeGoogle && welcomeGoogle.disabled && welcomeGoogle.getAttribute('aria-disabled') === 'true' && bodyHas("Google sign-in isn't connected in this build."));
 
 /* ================================================================== */
 console.log('\n—— 2. Business demo → admin console ——');
@@ -249,18 +253,22 @@ await click(find('button', 'Business'));
 await settle();
 ok('Business path selected', bodyHas('business console'));
 ok('Business path offers "Continue as demo business"', !!find('button', 'Continue as demo business'));
-ok('Google button is disabled until Supabase is configured', (() => {
+ok('Google button is disabled in the default build with a visible reason', (() => {
   const g = find('button', 'Continue with Google');
-  return !!g && g.disabled === true;
+  return !!g && g.disabled === true && g.getAttribute('aria-disabled') === 'true' && g.tabIndex === -1 && bodyHas("Google sign-in isn't connected in this build.");
 })());
-ok('Disabled Google sign-in does not navigate in demo mode', (() => {
+ok('Google click and keyboard activation cause no navigation, fetch, or console error', (() => {
   const g = find('button', 'Continue with Google');
   if (!g) return false;
-  // A real handler would route/sign-in: clicking must change nothing at all.
   const before = window.location.pathname + document.body.textContent.length;
+  const fetchCount = networkCalls.length;
+  const errorCount = problems.length;
   g.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-  return before === window.location.pathname + document.body.textContent.length;
+  g.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  const same = before === window.location.pathname + document.body.textContent.length && fetchCount === networkCalls.length && errorCount === problems.length && g.disabled && g.tabIndex === -1;
+  return same;
 })());
+ok('Auth entry paths offer Email and Phone', !!find('button', 'Continue with Email') && !!find('button', 'Continue with Phone'));
 
 await click(find('button', 'Continue as demo business'));
 await waitFor(() => window.location.pathname === '/admin', { label: 'admin route' });
@@ -400,9 +408,14 @@ await click(find('button', 'Continue with Email'));
 await waitFor(() => !!all('input').find((i) => /you@email\.com/.test(i.placeholder || '')), { label: 'email form' });
 await click(find('button', 'Create account'));
 await waitFor(() => !!all('input').find((i) => /Full name/.test(i.placeholder || '')), { label: 'register form' });
-typeInto(all('input').find((i) => /Full name/.test(i.placeholder || '')), 'Harness User');
-typeInto(all('input').find((i) => /you@email\.com/.test(i.placeholder || '')), CUST_EMAIL);
-typeInto(all('input').find((i) => /Password/.test(i.placeholder || '')), PW);
+typeInto(document.getElementById('register-name'), 'Harness User');
+typeInto(document.getElementById('register-email'), 'not-an-email');
+typeInto(document.getElementById('register-password'), PW);
+const registerForm = document.getElementById('register-email')?.closest('form');
+const beforeInvalidRegisterRequests = networkCalls.length;
+await ReactMod.act(async () => { registerForm?.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); await new Promise((resolve) => setTimeout(resolve, 100)); });
+ok('Invalid registration email shows an inline, associated field error before auth', bodyHas('Enter a valid email address') && document.getElementById('register-email')?.getAttribute('aria-describedby') === 'register-auth-error' && document.getElementById('register-email')?.getAttribute('aria-invalid') === 'true' && networkCalls.length === beforeInvalidRegisterRequests);
+typeInto(document.getElementById('register-email'), CUST_EMAIL);
 await settle(120);
 await click(find('button', 'Create account'));
 await waitFor(() => window.location.pathname !== '/welcome', { timeout: 8000, label: 'registered session' }).catch(() => {});
@@ -421,6 +434,54 @@ await click(find('button', 'Sign in'));
 await waitFor(() => window.location.pathname !== '/welcome', { timeout: 8000, label: 'email sign-in' }).catch(() => {});
 ok('Email sign-in works with the account just created',
   window.location.pathname !== '/welcome' && !bodyHas('Incorrect email or password'), `path=${window.location.pathname}`);
+
+console.log('—— 2c. Phone OTP (offline demo) ——');
+await ReactMod.act(async () => { await supa.default.auth.signOut(); });
+await mount('/welcome?role=customer&next=%2Fexplore');
+await click(find('button', 'Continue with Phone'));
+await waitFor(() => !!document.getElementById('phone-number'), { label: 'phone form' });
+ok('Phone path validates Indian number format and has a labelled input',
+  document.querySelector('label[for="phone-number"]')?.textContent === 'Indian mobile number' && bodyHas('10 digits starting 6–9'));
+ok('Every auth input is programmatically labelled and error-associated',
+  all('input').filter((input) => input.type !== 'hidden').every((input) => !!document.querySelector(`label[for="${input.id}"]`) || !!input.getAttribute('aria-label')));
+ok('Auth fields have a visible focus ring and 44px tap target',
+  document.getElementById('phone-number')?.className.includes('focus-visible:ring-2') && document.getElementById('phone-number')?.className.includes('min-h-11'));
+ok('Welcome auth panel uses a bounded responsive layout and honest provider note',
+  !!document.querySelector('.max-w-sm') && bodyHas('Sample mode: demo customer, demo business and demo OTP work offline. Google needs OAuth; SMS and email need providers.') && !!find('button', 'Continue with Google'));
+typeInto(document.getElementById('phone-number'), '09876543210');
+await click(find('button', 'Request code'));
+const rejectsTrunkPrefix = bodyHas('Enter a valid Indian mobile number') && !bodyHas('Your code is');
+typeInto(document.getElementById('phone-number'), '1987654321');
+await click(find('button', 'Request code'));
+ok('Phone OTP rejects 0/1-leading Indian numbers without issuing a code', rejectsTrunkPrefix && bodyHas('Enter a valid Indian mobile number') && !bodyHas('Your code is'));
+typeInto(document.getElementById('phone-number'), '+91 98765 43210');
+await click(find('button', 'Request code'));
+await waitFor(() => /Demo mode — no SMS is sent\. Your code is \d{6}/.test(txt(document.body)), { label: 'visible demo OTP' });
+const shownOtp = txt(document.body).match(/Demo mode — no SMS is sent\. Your code is (\d{6})/)?.[1] || '';
+ok('Demo OTP is shown on screen and never claims SMS delivery', !!shownOtp && !/sent to your phone/i.test(txt(document.body)) && bodyHas('no SMS is sent'));
+ok('Demo OTP field supports one-time-code autocomplete and paste into one input', document.getElementById('phone-otp')?.getAttribute('autocomplete') === 'one-time-code' && document.getElementById('phone-otp')?.maxLength === 6);
+ok('OTP resend has a visible cooldown', !!find('button', 'Resend code in 30s') || all('button').some((b) => /^Resend code in \d+s$/.test(txt(b)) && b.disabled));
+typeInto(document.getElementById('phone-otp'), shownOtp === '000000' ? '000001' : '000000');
+await click(find('button', 'Verify code'));
+await waitFor(() => bodyHas('demo code is incorrect.'), { label: 'wrong demo OTP error' });
+ok('Wrong demo OTP fails, remains retryable, and leaves no demo session',
+  bodyHas('Request a new code') && !window.localStorage.getItem('velora-demo-session'));
+typeInto(document.getElementById('phone-otp'), shownOtp);
+const otpForm = document.getElementById('phone-otp')?.closest('form');
+await ReactMod.act(async () => { document.getElementById('phone-otp')?.focus(); otpForm?.requestSubmit(); await new Promise((resolve) => setTimeout(resolve, 250)); });
+await waitFor(() => window.location.pathname === '/explore', { label: 'OTP customer session' });
+ok('Keyboard-only correct OTP signs in as a demo customer', window.location.pathname === '/explore' && !!window.localStorage.getItem('velora-demo-session'));
+ok('Successful OTP is explicitly a demo customer session', window.localStorage.getItem('velora-demo-session')?.includes('customer@velora.ai'));
+await goto('/business/demo-biz-aurora');
+await waitFor(() => bodyHas('Choose a service'), { label: 'OTP-session booking page' });
+const otpService = all('button').find((button) => /Signature Haircut/.test(txt(button)));
+if (otpService) await click(otpService);
+await waitFor(() => all('button').some((button) => /^\d{1,2}:\d{2}\s?(AM|PM)/i.test(txt(button)) && !button.disabled), { timeout: 12000, label: 'OTP booking slots' });
+await click(find('button', 'Review & book'));
+await waitFor(() => bodyHas('Review your booking'), { label: 'OTP booking review' });
+await click(find('button', 'Confirm booking'));
+await waitFor(() => bodyHas('Demo request saved'), { timeout: 12000, label: 'OTP booking ticket' });
+ok('OTP customer session completes a booking and receives a QR ticket', bodyHas('Demo request saved') && !!document.querySelector('[data-qr] svg') && window.localStorage.getItem('velora-demo-session')?.includes('customer@velora.ai'));
 
 // Business account creation continues to the multi-step onboarding flow.
 await ReactMod.act(async () => { await supa.default.auth.signOut(); });

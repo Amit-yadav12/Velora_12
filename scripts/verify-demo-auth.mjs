@@ -35,6 +35,10 @@ try {
   const supabaseMod = await server.ssrLoadModule('/src/lib/supabase.js');
   const supabase = supabaseMod.default;
   const PROFILES_KEY = 'velora-demo-profiles';
+  ok('Canonical demo credentials are identified case-insensitively for configured-project blocking',
+    demoAuth.isCanonicalDemoCredential('ADMIN@VELORA.AI', 'velora123') && demoAuth.isCanonicalDemoCredential('customer@velora.ai', 'velora123') && !demoAuth.isCanonicalDemoCredential('admin@velora.ai', 'different-password'));
+  ok('A normal project account is not classified as demo credentials',
+    !demoAuth.isCanonicalDemoCredential('owner@example.in', 'velora123'));
   const readRole = async () => {
     const { data } = await supabase.from('profiles').select('*').single();
     return data?.role;
