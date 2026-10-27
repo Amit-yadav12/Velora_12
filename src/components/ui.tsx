@@ -71,6 +71,7 @@ const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select
 export function Modal({ open, onClose, title, children, wide }: {
   open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean;
 }) {
+  const reduceMotion = useReducedMotion();
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   useEffect(() => {
@@ -107,8 +108,8 @@ export function Modal({ open, onClose, title, children, wide }: {
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            initial={{ scale: 0.95, opacity: 0, y: 12 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 12 }}
-            transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+            initial={reduceMotion ? false : { scale: 0.95, opacity: 0, y: 12 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={reduceMotion ? undefined : { scale: 0.95, opacity: 0, y: 12 }}
+            transition={reduceMotion ? { duration: 0 } : { type: 'spring', damping: 26, stiffness: 320 }}
             className={`relative glass rounded-2xl border border-app shadow-2xl w-full ${wide ? 'max-w-2xl' : 'max-w-md'} my-8`}
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-app sticky top-0 glass rounded-t-2xl z-10">
