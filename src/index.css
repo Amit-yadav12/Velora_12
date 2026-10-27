@@ -23,6 +23,7 @@
   --text: #f7f9fc;
   --text-muted: #c2c9d6;
   --text-dim: #97a0b2;
+  --text-link-strong: #a5b4fc;
   --glass: rgba(13, 16, 26, 0.85);
   color-scheme: dark;
 }
@@ -37,6 +38,7 @@ html.light {
   --text: #0a0e1a;
   --text-muted: #3d4759;
   --text-dim: #5b6577;
+  --text-link-strong: #4338ca;
   --glass: rgba(255, 255, 255, 0.9);
   color-scheme: light;
 }

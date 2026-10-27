@@ -73,7 +73,7 @@ export default function DiscoverCard({ b, active, onHover, compact, onCompare, c
       {(() => {
         const reasons = Array.isArray(b.ai_reason) ? b.ai_reason : b.ai_reason ? [b.ai_reason] : [];
         return reasons.length > 0 ? (
-          <div className="px-3 pb-2 -mt-1"><p className="text-[11px] text-[var(--color-brand-indigo)] flex items-center gap-1"><Sparkles className="h-3 w-3" /> {reasons.join(' · ')}</p></div>
+          <div className="px-3 pb-2 -mt-1"><p className="text-[11px] text-[var(--text-link-strong)] flex items-center gap-1"><Sparkles className="h-3 w-3" /> {reasons.join(' · ')}</p></div>
         ) : null;
       })()}
       <div className="flex border-t border-app">
