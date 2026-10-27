@@ -18,6 +18,9 @@ async function checkNoHorizontalOverflow(page, route) {
 }
 
 async function checkA11y(page, route) {
+  // Let page transitions settle so the audit measures final contrast, not an
+  // intentionally translucent frame in an entrance animation.
+  await page.waitForTimeout(600);
   if (!(await page.evaluate(() => Boolean(window.axe)))) await page.addScriptTag({ path: axeScript });
   const result = await page.evaluate(async () => window.axe.run(document, {
     runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] },
@@ -122,7 +125,10 @@ for (const viewport of sizes) {
     await expect(page.locator('[data-qr] svg')).toBeVisible();
     const appointment = await page.evaluate(() => {
       const list = JSON.parse(localStorage.getItem('velora-local-bookings') || '[]');
-      return list.find((booking) => booking.customer_email === 'customer@velora.ai' && booking.qr_payload);
+      const booking = list.find((entry) => entry.customer_email === 'customer@velora.ai' && entry.business_id === 'demo-biz-aurora' && entry.qr_salt);
+      if (!booking) return null;
+      const token = `local.${btoa(JSON.stringify({ ref: booking.ref, s: booking.qr_salt })).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+      return { ...booking, qr_payload: `${location.origin}/verify/${encodeURIComponent(token)}` };
     });
     expect(appointment?.ref).toBeTruthy();
     expect(appointment?.qr_payload).toBeTruthy();

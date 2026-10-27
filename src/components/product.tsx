@@ -1,6 +1,6 @@
 import { createElement } from 'react';
 import { Link } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { Star, MapPin, Clock } from 'lucide-react';
 import { Business, categoryIcon, categoryColor } from '../lib/product';
 import { fadeUp } from '../lib/motion';
@@ -79,10 +79,11 @@ export function BusinessCard({ b }: { b: Business; index?: number }) {
  * reveal is orchestrated once (cheap) rather than per item.
  */
 export function Grid({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  const reduceMotion = useReducedMotion();
   return (
     <motion.div
-      initial="hidden"
-      whileInView="show"
+      initial={reduceMotion ? false : 'hidden'}
+      whileInView={reduceMotion ? undefined : 'show'}
       viewport={{ once: true, amount: 0.1 }}
       variants={{ hidden: {}, show: { transition: { staggerChildren: 0.05 } } }}
       className={className}
