@@ -44,8 +44,8 @@ function verifyLocalToken(token: string): VerifyResult {
     return { valid: false, reason: 'invalid', message: 'This ticket failed verification — it may have been altered.' };
   }
   const facts = { ref: booking.ref, business: booking.business_name, service: booking.service_name, start_time: booking.start_time };
-  if (booking.status === 'cancelled') {
-    return { valid: false, reason: 'cancelled', status: 'cancelled', message: 'This booking was cancelled.', booking: facts };
+  if (['cancelled', 'completed', 'no_show'].includes(booking.status)) {
+    return { valid: false, reason: booking.status, status: booking.status, message: 'This appointment is no longer valid for check-in.', booking: facts };
   }
   if (new Date(booking.end_time).getTime() < Date.now() - 24 * 3600 * 1000) {
     return { valid: false, reason: 'expired', status: booking.status, message: 'This ticket has expired.', booking: facts };

@@ -4,7 +4,7 @@ import './index.css'
 import App from './App.tsx'
 import ErrorBoundary from './components/ErrorBoundary'
 import { registerPWA } from './lib/pwa'
-import { pinDemoWindow } from './lib/supabase'
+import { pinDemoWindow, supabaseConfigError } from './lib/supabase'
 
 registerPWA();
 
@@ -24,7 +24,15 @@ if (demoRoleParam === 'customer' || demoRoleParam === 'business') {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      {supabaseConfigError ? (
+        <main role="alert" className="min-h-screen grid place-items-center p-6">
+          <div className="card max-w-lg p-8">
+            <h1 className="text-xl font-semibold">Velora is not configured</h1>
+            <p className="mt-3 text-sm text-muted">{supabaseConfigError}</p>
+            <p className="mt-3 text-sm text-muted">No demo session or booking has been created.</p>
+          </div>
+        </main>
+      ) : <App />}
     </ErrorBoundary>
   </StrictMode>,
 )

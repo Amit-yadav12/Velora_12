@@ -15,15 +15,14 @@ export default async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
 
     const auth = await getAuth(req);
-    if (!auth?.user?.email) return res.status(401).json({ error: 'Authentication required' });
-    const email = auth.user.email.toLowerCase();
-    if (!isEmail(email)) return res.status(200).json([]);
+    if (!auth?.user?.id) return res.status(401).json({ error: 'Authentication required' });
+    const email = isEmail(auth.user.email) ? auth.user.email.toLowerCase() : null;
 
     const { data, error } = await supabase.from('bookings').select('*')
       .eq('customer_id', auth.user.id).order('start_time', { ascending: false });
     if (error) throw error;
     let legacy = [];
-    if (auth.user.email_confirmed_at) {
+    if (email && auth.user.email_confirmed_at) {
       const result = await supabase.from('bookings').select('*').is('customer_id', null)
         .eq('customer_email', email).order('start_time', { ascending: false });
       if (result.error) throw result.error;

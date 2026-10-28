@@ -233,7 +233,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
               ) : emailQueued ? (
                 <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-200"><Mail className="h-3 w-3" /> Email recorded in log · not sent</span>
               ) : (
-                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-200"><Mail className="h-3 w-3" /> {emailStatus === 'failed' ? 'Email delivery failed · view your booking here' : 'Email delivery not confirmed · view your booking here'}</span>
+                <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-blue-500/15 text-blue-200"><Mail className="h-3 w-3" /> {emailStatus === 'failed' ? 'Email delivery failed · view your booking here' : emailStatus === 'not_applicable' ? 'No email linked · view your booking here' : 'Email delivery not confirmed · view your booking here'}</span>
               )}
               {remindersScheduled ? (
                 <span className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-200"><Check className="h-3 w-3" /> Reminder records saved · delivery not verified</span>

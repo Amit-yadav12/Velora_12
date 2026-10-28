@@ -18,19 +18,19 @@ export default function Profile() {
 
   useEffect(() => { setName(profile?.full_name || ''); setPhone(profile?.phone || ''); }, [profile]);
   useEffect(() => {
-    if (!profile?.email) return;
+    if (!user?.id) return;
     const apply = (server: ConsoleBooking[]) => {
       const refs = new Set(server.map((b) => b.ref));
       // Same scope as the Appointments page — only this customer's bookings.
-      const local = (isDemoMode ? listLocalBookings(profile.email) : []).filter((b) => !refs.has(b.ref));
+      const local = (isDemoMode ? listLocalBookings(profile?.email) : []).filter((b) => !refs.has(b.ref));
       const all = [...server, ...local];
       const now = Date.now();
       setStats({ total: all.length, upcoming: all.filter(b => new Date(b.start_time).getTime() > now && b.status !== 'cancelled').length });
     };
-    apiGet<ConsoleBooking[]>(`/api/my-bookings?email=${encodeURIComponent(profile.email)}`)
+    apiGet<ConsoleBooking[]>(`/api/my-bookings?email=${encodeURIComponent(profile?.email || '')}`)
       .then((d) => apply(Array.isArray(d) ? d : []))
       .catch(() => { if (isDemoMode) apply([]); else setStats(null); });
-  }, [profile?.email]);
+  }, [profile?.email, user?.id]);
 
   const save = async () => {
     if (!user) return;

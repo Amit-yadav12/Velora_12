@@ -3,11 +3,14 @@
 // Demo mode emulates auth sessions + query results in-memory/localStorage so
 // every page renders and the full product flow stays explorable.
 import { createClient } from '@supabase/supabase-js';
+import { classifySupabaseConfig } from './supabaseConfig.js';
 
 const url = import.meta.env?.VITE_SUPABASE_URL;
 const anon = import.meta.env?.VITE_SUPABASE_ANON_KEY;
 
-export const isDemoMode = !url || !anon;
+const config = classifySupabaseConfig(url, anon);
+export const isDemoMode = config.demo;
+export const supabaseConfigError = config.error;
 
 // ── Demo identities shared by the mock client and the "second window" helper ──
 const DEMO_NAME_FOR = (email) => {
@@ -271,6 +274,6 @@ function createDemoClient() {
 }
 
 /** @type {import('@supabase/supabase-js').SupabaseClient} */
-const supabase = isDemoMode ? createDemoClient() : createClient(url, anon);
+const supabase = isDemoMode ? createDemoClient() : createClient(config.validUrl ? url : 'https://not-configured.invalid', anon || 'not-configured');
 
 export default supabase;

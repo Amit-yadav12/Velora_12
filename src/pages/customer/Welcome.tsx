@@ -278,7 +278,7 @@ export default function Welcome() {
             <GoogleLogo /> Continue with Google
           </button>
           <p className="mt-2 text-xs text-dim">Google sign-in isn&apos;t connected in this build.</p>
-          <p className="mt-2 text-xs text-dim">Sample mode: demo customer, demo business and demo OTP work offline. Google needs OAuth; SMS and email need providers.</p>
+          {isDemoMode && <p className="mt-2 text-xs text-dim">Sample mode: demo customer, demo business and demo OTP work offline. No SMS or email is sent.</p>}
 
           {/* Fast path for a presenter: one click starts the exact demo journey
               (Jaipur sample business → slot → QR ticket) as the demo customer. */}
@@ -360,7 +360,7 @@ export default function Welcome() {
             })}
           </div>
         </div>
-        <p className="relative text-xs text-dim">Secure sign-in · Google · Email</p>
+        <p className="relative text-xs text-dim">Secure sign-in · Email · Phone</p>
       </div>
 
       {/* Auth side */}
@@ -391,7 +391,7 @@ export default function Welcome() {
             <>
               <button type="button" disabled aria-disabled="true" tabIndex={-1} title="Google sign-in isn't connected in this build." className="mt-2 w-full min-h-11 rounded-xl border border-app bg-[var(--surface)] py-3 text-sm font-semibold flex items-center justify-center gap-2.5 opacity-70 cursor-not-allowed"><GoogleLogo /> Continue with Google</button>
               <p className="mt-2 text-center text-xs text-dim">Google sign-in isn&apos;t connected in this build.</p>
-              <p className="mt-2 text-center text-xs text-dim">Sample mode: demo customer, demo business and demo OTP work offline. Google needs OAuth; SMS and email need providers.</p>
+              {isDemoMode && <p className="mt-2 text-center text-xs text-dim">Sample mode: demo customer, demo business and demo OTP work offline. No SMS or email is sent.</p>}
               <h2 className="mt-4 text-2xl font-semibold">Create your business account</h2>
               <p className="text-sm text-dim mt-1">Start with your owner account, then build your business profile.</p>
               <form onSubmit={createBusinessAccount} className="mt-6 space-y-3">
@@ -424,7 +424,7 @@ export default function Welcome() {
                 <GoogleLogo /> Continue with Google
               </button>
               <p className="mt-2 text-center text-xs text-dim">Google sign-in isn&apos;t connected in this build.</p>
-              <p className="mt-2 text-center text-xs text-dim">Sample mode: demo customer, demo business and demo OTP work offline. Google needs OAuth; SMS and email need providers.</p>
+              {isDemoMode && <p className="mt-2 text-center text-xs text-dim">Sample mode: demo customer, demo business and demo OTP work offline. No SMS or email is sent.</p>}
 
               {err && !emailOpen && <p role="alert" className="text-sm text-red-400 mt-3">{err}</p>}
               <div className="my-4 flex items-center gap-3 text-xs text-dim">

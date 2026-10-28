@@ -87,7 +87,7 @@ export default async function handler(req, res) {
       assert(staffAccess || isOwner, 'You are not allowed to modify this booking.', 403);
       if (action === 'status' || action === 'check_in') assert(staffAccess, 'Only authorized business staff can change this booking.', 403);
 
-      const actor = auth.user.email;
+      const actor = auth.user.email || auth.user.id;
 
       if (action === 'cancel') {
         assert(canTransition(existing.status, 'cancelled'), `A ${existing.status} booking cannot be cancelled.`);
@@ -107,7 +107,7 @@ export default async function handler(req, res) {
           async () => { const meta = await getMeta(id); await Promise.all([meta?.calendar_event_id && deleteCalendarEvent(meta.calendar_event_id), meta?.business_calendar_event_id && deleteCalendarEvent(meta.business_calendar_event_id)]); },
           () => supabase.from('reminders').update({ sent: true }).eq('booking_id', id).eq('sent', false),
           () => supabase.from('notifications').insert([{ user_id: existing.customer_id || null, audience: 'customer', title: 'Booking cancelled', body: `${existing.service_name} — ${existing.ref}`, type: 'warning', booking_ref: existing.ref }]),
-          () => sendEmail({ to: existing.customer_email, subject: `Booking cancelled — ${existing.ref}`, title: 'Booking cancelled', name: existing.customer_name, lines: [{ k: 'Reference', v: existing.ref }, { k: 'Service', v: existing.service_name }] }),
+          () => existing.customer_email ? sendEmail({ to: existing.customer_email, subject: `Booking cancelled — ${existing.ref}`, title: 'Booking cancelled', name: existing.customer_name, lines: [{ k: 'Reference', v: existing.ref }, { k: 'Service', v: existing.service_name }] }) : Promise.resolve(),
         ]);
         return res.status(200).json(data);
       }
@@ -138,7 +138,7 @@ export default async function handler(req, res) {
           async () => { const meta = await getMeta(id); await Promise.all([meta?.calendar_event_id && updateCalendarEvent(meta.calendar_event_id, calPayload), meta?.business_calendar_event_id && updateCalendarEvent(meta.business_calendar_event_id, calPayload)]); },
           async () => { await supabase.from('reminders').delete().eq('booking_id', id).eq('sent', false); if (newRem.length) await supabase.from('reminders').insert(newRem); },
           () => supabase.from('notifications').insert([{ user_id: existing.customer_id || null, audience: 'customer', title: 'Booking rescheduled', body: `${existing.ref} moved to ${istDateTimeLabel(start)}`, type: 'info', booking_ref: existing.ref }]),
-          () => sendEmail({ to: existing.customer_email, subject: `Booking rescheduled — ${existing.ref}`, title: 'Booking rescheduled', name: existing.customer_name, lines: [{ k: 'Reference', v: existing.ref }, { k: 'New time', v: istDateTimeLabel(start) }] }),
+          () => existing.customer_email ? sendEmail({ to: existing.customer_email, subject: `Booking rescheduled — ${existing.ref}`, title: 'Booking rescheduled', name: existing.customer_name, lines: [{ k: 'Reference', v: existing.ref }, { k: 'New time', v: istDateTimeLabel(start) }] }) : Promise.resolve(),
         ]);
         return res.status(200).json(data);
       }

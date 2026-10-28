@@ -500,7 +500,7 @@ ok('Every auth input is programmatically labelled and error-associated',
 ok('Auth fields have a visible focus ring and 44px tap target',
   document.getElementById('phone-number')?.className.includes('focus-visible:ring-2') && document.getElementById('phone-number')?.className.includes('min-h-11'));
 ok('Welcome auth panel uses a bounded responsive layout and honest provider note',
-  !!document.querySelector('.max-w-sm') && bodyHas('Sample mode: demo customer, demo business and demo OTP work offline. Google needs OAuth; SMS and email need providers.') && !!find('button', 'Continue with Google'));
+  !!document.querySelector('.max-w-sm') && bodyHas('Sample mode: demo customer, demo business and demo OTP work offline. No SMS or email is sent.') && !!find('button', 'Continue with Google'));
 typeInto(document.getElementById('phone-number'), '09876543210');
 await click(find('button', 'Request code'));
 const rejectsTrunkPrefix = bodyHas('Enter a valid Indian mobile number') && !bodyHas('Your code is');

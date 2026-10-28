@@ -1,3 +1,13 @@
+import { classifySupabaseConfig } from '../src/lib/supabaseConfig.js';
+import { strict as configAssert } from 'node:assert';
+configAssert.equal(classifySupabaseConfig('', '').demo, true);
+for (const [url, key] of [['https://project.supabase.co', ''], ['', 'key'], ['invalid', 'key']]) {
+  const config = classifySupabaseConfig(url, key);
+  configAssert.equal(config.demo, false);
+  configAssert.ok(config.error);
+}
+configAssert.equal(classifySupabaseConfig('https://project.supabase.co', 'public-key').error, '');
+console.log('  ✅ Incomplete live Supabase configuration fails closed instead of entering demo mode');
 // Demo-auth verification — loads the REAL signInDemo helper through a Vite
 // dev-server module graph (ssrLoadModule) so import.meta.env, the supabase
 // client and the demo profiles resolver run exactly as in the app.

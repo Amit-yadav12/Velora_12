@@ -19,8 +19,8 @@ export default async function handler(req, res) {
     const bearer = req.headers.authorization?.replace('Bearer ', '');
     const isCron = Boolean(cronSecret && bearer === cronSecret);
     const auth = isCron ? null : await getAuth(req);
-    if (!isCron && !auth?.user?.email) return res.status(401).json({ error: 'Authentication required' });
-    const scopeEmail = isCron ? null : auth.user.email.toLowerCase();
+    if (!isCron && !auth?.user?.id) return res.status(401).json({ error: 'Authentication required' });
+    const scopeEmail = isCron ? null : auth.user.email?.toLowerCase() || null;
     let dueQuery = supabase.from('reminders').select('*').eq('sent', false).lte('fire_at', now).order('fire_at').limit(50);
     if (!isCron) {
       const own = await supabase.from('bookings').select('id').eq('customer_id', auth.user.id);
@@ -61,7 +61,7 @@ export default async function handler(req, res) {
       });
       if (notification.error) throw notification.error;
 
-      if (r.kind === 'leave_now') {
+      if (r.kind === 'leave_now' && bk.customer_email) {
         const { data: biz } = await supabase.from('businesses').select('*').eq('name', bk.resource_name).single();
         // Real travel estimate ONLY when the customer's coordinates are known.
         // No stored origin → never invent a number; point them at live Maps.
