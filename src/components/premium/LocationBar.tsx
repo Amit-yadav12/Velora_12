@@ -54,7 +54,7 @@ export default function LocationBar() {
 
   return (
     <div ref={boxRef} className="relative">
-      <button aria-label="Choose location" aria-expanded={open} onClick={() => setOpen(o => !o)} className="flex items-center gap-2 rounded-xl border border-app bg-elev px-3 py-2 text-sm hover:border-[var(--border-strong)] transition-colors max-w-full">
+      <button aria-label={`${status === 'prompting' ? 'Locating…' : `${label}${sub}`} — choose location`} aria-expanded={open} onClick={() => setOpen(o => !o)} className="flex items-center gap-2 rounded-xl border border-app bg-elev px-3 py-2 text-sm hover:border-[var(--border-strong)] transition-colors max-w-full">
         <MapPin className="h-4 w-4 text-[var(--text-link-strong)] shrink-0" />
         <span className="truncate max-w-[160px]">{status === 'prompting' ? 'Locating…' : `${label}${sub}`}</span>
       </button>

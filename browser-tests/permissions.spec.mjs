@@ -26,7 +26,7 @@ test('customer permissions are requested only on click and denied states explain
   await customer(page);
   await page.goto('/');
   expect(await page.evaluate(() => [window.__geoRequests, window.__permissionRequests])).toEqual([0, 0]);
-  await page.getByRole('button', { name: 'Choose location' }).click();
+  await page.getByRole('button', { name: /choose location/i }).click();
   await page.getByRole('button', { name: 'Use my current location' }).click();
   await expect(page.getByText(/Location blocked\. Allow it in browser site settings/)).toBeVisible();
   expect(await page.evaluate(() => window.__geoRequests)).toBe(1);
@@ -54,7 +54,7 @@ test('sample location search does not contact live geocoding', async ({ page }) 
   let geocodes = 0;
   page.on('request', request => { if (request.url().includes('/api/geocode')) geocodes++; });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Choose location' }).click();
+  await page.getByRole('button', { name: /choose location/i }).click();
   await page.getByPlaceholder('Search city or address…').fill('Jaipur');
   await expect(page.getByText('Address search is unavailable in sample mode. Choose a city below.')).toBeVisible();
   expect(geocodes).toBe(0);
