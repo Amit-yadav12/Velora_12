@@ -59,7 +59,7 @@ export default function ConsoleScopePicker() {
         value={scope ?? ''}
         onChange={(e) => setConsoleScope(e.target.value || null)}
         aria-describedby="console-scope-help"
-        className="min-h-9 max-w-[13rem] truncate rounded-lg border border-app bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text)] focus:border-[var(--color-brand-indigo)]"
+        className="min-h-9 max-w-[13rem] truncate rounded-lg border border-app bg-elev console-scope-select px-2 py-1.5 text-xs text-[var(--text)] focus:border-[var(--color-brand-indigo)]"
       >
         <option value="">{isDemoMode ? 'All sample businesses' : 'All my businesses'}</option>
         {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}

@@ -311,7 +311,7 @@ export default function Appointments() {
                 <span className="inline-flex items-center gap-1 rounded-full border border-app px-2 py-0.5 text-[10px] capitalize text-muted">{ticket.status.replace('_', ' ')}</span>
               </div>
             </div>
-            <div className={`rounded-xl border p-3 text-xs leading-relaxed ${ticket.local ? 'border-amber-400/30 bg-amber-400/[0.08] text-amber-200' : 'border-app text-dim'}`}>
+            <div className={`rounded-xl border p-3 text-xs leading-relaxed ${ticket.local ? 'sample-ticket-notice' : 'border-app text-dim'}`}>
               {!ticketQr
                 ? 'Ticket unavailable. Refresh your bookings or contact support.'
                 : ticket.local
