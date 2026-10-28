@@ -1,5 +1,6 @@
 import { FlaskConical, Info } from 'lucide-react';
-import { isDemoMode } from '../../lib/supabase';
+import { isDemoMode, canExitDemo } from '../../lib/supabase';
+import { exitDemo } from '../../lib/demoMode';
 import { openDemoGuide } from '../../lib/demoGuideStore';
 
 /**
@@ -25,10 +26,11 @@ export default function SampleModeBar({ surface }: { surface: 'customer' | 'busi
             : '— this business, its staff, prices and bookings are synthetic and stored in this browser.'}
         </span>
         <span className="hidden text-[var(--text-dim)] sm:inline">This demo is device-local, not shared across devices. No payments, emails or calendar invites are sent.</span>
+        {canExitDemo && <button type="button" onClick={exitDemo} className="ml-auto rounded-md border border-app px-2 py-1 font-semibold hover:bg-[var(--surface-hover)]">Exit demo</button>}
         <button
           type="button"
           onClick={openDemoGuide}
-          className="ml-auto inline-flex items-center gap-1 rounded-md border border-[var(--color-brand-violet)]/30 px-1.5 py-0.5 font-medium text-[var(--text-link-strong)] hover:border-[var(--color-brand-violet)]/60"
+          className="inline-flex items-center gap-1 rounded-md border border-[var(--color-brand-violet)]/30 px-1.5 py-0.5 font-medium text-[var(--text-link-strong)] hover:border-[var(--color-brand-violet)]/60"
         >
           <Info className="h-3 w-3" aria-hidden="true" /> Walkthrough
         </button>

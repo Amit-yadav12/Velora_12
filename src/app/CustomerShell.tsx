@@ -44,8 +44,8 @@ export default function CustomerShell({ children }: { children: React.ReactNode 
     if (!hasLiveSession()) { setUnread(countLocal()); return; }
     apiGet<NotificationRow[]>('/api/notifications?audience=customer').then(d => {
       const server = Array.isArray(d) ? d.filter((n: NotificationRow) => !n.read && n.audience !== 'admin').length : 0;
-      setUnread(server + countLocal());
-    }).catch(() => setUnread(countLocal()));
+      setUnread(server);
+    }).catch(() => setUnread(0));
   };
   useEffect(() => { loadUnread(); }, [loc.pathname]);
   useEffect(() => {

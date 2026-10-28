@@ -164,6 +164,7 @@ export async function fetchDiscover(p: DiscoverParams): Promise<DiscoverResult> 
   // 1) Server (DB + synthetic merged, city-scoped)
   let serverResults: Business[] | null = null;
   try {
+    if (isDemoMode) throw new Error('Use local demo listings');
     const sp = new URLSearchParams({
       lat: String(p.lat), lng: String(p.lng), city: effCity,
       ...(category ? { category } : {}),
@@ -222,7 +223,7 @@ export async function fetchDiscover(p: DiscoverParams): Promise<DiscoverResult> 
 
   // 5) Live Google places (opportunistic, non-blocking when cached)
   let liveCount = 0;
-  if (p.includeLive) {
+  if (p.includeLive && !isDemoMode) {
     try {
       const { live, results } = await fetchLivePlaces({ lat: p.lat, lng: p.lng, query: p.q, category: category || undefined, city: effCity });
       if (live && results.length) {
@@ -280,6 +281,10 @@ export async function fetchBusiness(id: number | string, city?: string): Promise
     return null;
   }
 
+  if (isDemoMode) {
+    const sample = isSyntheticId(id) ? getSyntheticBusiness(id) : null;
+    return sample ? attachDetails({ ...sample }) : null;
+  }
   const key = `business:${id}`;
   const hit = cacheGet<Business>(key);
   if (hit) return withMiRoadElectricianImage(hit);
@@ -335,6 +340,13 @@ export async function fetchSlots(businessId: number | string, serviceId: number 
     if (!biz) return { slots: [], recommended: [], travel_min: 0 };
     return buildDemoSlots(biz, serviceId, date, staffName);
   }
+  if (isDemoMode && isSyntheticId(businessId)) {
+    const biz = getSyntheticBusiness(businessId);
+    const svc = biz?.services?.find((s) => String(s.id) === String(serviceId)) || biz?.services?.[0];
+    const slots = getSyntheticSlots(Number(businessId), date, svc?.duration_min || 30, biz?.open_time || '09:00', biz?.close_time || '21:00');
+    return { slots, recommended: slots.filter((s) => s.available).slice(0, 3), travel_min: 0 };
+  }
+  if (isDemoMode) throw new Error('Only sample businesses are available in demo mode.');
   const loc = origin ? `&origin_lat=${origin.lat}&origin_lng=${origin.lng}` : '';
   const staffParam = staffId != null ? `&staff_id=${encodeURIComponent(String(staffId))}` : '';
   try {

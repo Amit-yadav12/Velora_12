@@ -1,4 +1,4 @@
-import supabase, { isDemoMode } from './supabase';
+import supabase, { isDemoMode, isExplicitDemo } from './supabase';
 
 /**
  * API failure with the HTTP status attached. `errMsg()` still returns just the
@@ -50,6 +50,7 @@ async function timedFetch(url: string, init: RequestInit = {}, timeoutMs = 8000)
 }
 
 export async function apiGet<T = unknown>(path: string, opts?: { timeout?: number }): Promise<T> {
+  if (isExplicitDemo) throw new ApiError('Live data is unavailable in the device-local demo.', 403, path);
   const timeout = opts?.timeout ?? 8000;
   const res = await timedFetch(path, { headers: { ...(await authHeaders()) } }, timeout);
   if (!res.ok) {
@@ -60,6 +61,7 @@ export async function apiGet<T = unknown>(path: string, opts?: { timeout?: numbe
 }
 
 export async function apiSend<T = unknown>(path: string, method: string, body: unknown, opts?: { timeout?: number }): Promise<T> {
+  if (isExplicitDemo) throw new ApiError('This action is unavailable in the device-local demo.', 403, path);
   const timeout = opts?.timeout ?? 10000;
   const res = await timedFetch(
     path,
