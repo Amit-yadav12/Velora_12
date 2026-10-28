@@ -3,6 +3,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { loadGoogleMaps, onGoogleMapsAuthFailure } from '../../lib/mapsLoader';
 import type { MapBusiness } from '../../lib/mapData';
+import LocationMap from './LocationMap';
 
 interface Point { lat: number; lng: number }
 interface Props {
@@ -19,7 +20,7 @@ export default function InteractiveMap({ center, markers = [], selected, onPick,
   const element = useRef<HTMLDivElement>(null);
   const googleMap = useRef<google.maps.Map | null>(null);
   const leaflet = useRef<L.Map | null>(null);
-  const [provider, setProvider] = useState<'loading' | 'google' | 'osm'>('loading');
+  const [provider, setProvider] = useState<'loading' | 'google' | 'osm' | 'roadmap'>('loading');
   const [notice, setNotice] = useState('');
   const pickerRef = useRef(onPick);
   const selectRef = useRef(onSelect);
@@ -29,13 +30,25 @@ export default function InteractiveMap({ center, markers = [], selected, onPick,
 
   useEffect(() => {
     let alive = true;
+    let tilesBlocked = false;
+    let fallbackTimer: number | undefined;
     const initFallback = () => {
-      if (!alive || !element.current || leaflet.current) return;
+      if (!alive || !element.current || leaflet.current || tilesBlocked) return;
       const map = L.map(element.current, { zoomControl: true }).setView([center.lat, center.lng], 13);
       const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       }).addTo(map);
-      tiles.on('tileerror', () => setNotice(pickerRef.current ? 'Some map tiles failed to load. You can enter coordinates below.' : 'Some map tiles failed to load.'));
+      tiles.on('tileerror', () => {
+        if (tilesBlocked) return;
+        tilesBlocked = true;
+        // Stop requests to a blocked tile service, and avoid rendering its error tiles.
+        fallbackTimer = window.setTimeout(() => {
+          if (!alive) return;
+          map.remove(); leaflet.current = null; leafMarkers.current = [];
+          setProvider('roadmap');
+          setNotice(pickerRef.current ? 'Interactive map unavailable. Google map view is read-only; enter coordinates below.' : 'Interactive map unavailable. Google map view is read-only; use the results list.');
+        }, 0);
+      });
       map.on('click', (e) => pickerRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng }));
       leaflet.current = map; setProvider('osm');
       window.setTimeout(() => map.invalidateSize(), 100);
@@ -49,7 +62,7 @@ export default function InteractiveMap({ center, markers = [], selected, onPick,
       initFallback();
     });
     loadGoogleMaps().then((g) => {
-      if (!alive || !element.current || leaflet.current) return;
+      if (!alive || !element.current || leaflet.current || tilesBlocked) return;
       const map = new g.maps.Map(element.current, { center, zoom: 13, mapTypeControl: false, streetViewControl: false, fullscreenControl: false });
       map.addListener('click', (e: google.maps.MapMouseEvent) => {
         if (e.latLng) pickerRef.current?.({ lat: e.latLng.lat(), lng: e.latLng.lng() });
@@ -60,7 +73,7 @@ export default function InteractiveMap({ center, markers = [], selected, onPick,
       initFallback();
     });
     return () => {
-      alive = false; unsubscribe();
+      alive = false; unsubscribe(); if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
       googleMarkers.current.forEach((m) => m.setMap(null)); googleMarkers.current = [];
       googleMap.current = null;
       leaflet.current?.remove(); leaflet.current = null;
@@ -111,7 +124,8 @@ export default function InteractiveMap({ center, markers = [], selected, onPick,
   }, [provider, markers, selected?.lat, selected?.lng, activeId]);
 
   return <div className="relative h-full min-h-[240px] w-full overflow-hidden rounded-2xl border border-app">
-    <div ref={element} className="h-full min-h-[240px] w-full" role="application" aria-label={onPick ? 'Map: click or drag the marker to choose a location' : 'Map of matching businesses; select a marker to open its profile'} />
+    <div ref={element} className={`h-full min-h-[240px] w-full ${provider === 'roadmap' ? 'hidden' : ''}`} role="application" aria-label={onPick ? 'Map: click or drag the marker to choose a location' : 'Map of matching businesses; select a marker to open its profile'} />
+    {provider === 'roadmap' && <LocationMap center={selected || center} />}
     {provider === 'loading' && <div className="absolute inset-0 grid place-items-center bg-elev text-sm text-dim">Loading map…</div>}
     {notice && <div className="absolute bottom-2 left-2 z-[500] rounded-lg bg-elev px-2 py-1 text-xs text-muted shadow">{notice}</div>}
   </div>;

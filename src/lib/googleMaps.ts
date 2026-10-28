@@ -12,6 +12,25 @@ export function googleKey(): string {
   return import.meta.env?.VITE_GOOGLE_MAPS_API_KEY || '';
 }
 
+/** View-only road map centered on the chosen coordinates. This is a URL, not an API key. */
+export function googleLocationEmbedUrl(center: MapCenter): string {
+  if (!Number.isFinite(center.lat) || !Number.isFinite(center.lng) || Math.abs(center.lat) > 90 || Math.abs(center.lng) > 180) throw new Error('Invalid map coordinates');
+  const params = new URLSearchParams({ q: `${center.lat},${center.lng}`, t: 'm', z: '16', output: 'embed' });
+  return `https://maps.google.com/maps?${params.toString()}`;
+}
+
+/** Open the same coordinates in Google Maps if an embed is blocked. */
+export function googleLocationOpenUrl(center: MapCenter): string {
+  const params = new URLSearchParams({ api: '1', query: `${center.lat},${center.lng}` });
+  return `https://www.google.com/maps/search/?${params.toString()}`;
+}
+
+/** Open directions to the selected location; Google determines the origin. */
+export function googleLocationDirectionsUrl(center: MapCenter): string {
+  const params = new URLSearchParams({ api: '1', destination: `${center.lat},${center.lng}` });
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
 /** Keyless universal embed — renders real Google Maps in an iframe. */
 export function googleEmbedUrl(query: string, center?: MapCenter, zoom = 14): string {
   const q = center ? `${query} near ${center.label || `${center.lat},${center.lng}`}` : query;

@@ -13,6 +13,7 @@ import EmptyState from '../../components/premium/EmptyState';
 import { BusinessCardSkeleton } from '../../components/premium/Skeleton';
 import GoogleMapEmbed from '../../components/premium/GoogleMapEmbed';
 import InteractiveMap from '../../components/premium/InteractiveMap';
+import LocationMap from '../../components/premium/LocationMap';
 import supabase, { isDemoMode } from '../../lib/supabase';
 import { onBusinessesChanged, onServicesChanged } from '../../services/events';
 import { fetchDiscover, hydrateLiveBusiness } from '../../lib/hybridData';
@@ -40,7 +41,7 @@ export default function Explore() {
   const [category, setCategory] = useState(params.get('category') || 'All');
   const [sort, setSort] = useState(params.get('view') === 'map' ? 'distance' : 'ai');
   const [view, setView] = useState<'list' | 'map'>(params.get('view') === 'map' ? 'map' : 'list');
-  const [mapMode, setMapMode] = useState<'google' | 'pins'>('pins');
+  const [mapMode, setMapMode] = useState<'roadmap' | 'google' | 'pins'>('roadmap');
   const [openNow, setOpenNow] = useState(false);
   const [minRating, setMinRating] = useState(0);
   const [maxKm, setMaxKm] = useState(0);
@@ -256,15 +257,19 @@ export default function Explore() {
 
       {loadError && <div role="alert" className="card p-4 mb-4 text-sm text-red-400">{loadError} <button onClick={fetchResults} className="underline ml-2">Retry</button></div>}
       {/* Views */}
+      {view === 'map' && mapMode === 'roadmap' && <p className="mb-3 text-xs text-dim">The Google map shows your selected location, not the business pins. Listings appear alongside it. Google receives the map coordinates.</p>}
       {view === 'map' ? (
         <div className="grid lg:grid-cols-5 gap-4">
           <div className="lg:col-span-3 h-[380px] lg:h-[600px] card p-0 overflow-hidden relative">
-            {mapMode === 'google' ? (
+            {mapMode === 'roadmap' ? (
+              <LocationMap center={origin} />
+            ) : mapMode === 'google' ? (
               <GoogleMapEmbed center={origin} city={city.name} category={category !== 'All' ? category : undefined} onSelectLive={selectLive} />
             ) : (
               <InteractiveMap center={origin} markers={mapBusinesses} activeId={active} onSelect={(id) => { setActive(id); document.getElementById(`map-result-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }} />
             )}
             <div className="absolute left-3 top-[68px] flex rounded-xl border border-app bg-[var(--bg-elev)]/90 backdrop-blur p-0.5 z-[5]">
+              <button onClick={() => setMapMode('roadmap')} aria-pressed={mapMode === 'roadmap'} className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${mapMode === 'roadmap' ? 'grad-btn text-white' : 'text-muted'}`}>Google map</button>
               {!isDemoMode && <button onClick={() => setMapMode('google')} title="Google Maps search (separate results)" className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${mapMode === 'google' ? 'grad-btn text-white' : 'text-muted'}`}><MapIcon className="h-3.5 w-3.5" /> Google search</button>}
               <button onClick={() => setMapMode('pins')} title="Map of filtered results" className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${mapMode === 'pins' ? 'grad-btn text-white' : 'text-muted'}`}><Pin className="h-3.5 w-3.5" /> Filtered results</button>
             </div>

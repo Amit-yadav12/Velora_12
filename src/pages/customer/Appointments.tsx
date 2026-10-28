@@ -229,7 +229,7 @@ export default function Appointments() {
               <motion.div key={b.id} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="card p-4">
                 <div className="flex items-start gap-4">
                   <div className={`h-14 w-14 rounded-2xl grid place-items-center text-center shrink-0 ${b.status === 'cancelled' ? 'bg-red-500/10' : b.status === 'pending' ? 'bg-amber-500/10' : 'grad-btn'}`}>
-                    <div className={b.status === 'cancelled' ? 'text-red-400' : b.status === 'pending' ? 'text-amber-400' : 'text-white'}>
+                    <div className={b.status === 'cancelled' ? 'text-red-400' : b.status === 'pending' ? 'appointment-warning-text' : 'text-white'}>
                       <p className="text-[10px] uppercase leading-none">{ist(b.start_time, { month: 'short' })}</p>
                       <p className="text-xl font-semibold leading-tight">{ist(b.start_time, { day: 'numeric' })}</p>
                     </div>
@@ -237,8 +237,8 @@ export default function Appointments() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className="font-medium">{b.service_name}</h3>
-                      {b.local && <span className="text-[11px] px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-300">Sample request</span>}
-                      <span className={`text-[11px] px-2 py-0.5 rounded-lg capitalize ${b.status === 'cancelled' ? 'bg-red-500/15 text-red-400' : b.status === 'completed' ? 'bg-emerald-500/15 text-emerald-400' : b.status === 'pending' ? 'bg-amber-500/15 text-amber-400' : 'bg-blue-500/15 text-blue-400'}`}>{b.status.replace('_', ' ')}</span>
+                      {b.local && <span className="text-[11px] px-2 py-0.5 rounded-lg bg-amber-500/15 appointment-warning-text">Sample request</span>}
+                      <span className={`text-[11px] px-2 py-0.5 rounded-lg capitalize ${b.status === 'cancelled' ? 'bg-red-500/15 text-red-400' : b.status === 'completed' ? 'bg-emerald-500/15 text-emerald-400' : b.status === 'pending' ? 'bg-amber-500/15 appointment-warning-text' : 'bg-blue-500/15 text-blue-400'}`}>{b.status.replace('_', ' ')}</span>
                     </div>
                     <p className="text-sm text-dim">{b.resource_name}{b.employee_name ? ` · ${b.employee_name}` : ''}</p>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-dim">
@@ -260,7 +260,7 @@ export default function Appointments() {
                   </div>
                 )}
                 {!past && b.status === 'pending' && (
-                  <p className="mt-2 text-[11px] text-amber-400/90">{b.local ? 'Sample request — no real business was notified.' : `Awaiting confirmation from ${b.resource_name}.`}</p>
+                  <p className="mt-2 text-[11px] appointment-warning-text">{b.local ? 'Sample request — no real business was notified.' : `Awaiting confirmation from ${b.resource_name}.`}</p>
                 )}
                 <AnimatePresence>
                   {!past && expanded === b.id && (

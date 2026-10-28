@@ -352,3 +352,6 @@ html.light .aurora-orb { opacity: 0.4; }
 .console-scope-select, .console-scope-select option { background-color: var(--bg-elev); color: var(--text); }
 .sample-ticket-notice { background: #fff7e5; border-color: #d4a64e; color: #684200; }
 html.dark .sample-ticket-notice { background: #382a12; border-color: #a57628; color: #ffe1a1; }
+
+.appointment-warning-text { color: #704300; }
+html.dark .appointment-warning-text { color: #ffdc98; }
