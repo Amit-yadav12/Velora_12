@@ -2,6 +2,7 @@ import supabase, { isDatabaseConfigured } from './db-client.js';
 import { cors, sanitizeText, isEmail , enforceRateLimit, safeError } from './_lib/security.js';
 import { getAuth } from './_lib/auth.js';
 import { cityBusinesses } from './_lib/synthetic.js';
+import { istYmd, istWeekdayIndex, istWallDate, IST_TIME_ZONE } from './_lib/ist.js';
 
 // Conversational AI concierge. Understands natural-language requests and
 // returns a structured action the frontend can execute (navigate, book, etc.),
@@ -9,23 +10,27 @@ import { cityBusinesses } from './_lib/synthetic.js';
 // is set, otherwise a deterministic NLU handles intents.
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 
-function parseDate(text) {
+// Natural-language dates must be resolved in the business's IST calendar,
+// not the server's (usually UTC) calendar. Accept a clock for regression tests.
+export function parseRequestedDate(text, now = new Date()) {
   const t = text.toLowerCase();
-  const now = new Date();
-  if (t.includes('today')) return now;
-  if (t.includes('tomorrow')) { const d = new Date(now); d.setDate(d.getDate() + 1); return d; }
+  if (t.includes('today')) return istYmd(now);
+  if (t.includes('tomorrow')) return istYmd(new Date(now.getTime() + 86_400_000));
   for (let i = 0; i < 7; i++) {
-    if (t.includes(DAYS[i])) { const d = new Date(now); const diff = (i - d.getDay() + 7) % 7 || 7; d.setDate(d.getDate() + diff); return d; }
+    if (t.includes(DAYS[i])) {
+      const diff = (i - istWeekdayIndex(now) + 7) % 7 || 7;
+      return istYmd(new Date(now.getTime() + diff * 86_400_000));
+    }
   }
   return null;
 }
-function parseTimeOfDay(text) {
+export function parseTimeOfDay(text) {
   const t = text.toLowerCase();
   if (t.includes('morning')) return 10;
   if (t.includes('afternoon')) return 14;
   if (t.includes('evening') || t.includes('night')) return 17;
   const m = t.match(/(\d{1,2})\s*(am|pm)/);
-  if (m) { let h = parseInt(m[1], 10); if (m[2] === 'pm' && h < 12) h += 12; return h; }
+  if (m) { let h = parseInt(m[1], 10); if (h < 1 || h > 12) return null; if (m[2] === 'am' && h === 12) h = 0; if (m[2] === 'pm' && h < 12) h += 12; return h; }
   return null;
 }
 
@@ -69,7 +74,7 @@ export default async function handler(req, res) {
     let cat = null;
     for (const [k, v] of Object.entries(categoryHints)) if (lower.includes(k)) { cat = v; break; }
 
-    const date = parseDate(message);
+    const date = parseRequestedDate(message);
     const hour = parseTimeOfDay(message);
 
     let reply = '';
@@ -83,10 +88,10 @@ export default async function handler(req, res) {
     } else if (intent === 'book') {
       const target = matchBiz || (cat ? (businesses || []).filter((b) => b.category === cat).sort((a, b) => b.rating - a.rating)[0] : null);
       if (target) {
-        const d = (date || new Date());
-        const dateStr = d.toISOString().slice(0, 10);
-        reply = `${target.synthetic ? 'Sample listing — not a real appointment. ' : ''}Great — let's explore ${target.name}${date ? ` for ${d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })}` : ''}${hour ? ` in the ${hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'}` : ''}. Opening the booking page with smart slots.`;
-        action = { type: 'book', business_id: target.id, date: dateStr, preferred_hour: hour, to: `/business/${target.id}?date=${dateStr}${hour ? `&hour=${hour}` : ''}` };
+        const dateStr = date || istYmd();
+        const d = istWallDate(dateStr, 12);
+        reply = `${target.synthetic ? 'Sample listing — not a real appointment. ' : ''}Great — let's explore ${target.name}${date ? ` for ${d.toLocaleDateString('en-IN', { timeZone: IST_TIME_ZONE, weekday: 'long', month: 'short', day: 'numeric' })}` : ''}${hour !== null ? ` ${hour === 0 ? 'at midnight' : `in the ${hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'}`}` : ''}. Opening the booking page with smart slots.`;
+        action = { type: 'book', business_id: target.id, date: dateStr, preferred_hour: hour, to: `/business/${target.id}?date=${dateStr}${hour !== null ? `&hour=${hour}` : ''}` };
       } else {
         reply = 'Which type of business would you like to book? For example: "Book a dentist tomorrow afternoon" or "Book Lumen Hair & Beauty".';
         action = { type: 'navigate', to: '/search' };

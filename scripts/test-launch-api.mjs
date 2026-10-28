@@ -176,6 +176,8 @@ res=fakeRes();await nearestHandler(req('GET',null,{}, {city:'Jaipur',lat:'26.9',
 ok(res.statusCode===200 && !res.body.overall_nearest?.synthetic, 'configured nearest endpoint never inserts synthetic rows');
 res=fakeRes();await heatmapHandler(req('GET',null,{}, {business_id:'101'}),res);
 ok(res.statusCode===503, 'synthetic forecast is unavailable for configured businesses');
+res=fakeRes();await conciergeHandler(req('POST',null,{message:'book Studio at 12 am',city:'Jaipur'}),res);
+ok(res.statusCode===200 && res.body.action?.preferred_hour===0 && res.body.action?.to.includes('&hour=0') && res.body.reply.includes('midnight'), 'concierge preserves midnight in its booking link and response');
 const ordinaryFrom = supabase.from;
 supabase.from = (table) => {
   if (table !== 'businesses') return ordinaryFrom(table);

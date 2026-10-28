@@ -28,7 +28,7 @@ Use `.env.example` as a template. Set secrets in the hosting provider, not Git o
 
 Enable the appropriate Google Cloud APIs and billing/quota, and test from the deployed host. Browser and server keys have different restrictions. Without a working Maps key, OpenStreetMap tiles may render if reachable and manual coordinates work, but Google address search, provider verification, Places and travel times are unavailable. The public tile service has its own usage policy; use an appropriate tile provider for production volume.
 
-In Supabase Auth, configure Site URL and redirect allowlist for your deployed origin. Enable and configure the Google provider there if Google sign-in is desired; Google OAuth redirects through Supabase, not a hardcoded demo identity. Test confirmation-email and recovery redirects. The public `business-media` bucket is for public photos, not sensitive documents. Verify bucket MIME, size and owner-folder policies on the real project.
+In Supabase Auth, configure Site URL and the redirect allowlist for your deployed origin, including `/reset-password`. Configure an email provider and test confirmation-email and recovery redirects against a staging project. Google sign-in is intentionally disabled in the UI even if an OAuth provider is configured; enabling it requires a separately implemented and tested flow. The public `business-media` bucket is for public photos, not sensitive documents. Verify bucket MIME, size and owner-folder policies on the real project.
 
 ## 3. Hosting
 

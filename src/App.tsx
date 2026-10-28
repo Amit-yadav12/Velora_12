@@ -11,6 +11,7 @@ import { ensureDemoOps, ensureDemoSeeded } from './lib/demoStore';
 // Customer (product-first) pages — Home eager, rest lazy for fast first paint
 import Home from './pages/customer/Home';
 import Welcome from './pages/customer/Welcome';
+import ResetPassword from './pages/customer/ResetPassword';
 import Verify from './pages/Verify';
 const Explore = lazy(() => import('./pages/customer/Explore'));
 const BusinessOnboarding = lazy(() => import('./pages/business/BusinessOnboarding'));
@@ -72,6 +73,7 @@ export default function App() {
           <ScrollToTop />
           <Routes>
             <Route path="/welcome" element={<Welcome />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/verify/:token" element={<Verify />} />
             <Route path="/onboard" element={S(<BusinessOnboarding />)} />
             <Route path="/onboard/:id" element={S(<BusinessOnboarding />)} />
