@@ -197,9 +197,9 @@ export default function Welcome() {
         setLoading(false);
         return;
       }
-      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/welcome` });
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/reset-password` });
       if (error) throw error;
-      setInfo(`Reset link sent to ${email}. Check your inbox (and spam).`);
+      setInfo('If this account is eligible, a recovery email may arrive. Delivery depends on the email provider; check your inbox and spam.');
     } catch (e: unknown) {
       setErr(friendly(errMsg(e)));
     } finally {

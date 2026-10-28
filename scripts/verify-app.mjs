@@ -457,6 +457,37 @@ await waitFor(() => window.location.pathname !== '/welcome', { timeout: 8000, la
 ok('Email sign-in works with the account just created',
   window.location.pathname !== '/welcome' && !bodyHas('Incorrect email or password'), `path=${window.location.pathname}`);
 
+console.log('—— 2c. Password recovery (sample and mocked provider) ——');
+await ReactMod.act(async () => { await supa.default.auth.signOut(); });
+await mount('/reset-password');
+await waitFor(() => bodyHas('email recovery is unavailable in sample mode'), { label: 'sample recovery unavailable' });
+ok('Sample recovery never fabricates a password reset or email', !document.getElementById('reset-password') && bodyHas('Request a new link'));
+ok('Unavailable recovery offers a labelled path back to sign-in', !!all('a').find((a) => txt(a) === 'Back to sign-in' && a.getAttribute('href') === '/welcome'));
+
+// Exercise the real form with a mocked update operation; this does not claim a live Supabase recovery.
+await ReactMod.act(async () => { root.unmount(); });
+const { ResetPasswordForm } = await vite.ssrLoadModule('/src/pages/customer/ResetPassword.tsx');
+const { MemoryRouter } = await import('react-router-dom');
+const formContainer = document.createElement('div');
+document.body.appendChild(formContainer);
+root = createRoot(formContainer);
+let recoveryCalls = 0;
+const updatePassword = async () => { recoveryCalls++; if (recoveryCalls === 1) throw new Error('Provider unavailable'); };
+await ReactMod.act(async () => { root.render(React.createElement(MemoryRouter, null, React.createElement(ResetPasswordForm, { updatePassword }))); });
+ok('Recovery inputs have labels, autocomplete and associated errors', !!document.querySelector('label[for="reset-password"]') && !!document.querySelector('label[for="reset-confirmation"]') && document.getElementById('reset-password').autocomplete === 'new-password');
+await click(find('button', 'Update password'));
+ok('Recovery validates password length before contacting provider', bodyHas('at least 6 characters') && recoveryCalls === 0 && document.getElementById('reset-password').getAttribute('aria-describedby') === 'reset-error');
+typeInto(document.getElementById('reset-password'), 'recovery-secret-123');
+typeInto(document.getElementById('reset-confirmation'), 'different-secret');
+await settle(100); await click(find('button', 'Update password'));
+ok('Recovery rejects mismatched passwords without provider calls', bodyHas('Passwords do not match') && recoveryCalls === 0);
+typeInto(document.getElementById('reset-confirmation'), 'recovery-secret-123');
+await settle(100); await click(find('button', 'Update password'));
+ok('Provider rejection remains retryable and never claims success', bodyHas('Provider unavailable') && !bodyHas('Your password was updated') && recoveryCalls === 1);
+await click(find('button', 'Update password'));
+ok('Recovery reports success only after provider confirmation', bodyHas('Your password was updated') && recoveryCalls === 2);
+ok('Recovery password is never written to browser storage', !JSON.stringify(window.localStorage).includes('recovery-secret-123') && !JSON.stringify(window.sessionStorage).includes('recovery-secret-123'));
+
 console.log('—— 2c. Phone OTP (offline demo) ——');
 await ReactMod.act(async () => { await supa.default.auth.signOut(); });
 await mount('/welcome?role=customer&next=%2Fexplore');

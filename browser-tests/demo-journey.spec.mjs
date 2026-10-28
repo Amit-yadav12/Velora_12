@@ -531,6 +531,13 @@ for (const viewport of SIZES) {
     await expectAxeClean(page, '/welcome');
     await shot('welcome');
 
+    await page.goto('/reset-password');
+    await expect(page.getByRole('alert')).toContainText('email recovery is unavailable in sample mode');
+    await expect(page.getByRole('link', { name: 'Back to sign-in' })).toBeVisible();
+    await expectNoHorizontalOverflow(page, '/reset-password');
+    await expectAxeClean(page, '/reset-password');
+    await shot('reset-password');
+
     await page.goto('/onboard');
     await expectNoHorizontalOverflow(page, '/onboard');
     await expectAxeClean(page, '/onboard');
