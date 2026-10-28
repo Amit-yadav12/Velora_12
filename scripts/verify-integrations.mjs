@@ -567,6 +567,17 @@ const pkg = JSON.parse(read('package.json'));
 ok('verify:integrations is wired into the verify script',
   typeof pkg.scripts['verify:integrations'] === 'string' && /verify:integrations/.test(pkg.scripts.verify));
 
+console.log('\n—— Concierge date interpretation (IST, deterministic) ——');
+const { parseRequestedDate, parseTimeOfDay } = await import('../api/concierge.js');
+const istAfterMidnight = new Date('2026-10-27T20:00:00Z'); // Wednesday 01:30 IST, Tuesday UTC
+ok('today uses the IST calendar even when UTC is still yesterday', parseRequestedDate('book today', istAfterMidnight) === '2026-10-28');
+ok('tomorrow uses the IST calendar across UTC midnight', parseRequestedDate('book tomorrow', istAfterMidnight) === '2026-10-29');
+ok('weekday requests use the IST weekday, not the UTC weekday', parseRequestedDate('book Wednesday', istAfterMidnight) === '2026-11-04');
+ok('next weekday works across a month boundary', parseRequestedDate('book Sunday', new Date('2026-10-31T20:00:00Z')) === '2026-11-08');
+ok('no explicit date is not invented', parseRequestedDate('book a salon', istAfterMidnight) === null);
+ok('12 am is midnight and 12 pm is noon', parseTimeOfDay('12 am') === 0 && parseTimeOfDay('12 pm') === 12);
+ok('invalid 12-hour clock values do not become preferred hours', parseTimeOfDay('13 pm') === null && parseTimeOfDay('0 am') === null);
+
 /* ========================================================================== */
 console.log(`\n═══ RESULT: ${pass} passed, ${fail} failed ═══`);
 process.exit(fail ? 1 : 0);
