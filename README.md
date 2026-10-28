@@ -53,7 +53,7 @@ npm run verify
 npm audit
 ```
 
-`verify` runs the demo engine/auth suites, mocked integration tests, isolated PGlite migration/security and API regressions, and a jsdom app/API harness. PGlite uses Supabase auth/storage stubs and is **not** a live Supabase project or proof of real concurrent transactions. Browser tests using intercepted responses similarly do not prove an external provider worked. See [FINAL_REPORT.md](FINAL_REPORT.md) for the latest test scope and remaining rollout checks.
+`verify` runs the demo engine/auth suites, mocked integration tests, isolated PGlite migration/security and API regressions, and a jsdom app/API harness. `verify:browser` runs the sample customer-booking → QR ticket → business check-in journey in Chromium at 375, 768 and 1440 CSS px, with axe checks, keyboard focus/OTP, reduced motion, touch-target and overflow assertions; CI retains screenshots and traces as a workflow artifact. Install Chromium with `npx playwright install --with-deps chromium` before running it locally. PGlite uses Supabase auth/storage stubs and is **not** a live Supabase project or proof of real concurrent transactions; the browser suite uses only the isolated sample tenant and does not prove an external provider worked. See [FINAL_REPORT.md](FINAL_REPORT.md) for current evidence and remaining rollout checks.
 
 ## Operational limits
 

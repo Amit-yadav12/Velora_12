@@ -83,7 +83,7 @@ export default function GoogleMapEmbed({ center, city, category, onSelectLive }:
 
       {/* Center badge */}
       <div className="glass absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs">
-        <MapPin className="h-3.5 w-3.5 text-[var(--color-brand-indigo)]" />
+        <MapPin className="h-3.5 w-3.5 text-[var(--text-link-strong)]" />
         <span className="max-w-[180px] truncate">{center.label || city}</span>
         {hasLive && <span className="flex items-center gap-1 text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 pulse-dot" />Live</span>}
       </div>
@@ -91,7 +91,7 @@ export default function GoogleMapEmbed({ center, city, category, onSelectLive }:
         onClick={() => openGoogleMaps(center)}
         className="glass absolute bottom-3 right-3 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium"
       >
-        <Navigation className="h-3.5 w-3.5 text-[var(--color-brand-indigo)]" /> Directions
+        <Navigation className="h-3.5 w-3.5 text-[var(--text-link-strong)]" /> Directions
       </button>
 
       {/* Live results strip */}

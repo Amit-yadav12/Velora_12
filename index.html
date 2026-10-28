@@ -4,9 +4,10 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <!-- Inter is self-hosted (public/fonts) so the app renders its real type on
+         a venue with no outbound network — no third-party request, no FOUT. -->
+    <link rel="preload" href="/fonts/inter-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/inter-600.woff2" as="font" type="font/woff2" crossorigin />
     <meta name="description" content="Velora — India-first appointment and local-service booking. Book clinics, dentists, salons, gyms, coaching, courts, hotels and more across 16 cities. Real availability, instant confirmation, signed QR tickets and directions." />
     <meta name="keywords" content="appointment booking, book clinic, book salon, dentist appointment, gym booking, AI scheduling, Velora, India booking app, salon booking, doctor appointment, sports court booking, hotel booking" />
     <meta name="author" content="Velora" />

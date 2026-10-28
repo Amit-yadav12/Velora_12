@@ -3,12 +3,13 @@
 // de-duplicated by ref/id, so every page derives its numbers from the same
 // source of truth. Subscriptions (Supabase realtime + local event bus) are
 // registered once per page and always cleaned up.
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import supabase, { isDemoMode } from './supabase';
-import { apiGet } from './api';
+import { apiGet, hasLiveSession } from './api';
 import { listLocalBookings } from './offlineStore';
 import { listDemoBusinesses, listDemoServices, listDemoStaff, listDemoCustomers } from './demoStore';
 import { deriveCustomers, type CustomerRecord } from './metrics';
+import { bookingBusinessId, inScope, setConsoleScope, useConsoleScope } from './consoleScope';
 import {
   onBookingsChanged, onBusinessesChanged, onDemoReset, onNotifsChanged, onServicesChanged, onStaffChanged,
 } from '../services/events';
@@ -18,6 +19,12 @@ import type { ConsoleBooking, ExplicitCustomer } from './types';
 export interface ConsoleData {
   bookings: ConsoleBooking[];
   businesses: Business[];
+  /** Every business in the console, regardless of the active scope. */
+  allBusinesses: Business[];
+  /** The business the console is focused on, when a scope is active. */
+  scopeBusiness: Business | null;
+  scope: string | null;
+  setScope: (businessId: string | null) => void;
   services: BusinessService[];
   staff: BusinessStaff[];
   customers: CustomerRecord[];
@@ -27,20 +34,27 @@ export interface ConsoleData {
 }
 
 export function useConsoleData(city?: string): ConsoleData {
-  const [data, setData] = useState<Omit<ConsoleData, 'reload'>>({
+  const scope = useConsoleScope();
+  const [data, setData] = useState<Omit<ConsoleData, 'reload' | 'scope' | 'setScope' | 'scopeBusiness' | 'allBusinesses'>>({
     bookings: [], businesses: [], services: [], staff: [], customers: [], loading: true, error: false,
   });
+  const [allBusinesses, setAllBusinesses] = useState<Business[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async () => {
-    // Fail-soft parallel loads: each source degrades independently.
-    const [serverBookings, serverBiz, serverServices, serverStaff, serverCustomers] = await Promise.all([
-      apiGet<ConsoleBooking[]>('/api/bookings').catch(() => null),
-      apiGet<Business[]>('/api/admin?resource=business').catch(() => null),
-      apiGet<BusinessService[]>('/api/admin?resource=services').catch(() => null),
-      apiGet<BusinessStaff[]>('/api/admin?resource=staff').catch(() => null),
-      apiGet<ExplicitCustomer[]>('/api/admin?resource=customers').catch(() => null),
-    ]);
+    // Fail-soft parallel loads: each source degrades independently. With no
+    // Supabase project there is no owner session, so these endpoints can only
+    // 401 — the sample tenant is the whole dataset and is read locally.
+    const live = hasLiveSession();
+    const [serverBookings, serverBiz, serverServices, serverStaff, serverCustomers] = live
+      ? await Promise.all([
+        apiGet<ConsoleBooking[]>('/api/bookings').catch(() => null),
+        apiGet<Business[]>('/api/admin?resource=business').catch(() => null),
+        apiGet<BusinessService[]>('/api/admin?resource=services').catch(() => null),
+        apiGet<BusinessStaff[]>('/api/admin?resource=staff').catch(() => null),
+        apiGet<ExplicitCustomer[]>('/api/admin?resource=customers').catch(() => null),
+      ])
+      : [null, null, null, null, null];
 
     // Bookings: server + demo tenant, de-duplicated by ref (server wins).
     const serverB: ConsoleBooking[] = Array.isArray(serverBookings) ? serverBookings : [];
@@ -70,6 +84,7 @@ export function useConsoleData(city?: string): ConsoleData {
     const demoSvcIds = new Set(demoSvc.map((s) => String(s.id)));
     const demoStaffIds = new Set(demoStaff.map((s) => String(s.id)));
     const businesses: Business[] = [...demoBiz, ...serverBizRows.filter((b) => !demoBizIds.has(String(b.id)))];
+    setAllBusinesses(businesses);
     const services: BusinessService[] = [...demoSvc, ...serverSvcRows.filter((s) => !demoSvcIds.has(String(s.id)))];
     const staff: BusinessStaff[] = [...demoStaff, ...serverStaffRows.filter((s) => !demoStaffIds.has(String(s.id)))];
 
@@ -117,5 +132,17 @@ export function useConsoleData(city?: string): ConsoleData {
     };
   }, [load]);
 
-  return { ...data, reload: load };
+  // Scope is a view filter only; the server already restricted this dataset to
+  // the owner's businesses. Unscoped (the default) shows everything they own.
+  const bookings = useMemo(
+    () => (scope ? data.bookings.filter((b) => inScope(bookingBusinessId(b), scope)) : data.bookings),
+    [data.bookings, scope],
+  );
+  const customers = useMemo(() => {
+    if (!scope) return data.customers;
+    const emails = new Set(bookings.map((b) => (b.customer_email || '').toLowerCase()).filter(Boolean));
+    return data.customers.filter((c) => emails.has((c.email || '').toLowerCase()));
+  }, [data.customers, bookings, scope]);
+  const scopeBusiness = scope ? allBusinesses.find((b) => String(b.id) === String(scope)) || null : null;
+  return { ...data, bookings, customers, allBusinesses, scope, scopeBusiness, setScope: setConsoleScope, reload: load };
 }

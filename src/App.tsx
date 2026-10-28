@@ -5,6 +5,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { LocationProvider } from './contexts/LocationContext';
 import { CustomerGate, AdminGate } from './app/Guards';
 import AuroraBackground from './components/premium/AuroraBackground';
+import DemoGuide from './components/premium/DemoGuide';
 import { ensureDemoOps, ensureDemoSeeded } from './lib/demoStore';
 
 // Customer (product-first) pages — Home eager, rest lazy for fast first paint
@@ -98,6 +99,10 @@ export default function App() {
             {/* Catch-all — never dead-end */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
+          {/* Demo-tenant presenter walkthrough — mounted once, outside the
+              routed page so it survives role switches. Renders only when no
+              Supabase project is configured. */}
+          <DemoGuide />
         </BrowserRouter>
         </LocationProvider>
       </AuthProvider>

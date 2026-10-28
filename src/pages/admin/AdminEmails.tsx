@@ -31,7 +31,7 @@ export default function AdminEmails() {
     <div>
       <PageHeader title="Email delivery" subtitle="Review recorded provider attempts and unsent messages." />
       <div className="mb-4 rounded-2xl border border-app bg-surface p-4 flex items-start gap-3">
-        <Mail className="h-5 w-5 text-[var(--color-brand-indigo)] mt-0.5 shrink-0" />
+        <Mail className="h-5 w-5 text-[var(--text-link-strong)] mt-0.5 shrink-0" />
         <div>
           <p className="text-sm font-medium">How email works here</p>
           <p className="text-xs text-muted mt-0.5">

@@ -53,6 +53,7 @@ export default function AIConcierge() {
       {/* Floating launcher */}
       <motion.button initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: 'spring', delay: 0.5 }}
         onClick={() => setOpen(o => !o)} whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
+        aria-label={open ? 'Close Velora Concierge' : 'Open Velora Concierge'} aria-expanded={open} aria-controls={open ? 'velora-concierge-panel' : undefined}
         className="fixed bottom-24 lg:bottom-6 right-4 lg:right-6 z-[70] h-14 w-14 rounded-2xl grad-btn shadow-2xl grid place-items-center">
         <AnimatePresence mode="wait">
           {open ? <motion.span key="x" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ opacity: 0 }}><X className="h-6 w-6 text-white" /></motion.span>
@@ -63,7 +64,7 @@ export default function AIConcierge() {
       <AnimatePresence>
         {open && (
           <motion.div initial={{ opacity: 0, y: 20, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 20, scale: 0.96 }} transition={{ type: 'spring', damping: 24, stiffness: 300 }}
-            className="fixed bottom-40 lg:bottom-24 right-4 lg:right-6 z-[70] w-[calc(100vw-2rem)] sm:w-96 h-[520px] max-h-[70vh] glass rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+            id="velora-concierge-panel" className="fixed bottom-40 lg:bottom-24 right-4 lg:right-6 z-[70] w-[calc(100vw-2rem)] sm:w-96 h-[520px] max-h-[70vh] glass rounded-3xl shadow-2xl flex flex-col overflow-hidden">
             <div className="flex items-center gap-3 px-4 py-3.5 border-b border-app">
               <div className="h-9 w-9 rounded-xl grad-btn grid place-items-center"><Sparkles className="h-4 w-4 text-white" /></div>
               <div><p className="font-semibold text-sm">Velora Concierge</p><p className="text-[11px] text-emerald-400 flex items-center gap-1" title="Rule-based intent engine. When the deployment sets OPENAI_API_KEY, an optional model layer rewrites the reply — bookings are always validated by the server."><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 pulse-dot" /> Online</p></div>

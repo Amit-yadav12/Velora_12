@@ -10,6 +10,10 @@ import { useAuth } from '../../contexts/AuthContext';
 import type { LucideIcon } from 'lucide-react';
 import { errMsg } from '../../lib/types';
 import { isValidIndianPhone, normalizeIndianPhone } from '../../lib/india';
+import { openDemoGuide } from '../../lib/demoGuideStore';
+import { useLocation as useLocationContext } from '../../contexts/LocationContext';
+import { DEMO_SAMPLE_BUSINESS_ID } from '../../lib/demoJourney';
+import { istTomorrow } from '../../lib/format';
 
 type Role = 'customer' | 'admin';
 type Mode = 'choose' | 'signin' | 'register' | 'bizreg';
@@ -30,6 +34,7 @@ export default function Welcome() {
   const requestedNext = params.get('next') || '/';
   const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') ? requestedNext : '/';
   const { user, profile, loading: authLoading, refresh } = useAuth();
+  const { setCity } = useLocationContext();
   const reduceMotion = useReducedMotion();
 
   // ?role=business preselects the business console path (?role=customer the
@@ -237,6 +242,25 @@ export default function Welcome() {
     } catch (e: unknown) { setErr(friendly(errMsg(e)) || 'Could not create the account.'); setLoading(false); }
   };
 
+  /**
+   * Presenter fast path: sign in as the demo customer and open the Jaipur sample
+   * business on tomorrow's date, with the booking panel in view. Nothing here
+   * bypasses the product flow — it only saves navigation clicks.
+   */
+  const startJourney = async () => {
+    setLoading(true); resetMsgs();
+    try {
+      setCity('Jaipur');
+      await signInDemo('customer', (p) => setInfo(p.message));
+      await refresh();
+      const tomorrow = istTomorrow();
+      nav(`/business/${DEMO_SAMPLE_BUSINESS_ID}?date=${tomorrow}&focus=booking`, { replace: true });
+    } catch (e: unknown) {
+      setErr(friendly(errMsg(e)) || 'The demo session could not be started.');
+      setLoading(false);
+    }
+  };
+
   /* ---------------- Role selection screen ---------------- */
   if (!role) {
     return (
@@ -255,6 +279,30 @@ export default function Welcome() {
           </button>
           <p className="mt-2 text-xs text-dim">Google sign-in isn&apos;t connected in this build.</p>
           <p className="mt-2 text-xs text-dim">Sample mode: demo customer, demo business and demo OTP work offline. Google needs OAuth; SMS and email need providers.</p>
+
+          {/* Fast path for a presenter: one click starts the exact demo journey
+              (Jaipur sample business → slot → QR ticket) as the demo customer. */}
+          {isDemoMode && (
+            <div className="mt-6 rounded-2xl border border-[var(--color-brand-violet)]/30 bg-[var(--color-brand-violet)]/[0.08] p-4 text-left">
+              <p className="text-[10px] font-semibold uppercase tracking-[.18em] text-[var(--text-link-strong)]">Judge demo · about 3 minutes</p>
+              <p className="mt-1 text-sm font-medium">One booking, both sides of Velora</p>
+              <p className="mt-1 text-xs leading-relaxed text-dim">
+                Starts as the demo customer in Jaipur, on a clearly-marked sample salon. Sample data only — no payment or email is sent.
+              </p>
+              <button
+                type="button"
+                disabled={loading}
+                onClick={startJourney}
+                data-demo-cta="start-journey"
+                className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[var(--color-brand-violet)]/20 px-4 py-2.5 text-sm font-semibold text-[var(--text)] ring-1 ring-[var(--color-brand-violet)]/40 hover:bg-[var(--color-brand-violet)]/30 disabled:opacity-60"
+              >
+                {loading ? <><Loader2 className="h-4 w-4 animate-spin" /> Starting demo…</> : <>Start the demo journey <ArrowRight className="h-4 w-4" /></>}
+              </button>
+              <button type="button" onClick={openDemoGuide} className="mt-2 text-[11px] font-medium text-[var(--text-link-strong)] underline underline-offset-2">
+                See all five demo steps
+              </button>
+            </div>
+          )}
 
           <div className="mt-6 grid gap-4">
             <RoleCard onClick={() => { setRole('customer'); setMode('signin'); }} icon={UserRound} title="I'm a Customer" sub="Discover and book appointments near you" tint="#6366f1" delay={0.05} />
@@ -436,7 +484,7 @@ export default function Welcome() {
                   <div className="flex items-center justify-between text-xs">
                     <button type="button" onClick={forgotPassword} className="text-dim hover:text-[var(--text)] inline-flex items-center gap-1"><KeyRound className="h-3 w-3" /> Reset password</button>
                     {!isAdmin && (
-                      <button type="button" onClick={() => switchMode('register', true)} className="text-[var(--color-brand-indigo)] font-medium">Create account</button>
+                      <button type="button" onClick={() => switchMode('register', true)} className="text-[var(--text-link-strong)] font-medium">Create account</button>
                     )}
                   </div>
                 </form>
@@ -446,7 +494,7 @@ export default function Welcome() {
                 <section aria-labelledby="phone-login-heading" className="mt-5 space-y-3">
                   <div className="flex items-center justify-between gap-2">
                     <h3 id="phone-login-heading" className="text-sm font-semibold">Phone verification</h3>
-                    <button type="button" onClick={() => { resetMsgs(); setAuthPath(null); setOtpRequested(false); setDemoOtp(''); }} className="min-h-11 px-2 text-xs text-[var(--color-brand-indigo)]">Other sign-in options</button>
+                    <button type="button" onClick={() => { resetMsgs(); setAuthPath(null); setOtpRequested(false); setDemoOtp(''); }} className="min-h-11 px-2 text-xs text-[var(--text-link-strong)]">Other sign-in options</button>
                   </div>
                   {!otpRequested ? (
                     <form onSubmit={(event) => { event.preventDefault(); void requestPhoneOtp(); }} className="space-y-3">
@@ -501,14 +549,14 @@ export default function Welcome() {
                   <button disabled={loading} className="w-full grad-btn text-white font-medium rounded-xl py-3 flex items-center justify-center gap-2 disabled:opacity-60">
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Create account <ArrowRight className="h-4 w-4" /></>}
                   </button>
-                  <p className="text-center text-xs text-dim">Already have an account? <button type="button" onClick={() => switchMode('signin', true)} className="text-[var(--color-brand-indigo)] font-medium">Sign in</button></p>
+                  <p className="text-center text-xs text-dim">Already have an account? <button type="button" onClick={() => switchMode('signin', true)} className="text-[var(--text-link-strong)] font-medium">Sign in</button></p>
                 </form>
               )}
 
               {/* Demo — clearly styled, honest about what it is */}
               {isDemoMode && <div className="mt-6 rounded-xl border border-dashed border-app p-3">
                 <p className="text-xs text-dim mb-2">Explore the full working demo — {isAdmin ? 'business console' : 'customer app'} with sample data stored on this device.</p>
-                <button onClick={demo} disabled={loading} className="w-full text-xs rounded-lg border border-app hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] py-2.5 font-medium flex items-center justify-center gap-1.5 transition-colors">
+                <button onClick={demo} disabled={loading} className="w-full min-h-11 text-xs rounded-lg border border-app hover:border-[var(--border-strong)] hover:bg-[var(--surface-hover)] py-2.5 font-medium flex items-center justify-center gap-1.5 transition-colors">
                   {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><ShieldCheck className="h-3.5 w-3.5" /> Continue as demo {isAdmin ? 'business' : 'customer'}</>}
                 </button>
 
@@ -516,7 +564,7 @@ export default function Welcome() {
 
               {!isAdmin && (
                 <p className="mt-4 text-center text-sm text-dim">
-                  Have a business? <button onClick={() => { setRole('admin'); switchMode('bizreg'); }} className="text-[var(--color-brand-indigo)] font-medium">Create a business account</button>
+                  Have a business? <button onClick={() => { setRole('admin'); switchMode('bizreg'); }} className="text-[var(--text-link-strong)] font-medium">Create a business account</button>
                 </p>
               )}
             </>

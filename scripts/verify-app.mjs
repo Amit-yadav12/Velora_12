@@ -309,6 +309,27 @@ ok('Console audit page renders', !bodyHas('Something went wrong'));
 
 /* ================================================================== */
 console.log('\n—— 2b. Console writes → customer views (one shared demo dataset) ——');
+
+/**
+ * Book on tomorrow's IST date.
+ *
+ * The sample salon closes at 19:00 IST, so a late-evening run legitimately has
+ * an empty "today" grid. Choosing tomorrow keeps these checks about the booking
+ * engine and the shared dataset instead of the wall clock.
+ */
+const chooseTomorrow = async () => {
+  const field = all('input').find((i) => i.type === 'date');
+  if (!field) return false;
+  const next = new Date(Date.now() + 5.5 * 3600 * 1000 + 86400000).toISOString().slice(0, 10);
+  await ReactMod.act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    setter.call(field, next);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  });
+  return true;
+};
 const demoStore = await vite.ssrLoadModule('/src/lib/demoStore.ts');
 const demoAuth = await vite.ssrLoadModule('/src/lib/demoAuth.ts');
 const offline = await vite.ssrLoadModule('/src/lib/offlineStore.ts');
@@ -363,7 +384,8 @@ ok('Staff added in the console appears in the customer picker live (no reload)',
 const newSvcBtn = all('button').find((b) => txt(b).includes(svcName));
 if (newSvcBtn) await click(newSvcBtn);
 await settle(250);
-await waitFor(() => all('button').some((b) => /^\d{1,2}:\d{2}\s?(AM|PM)/i.test(txt(b))), { label: 'slots for new service' }).catch(() => {});
+await chooseTomorrow();
+await waitFor(() => all('button').some((b) => /^\d{1,2}:\d{2}\s?(AM|PM)/i.test(txt(b))), { timeout: 8000, label: 'slots for new service' }).catch(() => {});
 const newSlots = all('button').filter((b) => /^\d{1,2}:\d{2}\s?(AM|PM)/i.test(txt(b)) && !b.disabled);
 ok('The console-created demo service gets sample availability', newSlots.length > 0, `${newSlots.length} slots`);
 if (newSlots[0]) await click(newSlots[0]);
@@ -476,6 +498,7 @@ await goto('/business/demo-biz-aurora');
 await waitFor(() => bodyHas('Choose a service'), { label: 'OTP-session booking page' });
 const otpService = all('button').find((button) => /Signature Haircut/.test(txt(button)));
 if (otpService) await click(otpService);
+await chooseTomorrow();
 await waitFor(() => all('button').some((button) => /^\d{1,2}:\d{2}\s?(AM|PM)/i.test(txt(button)) && !button.disabled), { timeout: 12000, label: 'OTP booking slots' });
 await click(find('button', 'Review & book'));
 await waitFor(() => bodyHas('Review your booking'), { label: 'OTP booking review' });
@@ -656,6 +679,7 @@ ok('Sample coordinates are not presented as a live map pin', !document.querySele
 const svcBtn = all('button').find((b) => /Signature Haircut/.test(txt(b)));
 if (svcBtn) await click(svcBtn);
 await settle(200);
+await chooseTomorrow();
 await waitFor(() => all('button').some((b) => /^\d{1,2}:\d{2}\s?(AM|PM)/i.test(txt(b))), { label: 'slots' }).catch(() => {});
 const slotBtns = all('button').filter((b) => /^\d{1,2}:\d{2}\s?(AM|PM)/i.test(txt(b)) && !b.disabled);
 ok('Availability engine offers bookable slots', slotBtns.length > 0, `${slotBtns.length} slots`);
@@ -724,8 +748,16 @@ ok('Every result card states a starting price in ₹ (or "price on request")',
 
 const compareBtns = all('button').filter((b) => /to price comparison$/.test(b.getAttribute('aria-label') || ''));
 ok('Cards expose a comparison toggle', compareBtns.length >= 3, `${compareBtns.length} toggles`);
-if (compareBtns[0]) await click(compareBtns[0]);
-if (compareBtns[1]) await click(compareBtns[1]);
+// Compare two businesses that actually list catalogue prices: a listing with no
+// published services legitimately reads "Price on request" and is not a price
+// comparison (the sheet says so in plain language).
+const pricedToggles = compareBtns.filter((button) => {
+  const card = button.closest('.card');
+  return !!card && /from ₹/.test(txt(card));
+});
+const [firstToggle, secondToggle] = pricedToggles.length >= 2 ? pricedToggles : compareBtns;
+if (firstToggle) await click(firstToggle);
+if (secondToggle) await click(secondToggle);
 await settle(250);
 ok('Shortlisting two businesses opens the comparison tray', bodyHas('Compare 2'));
 const compareCta = all('button').find((b) => /^Compare 2$/.test(txt(b)));
@@ -906,13 +938,13 @@ await ReactMod.act(async () => {
   });
   await new Promise((r) => setTimeout(r, 200));
 });
-await waitFor(() => all('.card').some((c) => Array.from(c.querySelectorAll('button')).some((b) => /^\s*ticket/i.test(txt(b)))), { timeout: 12000, label: 'ticket button' }).catch(() => {});
-const ticketCard = all('.card').find((c) => Array.from(c.querySelectorAll('button')).some((b) => /^\s*ticket/i.test(txt(b))));
-const ticketBtn = ticketCard && Array.from(ticketCard.querySelectorAll('button')).find((b) => /^\s*ticket/i.test(txt(b)));
+await waitFor(() => all('.card').some((c) => Array.from(c.querySelectorAll('button')).some((b) => /qr ticket/i.test(txt(b)))), { timeout: 12000, label: 'ticket button' }).catch(() => {});
+const ticketCard = all('.card').find((c) => Array.from(c.querySelectorAll('button')).some((b) => /qr ticket/i.test(txt(b))));
+const ticketBtn = ticketCard && Array.from(ticketCard.querySelectorAll('button')).find((b) => /qr ticket/i.test(txt(b)));
 if (ticketBtn) await click(ticketBtn);
 await waitFor(() => !!document.querySelector('[data-ticket-qr] svg'), { label: 'history ticket modal' }).catch(() => {});
 ok('Booking history re-opens the ticket with a fresh QR', !!document.querySelector('[data-ticket-qr] svg'),
-  `cards=${all('.card').length} withTicket=${all('.card').filter((c) => Array.from(c.querySelectorAll('button')).some((b) => /^\s*ticket/i.test(txt(b)))).length}`);
+  `cards=${all('.card').length} withTicket=${all('.card').filter((c) => Array.from(c.querySelectorAll('button')).some((b) => /qr ticket/i.test(txt(b)))).length}`);
 const beforeTicketDl = downloads.length;
 await click(all('button').find((b) => /download png/i.test(txt(b))));
 await settle(500);

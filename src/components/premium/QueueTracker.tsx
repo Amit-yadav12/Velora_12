@@ -25,7 +25,7 @@ export default function QueueTracker({ startTime }: { startTime: string }) {
   return (
     <div className="card p-5 relative overflow-hidden">
       <div className="absolute -right-8 -top-8 h-28 w-28 rounded-full grad-btn opacity-10 blur-2xl" />
-      <div className="flex items-center gap-2 text-xs text-[var(--color-brand-indigo)] mb-3"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 pulse-dot" /> Demo queue estimate</div>
+      <div className="flex items-center gap-2 text-xs text-[var(--text-link-strong)] mb-3"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400 pulse-dot" /> Demo queue estimate</div>
       <div className="flex items-end gap-6">
         <div><p className="text-4xl font-semibold">#{pos}</p><p className="text-xs text-dim">Sample position</p></div>
         <div className="flex-1">
@@ -39,7 +39,7 @@ export default function QueueTracker({ startTime }: { startTime: string }) {
           </div>
           <p className="mt-2 text-xs text-dim">{ahead} {ahead === 1 ? 'person' : 'people'} ahead of you</p>
         </div>
-        <div className="text-right"><p className="text-2xl font-semibold flex items-center gap-1"><Clock className="h-4 w-4 text-[var(--color-brand-indigo)]" />{wait}m</p><p className="text-xs text-dim">Est. wait</p></div>
+        <div className="text-right"><p className="text-2xl font-semibold flex items-center gap-1"><Clock className="h-4 w-4 text-[var(--text-link-strong)]" />{wait}m</p><p className="text-xs text-dim">Est. wait</p></div>
       </div>
     </div>
   );

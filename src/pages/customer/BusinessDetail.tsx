@@ -6,11 +6,11 @@ import { Business, BusinessService, BusinessStaff, categoryColor } from '../../l
 import { BUSINESS_DAYS, todayHours } from '../../lib/businessHours';
 import { CategoryIcon } from '../../components/product';
 import { useAuth } from '../../contexts/AuthContext';
-import { apiSend } from '../../lib/api';
+import { apiSend, hasLiveSession } from '../../lib/api';
 import { submitBooking, newIdempotencyKey, type BookingPayload } from '../../services/booking';
 import { errMsg, type BookingConfirmation, type ReviewRow } from '../../lib/types';
 import { onBookingsChanged, onBusinessesChanged, onServicesChanged, onStaffChanged, toast } from '../../services/events';
-import { inr, istDate, istTime, istToday } from '../../lib/format';
+import { inr, istDate, istTime, istToday, demoTax, demoTotal } from '../../lib/format';
 import { isValidIndianPhone } from '../../lib/india';
 import { useLocation } from '../../contexts/LocationContext';
 import BookingTimeline, { Slot } from '../../components/premium/BookingTimeline';
@@ -37,6 +37,7 @@ export default function BusinessDetail() {
   const [service, setService] = useState<BusinessService | null>(null);
   const [staff, setStaff] = useState<BusinessStaff | null>(null);
   const [date, setDate] = useState(params.get('date') || istToday());
+  const focusBooking = params.get('focus') === 'booking';
   const [slots, setSlots] = useState<Slot[]>([]);
   const [recommended, setRecommended] = useState<Slot[]>([]);
   const [travel, setTravel] = useState(0);
@@ -86,7 +87,7 @@ export default function BusinessDetail() {
     } else {
       fetchBusiness(id!, city.name).then((d) => { if (!d && alive) setLoading(false); apply(d); }).catch(() => { if (alive) { setBusinessError('Business details could not be loaded. Please try again.'); setLoading(false); } });
     }
-    if (user && id) apiSend('/api/track-view', 'POST', { business_id: id, user_id: user.id }).catch(() => {});
+    if (user && id && hasLiveSession()) apiSend('/api/track-view', 'POST', { business_id: id, user_id: user.id }).catch(() => {});
     const refresh = () => {
       fetchBusiness(id!, city.name).then((d) => { if (d && alive) { setBiz(d); setService((s) => d.services?.find((x) => String(x.id) === String(s?.id)) || d.services?.[0] || s); } }).catch(() => {});
     };
@@ -167,7 +168,7 @@ export default function BusinessDetail() {
           qr_payload, local: true,
           pipeline: { email: 'log-fallback' },
         });
-        toast('Demo request saved on this device', 'success');
+        toast('Sample booking created · demo tenant', 'success');
         setReviewOpen(false);
         return;
       }
@@ -184,6 +185,16 @@ export default function BusinessDetail() {
       setErr(errMsg(e) || 'We could not complete your booking. Please try again.');
     } finally { setSubmitting(false); }
   };
+
+  // Deep link from the sample walkthrough / demo guide: land the presenter on
+  // the booking panel instead of making them scroll a long listing.
+  useEffect(() => {
+    if (!focusBooking || loading || !biz) return;
+    const target = document.getElementById('booking-panel');
+    if (!target) return;
+    const t = window.setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'start' }), 250);
+    return () => window.clearTimeout(t);
+  }, [focusBooking, loading, biz]);
 
   const mapSrc = useMemo(() => {
     if (!biz || biz.synthetic || biz.demo || biz.lat == null || biz.lng == null) return null;
@@ -213,7 +224,9 @@ export default function BusinessDetail() {
           {staff && <div className="flex justify-between gap-4"><span className="text-dim">Specialist</span><span className="font-medium text-right">{staff.name}</span></div>}
           <div className="flex justify-between gap-4"><span className="text-dim">When</span><span className="font-medium text-right">{slot ? `${istDate(slot)}, ${istTime(slot)}` : '—'}</span></div>
           <div className="flex justify-between gap-4"><span className="text-dim">Duration</span><span className="font-medium text-right">{service?.duration_min} min</span></div>
-          <div className="flex justify-between gap-4 pt-2 border-t border-app"><span className="text-dim">Total</span><span className="font-semibold">{service?.price === 0 ? 'Free' : inr(Number(service?.price) || 0)}</span></div>
+          <div className="flex justify-between gap-4 border-t border-app pt-2"><span className="text-dim">Service price</span><span className="font-medium text-right tabular-nums">{service?.price === 0 ? 'Free' : inr(Number(service?.price) || 0)}</span></div>
+          <div className="flex justify-between gap-4"><span className="text-dim">GST 18%{isDemoBusinessId(biz.id) ? ' (sample invoice)' : ''}</span><span className="font-medium text-right tabular-nums">{service?.price === 0 ? '—' : inr(demoTax(service?.price), { decimals: true })}</span></div>
+          <div className="flex justify-between gap-4 border-t border-app pt-2"><span className="font-medium">Total payable</span><span className="text-base font-semibold tabular-nums">{service?.price === 0 ? 'Free' : inr(demoTotal(service?.price), { decimals: true })}</span></div>
         </div>
         <div className="grid gap-3">
           <Field label="Your name">
@@ -227,9 +240,12 @@ export default function BusinessDetail() {
           </Field>}
         </div>
         {isDemoBusinessId(biz.id) && (
-          <p className="text-xs text-dim rounded-xl border border-dashed border-app p-3">
-            This is a sample business. Your demo request stays on this device and is not a real appointment.
-          </p>
+          <div className="rounded-xl border border-dashed border-[var(--color-brand-violet)]/30 bg-[var(--color-brand-violet)]/[0.06] p-3">
+            <p className="text-xs font-medium text-[var(--text-link-strong)]">Sample request · demo tenant</p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-dim">
+              Nothing is charged and no email or SMS is sent. The request is stored in this browser so the demo business console can confirm and check it in.
+            </p>
+          </div>
         )}
         {err && <p className="text-sm text-red-400">{err}</p>}
         <div className="flex gap-2.5">
@@ -269,13 +285,16 @@ export default function BusinessDetail() {
         </button>
       </div>
 
+      {/* min-w-0 on both columns: the specialist strip is an intentional
+          horizontal scroller, and without it its min-content width stretches
+          the single-column mobile grid past the viewport. */}
       <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
+        <div className="min-w-0 space-y-6 lg:col-span-2">
           <div className="flex flex-wrap gap-4 text-sm">
             {Number(biz.rating) > 0 ? <span className="inline-flex items-center gap-1.5"><Star className="h-4 w-4 fill-amber-400 text-amber-400" /><span className="font-medium">{Number(biz.rating).toFixed(1)}</span><span className="text-dim">({biz.review_count})</span></span> : <span className="text-dim">Not rated</span>}
             <span className="inline-flex items-center gap-1.5 text-muted"><MapPin className="h-4 w-4" /> {biz.address}{biz.pin && !String(biz.address).includes(biz.pin) ? ` ${biz.pin}` : ''}</span>
             {todayHours(biz) && <span className="inline-flex items-center gap-1.5 text-muted"><Clock className="h-4 w-4" /> {todayHours(biz)}</span>}
-            {!biz.synthetic && !biz.demo && biz.phone && <a href={`tel:${biz.phone}`} className="inline-flex items-center gap-1.5 text-[var(--color-brand-indigo)]"><Phone className="h-4 w-4" /> {biz.phone}</a>}
+            {!biz.synthetic && !biz.demo && biz.phone && <a href={`tel:${biz.phone}`} className="inline-flex items-center gap-1.5 text-[var(--text-link-strong)]"><Phone className="h-4 w-4" /> {biz.phone}</a>}
           </div>
           {/* Live Google signals + queue snapshot */}
           <div className="flex flex-wrap gap-2">
@@ -292,7 +311,7 @@ export default function BusinessDetail() {
             )}
             {biz.ai_popularity != null && (
               <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted"
-                title="Relative demand score for this sample listing (0–100). It is a deterministic estimate over sample data, not measured footfall."><Sparkles className="h-3.5 w-3.5 text-[var(--color-brand-indigo)]" /> Estimated demand {biz.ai_popularity}/100</span>
+                title="Relative demand score for this sample listing (0–100). It is a deterministic estimate over sample data, not measured footfall."><Sparkles className="h-3.5 w-3.5 text-[var(--text-link-strong)]" /> Estimated demand {biz.ai_popularity}/100</span>
             )}
             {biz.website && (
               <a href={biz.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-surface border border-app text-muted hover:text-[var(--text)]"><Globe className="h-3.5 w-3.5" /> Website</a>
@@ -313,7 +332,7 @@ export default function BusinessDetail() {
                     <div className="min-w-0">
                       <p className="text-sm font-medium">{o.title}</p>
                       <p className="text-xs text-dim">{o.desc}</p>
-                      <p className="mt-1 text-[11px] font-mono text-[var(--color-brand-indigo)]">Use code {o.code}</p>
+                      <p className="mt-1 text-[11px] font-mono text-[var(--text-link-strong)]">Use code {o.code}</p>
                     </div>
                   </div>
                 ))}
@@ -410,8 +429,8 @@ export default function BusinessDetail() {
               <h2 className="font-semibold mb-3">Location & directions</h2>
               <div className="rounded-2xl overflow-hidden border border-app h-56"><iframe title="location" src={mapSrc} className="w-full h-full border-0" loading="lazy" /></div>
               <div className="mt-3 flex flex-wrap items-center gap-3">
-                <a href={googleSearchUrl(`${biz.name}, ${biz.address || biz.city || ''}`)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-[var(--color-brand-indigo)] font-medium"><ExternalLink className="h-4 w-4" /> View on Map</a>
-                <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz.lat != null && biz.lng != null ? `${biz.lat},${biz.lng}` : biz.address || biz.name)}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-[var(--color-brand-indigo)] font-medium"><Navigation className="h-4 w-4" /> Get directions</a>
+                <a href={googleSearchUrl(`${biz.name}, ${biz.address || biz.city || ''}`)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-[var(--text-link-strong)] font-medium"><ExternalLink className="h-4 w-4" /> View on Map</a>
+                <a href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(biz.lat != null && biz.lng != null ? `${biz.lat},${biz.lng}` : biz.address || biz.name)}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-sm text-[var(--text-link-strong)] font-medium"><Navigation className="h-4 w-4" /> Get directions</a>
                 {travel > 0 && <span className="inline-flex items-center gap-1.5 text-sm text-dim"><Car className="h-4 w-4" /> ~{travel} min away</span>}
               </div>
             </div>
@@ -419,22 +438,29 @@ export default function BusinessDetail() {
         </div>
 
         {/* Booking panel */}
-        <div id="booking-panel" className="lg:sticky lg:top-24 h-fit scroll-mt-24">
-          {biz.live || biz.synthetic ? <div className="card p-5"><h2 className="font-semibold">{biz.live ? 'Listed on Google Maps' : 'Sample listing'}</h2><p className="text-sm text-muted mt-2">{biz.live ? 'This business has not enabled booking through Velora. Contact them directly for availability.' : 'This is an illustrative listing, not a real bookable business.'}</p>{biz.live && <a className="inline-flex text-sm text-[var(--color-brand-indigo)] mt-4" href={biz.maps_url || googleSearchUrl(biz.name)} target="_blank" rel="noreferrer">Open in Google Maps <ExternalLink className="h-4 w-4 ml-1" /></a>}</div> : <div className="card p-5">
+        <div id="booking-panel" className="min-w-0 h-fit scroll-mt-24 lg:sticky lg:top-24">
+          {biz.live || biz.synthetic ? <div className="card p-5"><h2 className="font-semibold">{biz.live ? 'Listed on Google Maps' : 'Sample listing'}</h2><p className="text-sm text-muted mt-2">{biz.live ? 'This business has not enabled booking through Velora. Contact them directly for availability.' : 'This is an illustrative listing, not a real bookable business.'}</p>{biz.live && <a className="inline-flex text-sm text-[var(--text-link-strong)] mt-4" href={biz.maps_url || googleSearchUrl(biz.name)} target="_blank" rel="noreferrer">Open in Google Maps <ExternalLink className="h-4 w-4 ml-1" /></a>}</div> : <div className="card p-5">
             <h2 className="font-semibold">Book your appointment</h2>
             <div className="mt-4">
               <label htmlFor="booking-date" className="text-xs text-dim">Date (IST)</label>
               <input id="booking-date" type="date" value={date} min={istToday()} onChange={e => setDate(e.target.value)} className="mt-1 w-full rounded-xl bg-elev border border-app px-3 py-2.5 text-sm outline-none focus:border-[var(--color-brand-indigo)]" />
             </div>
             <div className="mt-4">
-              <div className="flex items-center justify-between mb-2"><label className="text-xs text-dim">Pick a time</label>{recommended[0] && <span className="text-[10px] text-[var(--color-brand-indigo)] inline-flex items-center gap-1" title="Earliest well-rated free slot: ranked on availability, crowding and time of day."><Zap className="h-3 w-3" /> Best time · {recommended[0].label}</span>}</div>
+              <div className="flex items-center justify-between mb-2"><label className="text-xs text-dim">Pick a time</label>{recommended[0] && <span className="text-[10px] text-[var(--text-link-strong)] inline-flex items-center gap-1" title="Earliest well-rated free slot: ranked on availability, crowding and time of day."><Zap className="h-3 w-3" /> Best time · {recommended[0].label}</span>}</div>
               {loadingSlots ? <SlotSkeleton /> : slotError ? <div className="text-sm text-red-400 py-3">{slotError} <button onClick={() => setSlotRetry((n) => n + 1)} className="underline">Retry</button></div> : slots.filter(s => s.available).length === 0 ? <p className="text-sm text-dim py-4 text-center">No open slots. Try another date.</p> : (
                 <BookingTimeline slots={slots} selected={slot} onSelect={setSlot} recommended={recommended} />
               )}
             </div>
             {service && (
-              <div className="mt-4 pt-4 border-t border-app flex items-center justify-between text-sm">
-                <span className="text-dim">{service.name}</span><span className="font-semibold">{service.price === 0 ? 'Free' : inr(service.price)}</span>
+              <div className="mt-4 space-y-1 border-t border-app pt-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="min-w-0 truncate text-dim">{service.name}</span>
+                  <span className="font-semibold tabular-nums">{service.price === 0 ? 'Free' : inr(service.price)}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-dim">
+                  <span>GST 18% at review</span>
+                  <span className="tabular-nums">{service.price === 0 ? '—' : inr(demoTax(service.price), { decimals: true })}</span>
+                </div>
               </div>
             )}
             {err && !reviewOpen && <p className="text-sm text-red-400 mt-3">{err}</p>}

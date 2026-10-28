@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LayoutGrid, CalendarDays, Store, Sparkles, Users, UserCog, Shield, Sun, Moon, LogOut, Menu, Mail, Bell, CheckCheck, Activity } from 'lucide-react';
+import { LayoutGrid, CalendarDays, Store, Sparkles, Users, UserCog, Shield, Sun, Moon, LogOut, Menu, Mail, Bell, CheckCheck, Activity, ExternalLink } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../lib/theme';
 import { LogoMark } from '../components/Logo';
 import PageTransition from '../components/premium/PageTransition';
 import ToastHost from '../components/premium/ToastHost';
+import SampleModeBar from '../components/premium/SampleModeBar';
+import ConsoleScopePicker from '../components/console/ConsoleScopePicker';
+import LiveSyncBadge from '../components/console/LiveSyncBadge';
 import supabase, { isDemoMode } from '../lib/supabase';
-import { apiGet, apiSend } from '../lib/api';
+import { apiGet, apiSend, hasLiveSession } from '../lib/api';
 import { listLocalNotificationsFor, markAllLocalNotificationsRead, markLocalNotificationRead } from '../lib/offlineStore';
 import { onNotifsChanged, toast } from '../services/events';
 import { resetDemo } from '../lib/demoStore';
@@ -38,6 +41,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   const loadNotifs = () => {
     // Server notifications (role-scoped, authorization-checked) + demo tenant.
+    if (!hasLiveSession()) { setNotifs(listLocalNotificationsFor('admin')); return; }
     apiGet<NotificationRow[]>('/api/notifications').then((d) => {
       const server: NotificationRow[] = Array.isArray(d) ? d : [];
       const local = isDemoMode ? listLocalNotificationsFor('admin') : [];
@@ -88,7 +92,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         <div className="flex items-center gap-2.5 px-5 h-16 border-b border-app">
           <LogoMark size={32} />
           <span className="font-semibold tracking-tight">Velora</span>
-          <span className="ml-auto text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-indigo)]/15 text-[var(--color-brand-indigo)]">Admin</span>
+          <span className="ml-auto text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-indigo)]/15 text-[var(--text-link-strong)]">Admin</span>
         </div>
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {items.filter((it) => isDemoMode || profile?.is_operator || !['/admin/emails', '/admin/audit'].includes(it.to)).map(it => {
@@ -106,9 +110,23 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       <div className="flex-1 min-w-0 flex flex-col">
         <header className="h-16 border-b border-app flex items-center gap-3 px-5 sticky top-0 z-20 bg-elev/80 backdrop-blur">
           <button aria-label="Open menu" onClick={() => setOpen(true)} className="lg:hidden h-9 w-9 grid place-items-center rounded-lg border border-app"><Menu className="h-4 w-4" /></button>
-          <span className="text-sm font-medium">Business Console</span>
-          {isDemoMode && <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-violet)]/15 text-[var(--color-brand-violet)] border border-[var(--color-brand-violet)]/25">Demo tenant</span>}
+          <span className="hidden text-sm font-medium sm:inline">Business Console</span>
+          {isDemoMode && <span className="hidden sm:inline-flex items-center gap-1.5 text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full bg-[var(--color-brand-violet)]/15 text-[var(--text-link-strong)] border border-[var(--color-brand-violet)]/25">Demo tenant</span>}
+          <span className="mx-1 hidden h-4 w-px bg-[var(--border)] sm:block" aria-hidden="true" />
+          <ConsoleScopePicker />
+          <LiveSyncBadge />
           <div className="ml-auto flex items-center gap-2">
+            {isDemoMode && (
+              <button
+                type="button"
+                onClick={() => window.open('/?demoRole=customer', 'velora-demo-customer', 'noopener,width=430,height=900')}
+                title="Opens a second window signed in as the demo customer. Both windows share the sample store, so a booking you make there appears here within a second — no reload."
+                data-demo-window="customer"
+                className="hidden items-center gap-1.5 rounded-lg border border-app px-2.5 py-1.5 text-xs text-muted transition-colors hover:border-[var(--border-strong)] hover:text-[var(--text)] lg:inline-flex"
+              >
+                <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" /> Open customer window
+              </button>
+            )}
             <Link to="/" className="text-sm text-dim hover:text-[var(--text)] hidden sm:block">Customer app ↗</Link>
             {/* Notifications */}
             <div className="relative" ref={bellRef}>
@@ -121,7 +139,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                   <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="absolute right-0 mt-2 w-80 glass rounded-2xl shadow-2xl overflow-hidden z-50">
                     <div className="flex items-center justify-between px-4 py-3 border-b border-app">
                       <p className="text-sm font-semibold">Notifications</p>
-                      {unread > 0 && <button onClick={markAll} className="text-xs text-[var(--color-brand-indigo)] font-medium inline-flex items-center gap-1"><CheckCheck className="h-3.5 w-3.5" /> Mark all read</button>}
+                      {unread > 0 && <button onClick={markAll} className="text-xs text-[var(--text-link-strong)] font-medium inline-flex items-center gap-1"><CheckCheck className="h-3.5 w-3.5" /> Mark all read</button>}
                     </div>
                     <div className="max-h-96 overflow-y-auto p-1.5">
                       {notifs.length === 0 ? (
@@ -146,6 +164,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <button aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} onClick={toggle} className="h-9 w-9 grid place-items-center rounded-lg border border-app">{theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</button>
           </div>
         </header>
+        <SampleModeBar surface="business" />
         <main className="flex-1 p-5 lg:p-8 max-w-7xl w-full mx-auto"><PageTransition>{children}</PageTransition></main>
         <ToastHost />
       </div>

@@ -10,6 +10,10 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+playwright-report
+playwright/.cache
+playwright/.auth
+test-results
 *.local
 
 # Secrets — never committed (only .env.example is tracked)
@@ -31,3 +35,7 @@ dist-ssr
 *.sw?
 .vite-source-tags.js
 .vercel
+
+# Browser test output (generated)
+test-results
+playwright-report

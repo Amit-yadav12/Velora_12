@@ -5,6 +5,7 @@
 import { emitBookingsChanged, emitNotifsChanged } from '../services/events';
 import { canTransition } from './bookingStatus';
 import { ticketOrigin } from './site';
+import { demoTax } from './format';
 
 export interface LocalBooking {
   id: number | string;
@@ -258,7 +259,7 @@ export async function createDemoBooking(input: {
     qr_salt: salt,
   });
 
-  const tax = Math.round(price * 0.18 * 100) / 100;
+  const tax = demoTax(price);
   const invoice = saveLocalInvoice({
     id: ref, number: `INV-${ref.slice(3)}`, booking_ref: ref,
     customer_name: input.customer_name,

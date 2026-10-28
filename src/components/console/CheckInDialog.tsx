@@ -40,14 +40,20 @@ const CODE_STYLE: Record<string, { ring: string; icon: 'ok' | 'warn' | 'error' }
   other_business: { ring: 'border-amber-500/40 bg-amber-500/10', icon: 'warn' },
 };
 
-export default function CheckInDialog({ open, onClose, bookings, onCheckedIn, onOpenBooking }: {
+export default function CheckInDialog({ open, onClose, bookings, onCheckedIn, onOpenBooking, initialTicket = '' }: {
   open: boolean;
   onClose: () => void;
   bookings: readonly ConsoleBooking[];
   onCheckedIn: () => void;
   onOpenBooking?: (b: ConsoleBooking) => void;
+  /**
+   * The ticket token this console already holds for a sample booking (the same
+   * token its QR encodes). Pre-filling it saves the presenter from copying a
+   * URL by hand; verification itself is unchanged and still mandatory.
+   */
+  initialTicket?: string;
 }) {
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(initialTicket);
   const [busy, setBusy] = useState(false);
   const [plan, setPlan] = useState<CheckInPlan | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -72,8 +78,12 @@ export default function CheckInDialog({ open, onClose, bookings, onCheckedIn, on
   // Never leave the camera running once the dialog closes/unmounts.
   useEffect(() => () => stopScan(), []);
   useEffect(() => {
-    if (!open) { stopScan(); setScanNote(''); }
-  }, [open]);
+    if (!open) { stopScan(); setScanNote(''); return; }
+    // A new booking was chosen in the console: start from its own ticket.
+    setInput(initialTicket);
+    setPlan(null);
+    setScanNote('');
+  }, [open, initialTicket]);
 
   const submit = async (value: string) => {
     if (busy) return;
@@ -161,7 +171,7 @@ export default function CheckInDialog({ open, onClose, bookings, onCheckedIn, on
             className={`${inputCls} font-mono text-xs resize-none`}
           />
           <div className="flex flex-wrap gap-2">
-            <button type="submit" disabled={busy || !input.trim()} className={btnPrimary + ' flex-1 min-w-[140px]'}>
+            <button type="submit" disabled={busy || !input.trim()} className={btnPrimary + ' min-h-11 flex-1 min-w-[140px]'}>
               {busy ? <><Loader2 className="h-4 w-4 animate-spin" /> Verifying…</> : <><ShieldAlert className="h-4 w-4" /> Verify &amp; check in</>}
             </button>
             {canScan && !scanning && (
@@ -176,7 +186,7 @@ export default function CheckInDialog({ open, onClose, bookings, onCheckedIn, on
             )}
             {plan && (
               <button type="button" onClick={reset} className={btnGhost}>
-                <ClipboardPaste className="h-4 w-4" /> Next ticket
+                <ClipboardPaste className="h-4 w-4" aria-hidden="true" /> Next ticket
               </button>
             )}
           </div>
@@ -199,18 +209,27 @@ export default function CheckInDialog({ open, onClose, bookings, onCheckedIn, on
             <div className={`rounded-2xl border p-4 ${style.ring}`} data-checkin-code={plan.code}>
               <div className="flex items-start gap-3">
                 {style.icon === 'ok'
-                  ? <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0 mt-0.5" />
+                  ? <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-500/20"><CheckCircle2 className="h-5 w-5 text-emerald-400" aria-hidden="true" /></span>
                   : style.icon === 'warn'
-                    ? <ShieldAlert className="h-5 w-5 text-amber-400 shrink-0 mt-0.5" />
-                    : <XCircle className="h-5 w-5 text-red-400 shrink-0 mt-0.5" />}
-                <div className="min-w-0">
-                  <p className="font-medium">{plan.title}</p>
-                  <p className="text-sm text-muted mt-0.5">{plan.message}</p>
-                  {plan.ref && <p className="text-[11px] font-mono text-dim mt-1.5">Booking reference · {plan.ref}</p>}
+                    ? <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-amber-500/20"><ShieldAlert className="h-5 w-5 text-amber-400" aria-hidden="true" /></span>
+                    : <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-red-500/20"><XCircle className="h-5 w-5 text-red-400" aria-hidden="true" /></span>}
+                <div className="min-w-0 flex-1">
+                  <p className="text-base font-semibold leading-tight">{plan.title}</p>
+                  <p className="mt-0.5 text-sm text-muted">{plan.message}</p>
+                  {plan.code === 'verified' && plan.booking && (
+                    <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-300">
+                      <CheckCircle2 className="h-3 w-3" aria-hidden="true" /> Checked in · guest is on the floor
+                    </p>
+                  )}
+                  {plan.code === 'already_checked_in' && (
+                    <p className="mt-1.5 text-[11px] text-cyan-300">No state change was needed — a repeat scan never checks the same guest in twice.</p>
+                  )}
+                  {plan.ref && <p className="mt-2 font-mono text-[11px] text-dim">Booking reference · {plan.ref}</p>}
                   {plan.booking && (
                     <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 rounded-xl border border-app bg-[var(--surface)]/60 p-3 text-xs">
                       <dt className="text-dim">Guest</dt><dd className="font-medium">{plan.booking.customer_name || 'Guest'}</dd>
                       <dt className="text-dim">Service</dt><dd className="font-medium">{plan.booking.service_name}</dd>
+                      {plan.booking.resource_name && <><dt className="text-dim">Business</dt><dd className="font-medium">{plan.booking.resource_name}</dd></>}
                       <dt className="text-dim">Appointment</dt><dd className="font-medium">{appointmentTime(plan.booking.start_time)}</dd>
                       {plan.booking.employee_name && <><dt className="text-dim">Staff</dt><dd className="font-medium">{plan.booking.employee_name}</dd></>}
                       <dt className="text-dim">Status</dt><dd className="font-medium capitalize">{plan.booking.status.replaceAll('_', ' ')}</dd>
@@ -218,15 +237,22 @@ export default function CheckInDialog({ open, onClose, bookings, onCheckedIn, on
                       {plan.booking.location && <><dt className="text-dim">Location</dt><dd className="font-medium">{plan.booking.location}</dd></>}
                     </dl>
                   )}
-                  {plan.booking && onOpenBooking && (
-                    <button
-                      type="button"
-                      onClick={() => { onOpenBooking(plan.booking as ConsoleBooking); stopScan(); onClose(); }}
-                      className="mt-2 text-xs font-medium text-[var(--color-brand-indigo)]"
-                    >
-                      Open appointment
-                    </button>
-                  )}
+                  <div className="mt-2.5 flex flex-wrap gap-2">
+                    {plan.booking && onOpenBooking && (
+                      <button
+                        type="button"
+                        onClick={() => { onOpenBooking(plan.booking as ConsoleBooking); stopScan(); onClose(); }}
+                        className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-app px-2.5 py-1.5 text-xs font-medium text-[var(--text-link-strong)] hover:border-[var(--border-strong)]"
+                      >
+                        Open appointment
+                      </button>
+                    )}
+                    {(plan.code === 'verified' || plan.code === 'already_checked_in') && (
+                      <button type="button" onClick={() => { reset(); setInput(''); }} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-app px-2.5 py-1.5 text-xs font-medium hover:border-[var(--border-strong)]">
+                        Next guest
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

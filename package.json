@@ -14,7 +14,8 @@
     "verify:app": "tsx scripts/verify-app.mjs",
     "sql:bundle": "tsx scripts/build-sql.mjs",
     "sql:check": "tsx scripts/build-sql.mjs --check",
-    "verify:launch": "node scripts/test-launch-sql.mjs && tsx scripts/test-launch-api.mjs && tsx scripts/test-checkin-camera.mjs"
+    "verify:launch": "node scripts/test-launch-sql.mjs && tsx scripts/test-launch-api.mjs && tsx scripts/test-checkin-camera.mjs",
+    "verify:browser": "playwright test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.1",
@@ -32,12 +33,14 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.12",
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.64.1",
     "@types/google.maps": "^3.66.7",
     "@types/leaflet": "^1.9.21",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "axe-core": "^4.14.0",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
@@ -48,7 +51,7 @@
     "typescript-eslint": "^8.48.0",
     "vite": "^7.3.7"
   },
-  "description": "Velora AI OS \u2014 India-first AI appointment booking platform (React 19 + Vite 7, serverless API, Supabase).",
+  "description": "Velora AI OS — India-first AI appointment booking platform (React 19 + Vite 7, serverless API, Supabase).",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   }

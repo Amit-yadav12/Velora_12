@@ -13,7 +13,7 @@ const ICONS: Record<ToastKind, typeof Info> = {
 };
 const COLORS: Record<ToastKind, string> = {
   success: 'text-emerald-400',
-  info: 'text-[var(--color-brand-indigo)]',
+  info: 'text-[var(--text-link-strong)]',
   warning: 'text-amber-400',
   error: 'text-red-400',
 };

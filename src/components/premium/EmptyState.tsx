@@ -8,7 +8,7 @@ export default function EmptyState({ icon: Icon, title, sub, action }: { icon: L
         className="relative h-20 w-20 mx-auto mb-4">
         <div className="absolute inset-0 rounded-3xl grad-btn opacity-20 blur-xl" />
         <div className="relative h-full w-full rounded-3xl border border-app bg-surface grid place-items-center">
-          <Icon className="h-8 w-8 text-[var(--color-brand-indigo)]" />
+          <Icon className="h-8 w-8 text-[var(--text-link-strong)]" />
         </div>
       </motion.div>
       <p className="font-semibold text-lg">{title}</p>

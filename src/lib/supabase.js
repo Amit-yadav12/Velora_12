@@ -9,13 +9,72 @@ const anon = import.meta.env?.VITE_SUPABASE_ANON_KEY;
 
 export const isDemoMode = !url || !anon;
 
+// ── Demo identities shared by the mock client and the "second window" helper ──
+const DEMO_NAME_FOR = (email) => {
+  const n = String(email || 'guest')
+    .split('@')[0]
+    .replace(/[._-]+/g, ' ')
+    .trim();
+  return n ? n.charAt(0).toUpperCase() + n.slice(1) : 'Guest';
+};
+const DEMO_USER_FOR = (email, fullName) => {
+  const em = String(email || 'guest@velora.ai').toLowerCase().trim();
+  return {
+    id: `demo-${em.replace(/[^a-z0-9]+/g, '-')}`,
+    email: em,
+    user_metadata: { full_name: fullName || DEMO_NAME_FOR(em) },
+  };
+};
+const DEMO_SESSION_FOR = (email, fullName) => ({
+  user: DEMO_USER_FOR(email, fullName),
+  access_token: 'demo-token',
+  refresh_token: 'demo-refresh',
+  expires_in: 3600 * 24 * 7,
+});
+
+const SESS_KEY = 'velora-demo-session';
+/** Marks a tab that keeps its own demo identity (sessionStorage, not shared). */
+const TAB_PIN_KEY = 'velora-demo-tab-pinned';
+
+export const isDemoWindowPinned = () => {
+  try {
+    return sessionStorage.getItem(TAB_PIN_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Demo-only: give THIS tab its own demo identity.
+ *
+ * The sample tenant keeps one shared session in localStorage, which is right for
+ * normal use — but it means two windows cannot be a customer and a business at
+ * the same time. Pinning writes the session to sessionStorage for this tab only,
+ * so a presenter can keep the console open in one window while booking in
+ * another and watch the booking land live. Bookings still live in the shared
+ * localStorage store, so both windows see the same data.
+ *
+ * Never used when a real Supabase project is configured.
+ */
+export function pinDemoWindow(role) {
+  if (!isDemoMode) return false;
+  try {
+    const email = role === 'admin' ? 'admin@velora.ai' : 'customer@velora.ai';
+    sessionStorage.setItem(TAB_PIN_KEY, '1');
+    sessionStorage.setItem(SESS_KEY, JSON.stringify(DEMO_SESSION_FOR(email)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** @returns {any} Demo-mode client — typed as any so all call sites keep working. */
 function createDemoClient() {
-  const SESS_KEY = 'velora-demo-session';
   const listeners = new Set();
+  const store = () => (isDemoWindowPinned() ? sessionStorage : localStorage);
   const readSession = () => {
     try {
-      const s = localStorage.getItem(SESS_KEY);
+      const s = store().getItem(SESS_KEY);
       return s ? JSON.parse(s) : null;
     } catch {
       return null;
@@ -23,8 +82,9 @@ function createDemoClient() {
   };
   const writeSession = (sess) => {
     try {
-      if (sess) localStorage.setItem(SESS_KEY, JSON.stringify(sess));
-      else localStorage.removeItem(SESS_KEY);
+      const target = store();
+      if (sess) target.setItem(SESS_KEY, JSON.stringify(sess));
+      else target.removeItem(SESS_KEY);
     } catch {
       /* private mode */
     }
@@ -34,25 +94,8 @@ function createDemoClient() {
   // Canonical demo identities ALWAYS keep their canonical role — a stale stored
   // profile row can never demote the demo admin (or upgrade the demo customer).
   const DEMO_ROLE_BY_EMAIL = { 'admin@velora.ai': 'admin', 'customer@velora.ai': 'customer' };
-  const nameFor = (email) => {
-    const n = String(email || 'guest')
-      .split('@')[0]
-      .replace(/[._-]+/g, ' ')
-      .trim();
-    return n ? n.charAt(0).toUpperCase() + n.slice(1) : 'Guest';
-  };
-  const userFor = (email, fullName) => {
-    const em = String(email || 'guest@velora.ai').toLowerCase().trim();
-    return {
-      id: `demo-${em.replace(/[^a-z0-9]+/g, '-')}`,
-      email: em,
-      user_metadata: { full_name: fullName || nameFor(em) },
-    };
-  };
-  const sessionFor = (email, fullName) => {
-    const user = userFor(email, fullName);
-    return { user, access_token: 'demo-token', refresh_token: 'demo-refresh', expires_in: 3600 * 24 * 7 };
-  };
+  const nameFor = DEMO_NAME_FOR;
+  const sessionFor = DEMO_SESSION_FOR;
   const emit = (event) => {
     const sess = readSession();
     listeners.forEach((cb) => {
