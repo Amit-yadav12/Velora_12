@@ -68,10 +68,12 @@ function read<T>(key: string): T[] {
   }
 }
 
-function write<T>(key: string, arr: T[]): void {
+function write<T>(key: string, arr: T[], strict = false): void {
   try {
-    localStorage.setItem(key, JSON.stringify(arr.slice(0, 100)));
-  } catch { /* non-fatal */ }
+    localStorage.setItem(key, JSON.stringify(arr));
+  } catch {
+    if (strict) throw new Error('Demo storage is unavailable or full. Your change was not saved.');
+  }
   // Instant same-browser sync (tabs, dashboards, badges, toasts).
   try {
     if (key === N_KEY) emitNotifsChanged();
@@ -90,13 +92,13 @@ export function saveLocalBooking(b: Omit<LocalBooking, 'local' | 'created_at'> &
   const full: LocalBooking = { ...b, local: true, created_at: b.created_at || new Date().toISOString() };
   const cur = read<LocalBooking>(B_KEY).filter((x) => String(x.id) !== String(full.id) && x.ref !== full.ref);
   cur.unshift(full);
-  write(B_KEY, cur);
+  write(B_KEY, cur, true);
   return full;
 }
 
 export function updateLocalBooking(id: number | string, patch: Partial<LocalBooking>): void {
   const cur = read<LocalBooking>(B_KEY).map((b) => (String(b.id) === String(id) ? { ...b, ...patch } : b));
-  write(B_KEY, cur);
+  write(B_KEY, cur, true);
 }
 
 /**
@@ -110,7 +112,7 @@ export function transitionLocalBooking(id: number | string, to: string): string 
   if (!target) return null;
   if (!canTransition(target.status, to)) return null;
   const next = cur.map((b) => (String(b.id) === String(id) ? { ...b, status: to } : b));
-  write(B_KEY, next);
+  write(B_KEY, next, true);
   return to;
 }
 
@@ -166,8 +168,8 @@ export function seedCityNotifications(city: string): LocalNotification[] {
   const hasCity = existing.some((n) => n.body.includes(city));
   if (hasCity) return existing;
   const seeds: Omit<LocalNotification, 'id' | 'created_at' | 'local'>[] = [
-    { audience: 'customer', title: `Welcome to Velora ${city}`, body: `300+ verified businesses in ${city} are now bookable with instant confirmation.`, type: 'success', read: false },
-    { audience: 'customer', title: 'Weekend slots filling fast', body: `Top-rated salons & clinics in ${city} are 70% booked this weekend — reserve early.`, type: 'info', read: false },
+    { audience: 'customer', title: `Welcome to Velora ${city}`, body: `Explore sample businesses in ${city}. Demo bookings are stored on this device.`, type: 'success', read: false },
+    { audience: 'customer', title: 'Explore sample services', body: `Browse sample salons and clinics in ${city} to try the booking flow.`, type: 'info', read: false },
   ];
   const made = seeds.map(pushLocalNotification);
   return [...made, ...existing];
@@ -204,6 +206,15 @@ export async function createDemoBooking(input: {
   customer_phone?: string;
   status?: string; // default: pending (business confirms)
 }): Promise<{ booking: LocalBooking; invoice: LocalInvoice; qr_payload: string }> {
+  // Web Locks serialize read/check/write across tabs of the same browser origin.
+  // This is still a device-local demo, not a multi-user reservation backend.
+  if (typeof navigator !== 'undefined' && navigator.locks?.request) {
+    return navigator.locks.request('velora-demo-bookings', () => createDemoBookingUnlocked(input));
+  }
+  return createDemoBookingUnlocked(input);
+}
+
+async function createDemoBookingUnlocked(input: Parameters<typeof createDemoBooking>[0]): Promise<{ booking: LocalBooking; invoice: LocalInvoice; qr_payload: string }> {
   const { saveDemoCustomer, genQrSalt, localVerifyUrl } = await import('./demoStore');
   const start = new Date(input.start_time);
   if (Number.isNaN(start.getTime())) throw new Error('Please pick a valid time slot.');
@@ -239,7 +250,7 @@ export async function createDemoBooking(input: {
   const price = Number(input.service_price) || 0;
 
   const booking = saveLocalBooking({
-    id: `local-${Date.now()}`,
+    id: `local-${ref}-${salt}`,
     ref,
     business_id: input.business_id,
     business_name: input.business_name,

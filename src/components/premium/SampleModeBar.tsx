@@ -24,7 +24,7 @@ export default function SampleModeBar({ surface }: { surface: 'customer' | 'busi
             ? '— sample businesses, sample prices and sample bookings stored in this browser.'
             : '— this business, its staff, prices and bookings are synthetic and stored in this browser.'}
         </span>
-        <span className="hidden text-[var(--text-dim)] sm:inline">No payments, emails or calendar invites are sent.</span>
+        <span className="hidden text-[var(--text-dim)] sm:inline">This demo is device-local, not shared across devices. No payments, emails or calendar invites are sent.</span>
         <button
           type="button"
           onClick={openDemoGuide}

@@ -54,10 +54,11 @@ ok(inr(500.5).includes('500.50') && inr(500).includes('500'), 'INR prices retain
 const owner = {id:'owner-id',email:'owner@example.com',email_confirmed_at:'2030-01-01'};
 const outsider = {id:'outsider-id',email:'outsider@example.com',email_confirmed_at:'2030-01-01'};
 const customer = {id:'customer-id',email:'customer@example.com',email_confirmed_at:'2030-01-01'};
-const users = {'owner-token':owner,'outsider-token':outsider,'customer-token':customer};
+const phoneUser = {id:'phone-id', phone:'919876543210', phone_confirmed_at:'2030-01-01'};
+const users = {'owner-token':owner,'outsider-token':outsider,'customer-token':customer,'phone-token':phoneUser};
 const start = new Date(Date.now()+86400000).toISOString();
 const rows = {
-  profiles:[{id:owner.id,role:'admin',is_operator:false},{id:outsider.id,role:'admin',is_operator:false},{id:customer.id,role:'customer',is_operator:false}],
+  profiles:[{id:owner.id,role:'admin',is_operator:false},{id:outsider.id,role:'admin',is_operator:false},{id:customer.id,role:'customer',is_operator:false},{id:phoneUser.id,role:'customer',is_operator:false}],
   businesses:[{id:101,name:'Studio',owner_user_id:owner.id,owner_email:'private-owner@example.com',active:true},{id:102,name:'Other',owner_user_id:'another-id',active:true}],
   business_services:[{id:201,business_id:101,name:'Haircut',active:true}], business_staff:[],
   bookings:[{id:301,ref:'VL-SECURE',customer_id:customer.id,customer_email:customer.email,resource_id:101,resource_name:'Studio',service_name:'Haircut',start_time:start,end_time:new Date(Date.now()+88200000).toISOString(),status:'confirmed'}],
@@ -84,9 +85,9 @@ class Query {
 }
 supabase.from = (name) => new Query(name);
 supabase.storage.from = () => ({list:async()=>({data:[],error:null})});
-let rpcCalls = 0;
+let rpcCalls = 0, lastRpcParams;
 supabase.rpc = async (name, params) => {
-  rpcCalls++;
+  rpcCalls++; lastRpcParams = params;
   if (name === 'reserve_business_slot') return {data:{booking:{...rows.bookings[0]},business:rows.businesses[0],invoice:{number:'INV-VL-SECURE',total:500},replayed:false},error:null};
   if (name === 'save_owned_business') return {data:{id:103,...params.p_data},error:null};
   return {data:null,error:{message:'unexpected rpc'}};
@@ -159,6 +160,10 @@ ok(res.statusCode===400 && rpcCalls===0, 'booking cannot target a different cust
 rows.bookings[0].status='confirmed';
 res=fakeRes();await bookHandler(req('POST','customer-token',{business_id:101,service_id:201,start_time:start,customer_name:'Customer',customer_email:customer.email,idempotency_key:'retry'}),res);
 ok(res.statusCode===201 && !!res.body.booking && /\/verify\/v1\./.test(res.body.qr_payload) && rpcCalls===1, 'confirmed response requires a committed reservation and signed ticket');
+res=fakeRes();await bookHandler(req('POST','phone-token',{business_id:101,service_id:201,start_time:start,customer_name:'Phone Customer',idempotency_key:'phone-retry'}),res);
+ok(res.statusCode===201 && lastRpcParams.p_customer_id===phoneUser.id && lastRpcParams.p_customer_email===null && res.body.pipeline.email==='not_applicable', 'phone-only user reserves by authenticated ID without inventing or sending email');
+res=fakeRes();await bookHandler(req('POST','phone-token',{business_id:101,service_id:201,start_time:start,customer_name:'Phone Customer',customer_email:'other@example.com',idempotency_key:'phone-retry'}),res);
+ok(res.statusCode===400, 'phone-only user cannot attach an unverified email to the booking');
 
 const businessesHandler=(await import('../api/businesses.js')).default;
 const discoverHandler=(await import('../api/discover.js')).default;
@@ -204,6 +209,9 @@ res=fakeRes();await checkHandler(req('PUT','owner-token',{id:301,action:'check_i
 ok(res.statusCode===200 && rows.bookings[0].status==='checked_in', 'check-in success survives a post-commit metadata failure');
 supabase.from = ordinaryFrom;
 const myBookingsHandler=(await import('../api/my-bookings.js')).default;
+rows.bookings.push({id:399,ref:'VL-PHONE',customer_id:phoneUser.id,customer_email:null,resource_id:101,resource_name:'Studio',service_name:'Cut',start_time:start,end_time:start,status:'confirmed'});
+res=fakeRes();await myBookingsHandler(req('GET','phone-token'),res);
+ok(res.statusCode===200 && res.body.length===1 && res.body[0].ref==='VL-PHONE', 'phone-only booking history is scoped by user ID');
 supabase.from = (table) => { if (table==='booking_meta') throw new Error('secondary store offline'); return ordinaryFrom(table); };
 res=fakeRes();await myBookingsHandler(req('GET','customer-token'),res);
 ok(res.statusCode===200 && /\/verify\/v1\./.test(res.body[0]?.qr_payload), 'ticket can be regenerated from the persisted booking without metadata');

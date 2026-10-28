@@ -29,9 +29,9 @@ export default async function handler(req, res) {
     if (!isDatabaseConfigured()) return res.status(503).json({ error: 'Booking is unavailable because the database is not configured. No appointment was created.' });
     if (!qrSigningReady()) return res.status(503).json({ error: 'Booking is unavailable because ticket signing is not configured. No appointment was created.' });
     const auth = await getAuth(req);
-    assert(auth?.user?.id && isEmail(auth.user.email), 'Sign in to book.', 401);
-    const email = auth.user.email.toLowerCase();
-    if (body.customer_email) assert(String(body.customer_email).trim().toLowerCase() === email, 'Use the email address on your signed-in account.');
+    assert(auth?.user?.id, 'Sign in to book.', 401);
+    const email = isEmail(auth.user.email) ? auth.user.email.toLowerCase() : null;
+    if (body.customer_email) assert(email && String(body.customer_email).trim().toLowerCase() === email, 'Use the email address on your signed-in account.');
     const name = sanitizeText(body.customer_name, 120) || sanitizeText(auth.profile?.full_name, 120);
     assert(name, 'Your name is required.');
     const key = sanitizeText(body.idempotency_key || req.headers?.['x-idempotency-key'], 80);
@@ -69,14 +69,14 @@ export default async function handler(req, res) {
         }
         const calendarTask = calendarAuthMode() === 'none' ? Promise.resolve([]) : Promise.all([
           createCalendarEvent({ summary: `${booking.service_name} — ${business.name}`, description: `Velora booking ${booking.ref}`,
-            start: booking.start_time, end: booking.end_time, location: business.address, attendees: [email] }),
+            start: booking.start_time, end: booking.end_time, location: business.address, attendees: email ? [email] : [] }),
           createCalendarEvent({ summary: `${name} — ${booking.service_name}`, description: `Velora booking ${booking.ref}`,
             start: booking.start_time, end: booking.end_time, location: business.address, attendees: business.email ? [business.email] : [] }),
         ]);
         const [emailResult, calendar] = await Promise.all([
-          sendEmail({ to: email, subject: `Your booking is confirmed — ${booking.ref}`, title: 'Booking confirmed', name, bookingRef: booking.ref,
+          email ? sendEmail({ to: email, subject: `Your booking is confirmed — ${booking.ref}`, title: 'Booking confirmed', name, bookingRef: booking.ref,
             lines: [{ k: 'Reference', v: booking.ref }, { k: 'Business', v: booking.resource_name }, { k: 'Service', v: booking.service_name }, { k: 'When', v: istDateTimeLabel(booking.start_time) }, { k: 'Price', v: `₹${Number(booking.price).toLocaleString('en-IN')}` }],
-            cta: { label: 'View ticket', href: qrPayload } }),
+            cta: { label: 'View ticket', href: qrPayload } }) : Promise.resolve({ status: 'not_applicable' }),
           calendarTask,
         ]);
         emailStatus = emailResult.status === 'sent' ? emailResult.provider : emailResult.status;

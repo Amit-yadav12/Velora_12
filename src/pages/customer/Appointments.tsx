@@ -93,7 +93,7 @@ export default function Appointments() {
       .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
     setBookings(merged); setLoading(false);
   }, [profile?.email, user?.email]);
-  useEffect(() => { if (profile?.email || user?.email) load(); else setLoading(false); }, [load, profile?.email, user?.email]);
+  useEffect(() => { if (user?.id) load(); else setLoading(false); }, [load, user?.id]);
   useEffect(() => { const ch = supabase.channel('appts').on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => load()).subscribe(); const off = onBookingsChanged(() => load()); return () => { supabase.removeChannel(ch); off(); }; }, [load]);
 
   const cancel = async (id: number | string) => {

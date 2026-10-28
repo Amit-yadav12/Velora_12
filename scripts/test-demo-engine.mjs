@@ -485,5 +485,21 @@ ok('Sample customers restored', demoStore.listDemoCustomers().length >= 8);
 ok('Admin sample notifications restored', offlineStore.listLocalNotificationsFor('admin').length >= 2);
 ok('Production keys untouched (no velora-demo in localStorage main keys)', !localStorage.getItem('velora-demo-businesses') || JSON.parse(localStorage.getItem('velora-demo-businesses')).every((b) => b.tenant_id === demoStore.DEMO_TENANT_ID));
 
+console.log('\n—— Demo storage reliability ——');
+const beforeStorageTest = localStorage.getItem('velora-local-bookings');
+const manyBookings = Array.from({ length: 101 }, (_, i) => ({ id: `storage-${i}`, ref: `ST-${i}`, status: 'pending' }));
+localStorage.setItem('velora-local-bookings', JSON.stringify(manyBookings));
+offlineStore.saveLocalBooking({ id: 'storage-new', ref: 'ST-new', status: 'pending' });
+ok('Saving another demo booking does not discard older records', offlineStore.listLocalBookings().length === 102);
+const originalSetItem = dom.window.Storage.prototype.setItem;
+dom.window.Storage.prototype.setItem = function () { throw new Error('quota exceeded'); };
+let failedClearly = false;
+try { offlineStore.saveLocalBooking({ id: 'storage-fail', ref: 'ST-fail', status: 'pending' }); }
+catch (error) { failedClearly = /not saved/i.test(error.message); }
+dom.window.Storage.prototype.setItem = originalSetItem;
+ok('Unavailable storage rejects a booking instead of reporting success', failedClearly && !offlineStore.listLocalBookings().some((b) => b.ref === 'ST-fail'));
+if (beforeStorageTest === null) localStorage.removeItem('velora-local-bookings');
+else localStorage.setItem('velora-local-bookings', beforeStorageTest);
+
 console.log(`\n═══ RESULT: ${pass} passed, ${fail} failed ═══`);
 process.exit(fail === 0 ? 0 : 1);

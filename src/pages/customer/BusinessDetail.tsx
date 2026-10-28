@@ -122,7 +122,7 @@ export default function BusinessDetail() {
   };
 
   const confirm = async () => {
-    if (!custName.trim() || !custEmail.trim()) { setErr('Name and email are required.'); return; }
+    if (!custName.trim() || (isDemoBusinessId(biz!.id) && !custEmail.trim())) { setErr('Enter your name and, for demo bookings, an email.'); return; }
     if (custPhone.trim() && !isValidIndianPhone(custPhone)) { setErr('Enter a valid 10-digit Indian mobile number.'); return; }
     setErr(''); setSubmitting(true);
     try {
@@ -225,20 +225,21 @@ export default function BusinessDetail() {
           <div className="flex justify-between gap-4"><span className="text-dim">When</span><span className="font-medium text-right">{slot ? `${istDate(slot)}, ${istTime(slot)}` : '—'}</span></div>
           <div className="flex justify-between gap-4"><span className="text-dim">Duration</span><span className="font-medium text-right">{service?.duration_min} min</span></div>
           <div className="flex justify-between gap-4 border-t border-app pt-2"><span className="text-dim">Service price</span><span className="font-medium text-right tabular-nums">{service?.price === 0 ? 'Free' : inr(Number(service?.price) || 0)}</span></div>
-          <div className="flex justify-between gap-4"><span className="text-dim">GST 18%{isDemoBusinessId(biz.id) ? ' (sample invoice)' : ''}</span><span className="font-medium text-right tabular-nums">{service?.price === 0 ? '—' : inr(demoTax(service?.price), { decimals: true })}</span></div>
-          <div className="flex justify-between gap-4 border-t border-app pt-2"><span className="font-medium">Total payable</span><span className="text-base font-semibold tabular-nums">{service?.price === 0 ? 'Free' : inr(demoTotal(service?.price), { decimals: true })}</span></div>
+          {isDemoBusinessId(biz.id) && <div className="flex justify-between gap-4"><span className="text-dim">GST 18% (sample invoice)</span><span className="font-medium text-right tabular-nums">{service?.price === 0 ? '—' : inr(demoTax(service?.price), { decimals: true })}</span></div>}
+          <div className="flex justify-between gap-4 border-t border-app pt-2"><span className="font-medium">Total payable</span><span className="text-base font-semibold tabular-nums">{service?.price === 0 ? 'Free' : inr(isDemoBusinessId(biz.id) ? demoTotal(service?.price) : Number(service?.price), { decimals: true })}</span></div>
         </div>
         <div className="grid gap-3">
           <Field label="Your name">
             <input className={inputCls} value={custName} onChange={(e) => setCustName(e.target.value)} placeholder="Full name" autoComplete="name" />
           </Field>
-          <Field label="Email (booking confirmation goes here)">
-            <input className={inputCls} value={custEmail} onChange={(e) => setCustEmail(e.target.value)} readOnly={!isDemoBusinessId(biz.id)} placeholder="you@email.com" type="email" autoComplete="email" />
+          <Field label={user?.email || isDemoBusinessId(biz.id) ? 'Email (booking confirmation goes here)' : 'Email (not linked to this account)'}>
+            <input className={inputCls} value={custEmail} onChange={(e) => setCustEmail(e.target.value)} readOnly={!isDemoBusinessId(biz.id)} placeholder={user?.email ? 'you@email.com' : 'No email linked'} type="email" autoComplete="email" />
           </Field>
           {isDemoBusinessId(biz.id) && <Field label="Phone (optional — demo only)">
             <input className={inputCls} value={custPhone} onChange={(e) => setCustPhone(e.target.value)} placeholder="+91 …" type="tel" autoComplete="tel" />
           </Field>}
         </div>
+        {!isDemoBusinessId(biz.id) && !user?.email && <p className="text-xs text-dim">Your ticket will be available in your bookings. No email confirmation will be sent.</p>}
         {isDemoBusinessId(biz.id) && (
           <div className="rounded-xl border border-dashed border-[var(--color-brand-violet)]/30 bg-[var(--color-brand-violet)]/[0.06] p-3">
             <p className="text-xs font-medium text-[var(--text-link-strong)]">Sample request · demo tenant</p>

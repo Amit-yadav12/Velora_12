@@ -17,6 +17,7 @@ export default function Notifications() {
   const [items, setItems] = useState<NotificationRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [actionError, setActionError] = useState('');
   const load = () => {
     // Customer-audience ONLY — business-side notifications are never shown here.
     setError(false);
@@ -36,10 +37,11 @@ export default function Notifications() {
     return () => { supabase.removeChannel(ch); offLocal(); };
   }, []);
   const markRead = async (id: number | string) => {
+    setActionError('');
     const target = items.find((n) => String(n.id) === String(id));
     if (target?.local) markLocalNotificationRead(String(id));
     else {
-      try { await apiSend('/api/notifications', 'PUT', { id }); } catch { /* non-fatal */ }
+      try { await apiSend('/api/notifications', 'PUT', { id }); } catch { setActionError('Could not mark this notification as read. Please try again.'); return; }
     }
     load();
   };
@@ -48,6 +50,7 @@ export default function Notifications() {
     <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl font-semibold tracking-tight mb-1">Notifications</h1>
       <p className="text-sm text-dim mb-5">Booking confirmations, reminders and updates.</p>
+      {actionError && <p role="alert" className="card p-4 mb-4 text-sm text-red-400">{actionError}</p>}
       {error && <p role="alert" className="card p-4 mb-4 text-sm text-red-400">Notifications could not be loaded. <button onClick={load} className="underline">Retry</button></p>}
       {loading ? <div className="card h-24 animate-pulse" /> : error ? null : items.length === 0 ? (
         <div className="card p-12 text-center"><div className="h-12 w-12 rounded-2xl bg-surface grid place-items-center mx-auto mb-3"><Bell className="h-6 w-6 text-dim" /></div><p className="font-medium">You're all caught up</p><p className="text-sm text-dim mt-1">New notifications will appear here.</p></div>
@@ -57,7 +60,7 @@ export default function Notifications() {
             <motion.div key={n.id} initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }} className={`card p-4 flex items-start gap-3 ${!n.read ? '' : 'opacity-70'}`}>
               <div className="h-9 w-9 rounded-xl grid place-items-center shrink-0" style={{ background: `${c}22` }}><Icon className="h-4 w-4" style={{ color: c }} /></div>
               <div className="flex-1 min-w-0"><p className="text-sm font-medium">{n.title}</p><p className="text-sm text-dim">{n.body}</p><p className="text-xs text-dim mt-1">{istDateTime(n.created_at)}</p></div>
-              {!n.read && <button onClick={() => markRead(n.id)} className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:border-[var(--border-strong)] shrink-0" title="Mark read"><Check className="h-3.5 w-3.5" /></button>}
+              {!n.read && <button onClick={() => markRead(n.id)} className="h-7 w-7 grid place-items-center rounded-lg border border-app hover:border-[var(--border-strong)] shrink-0" title="Mark read" aria-label={`Mark ${n.title} as read`}><Check className="h-3.5 w-3.5" /></button>}
             </motion.div>
           ); })}
         </div>
