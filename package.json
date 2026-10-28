@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "verify": "npm run verify:demo && npm run verify:integrations && npm run verify:launch && npm run verify:app",
-    "verify:demo": "tsx scripts/test-demo-engine.mjs && tsx scripts/verify-demo-auth.mjs && tsx scripts/test-explicit-demo.mjs && tsx scripts/test-demo-concierge.mjs && tsx scripts/test-location-map.mjs && tsx scripts/test-browser-permissions.mjs && tsx scripts/test-browser-alerts.mjs && tsx scripts/test-browser-alerts.mjs --demo",
+    "verify:demo": "tsx scripts/test-demo-engine.mjs && tsx scripts/verify-demo-auth.mjs && tsx scripts/test-explicit-demo.mjs && tsx scripts/test-demo-concierge.mjs && tsx scripts/test-location-map.mjs && tsx scripts/test-configured-map.mjs && tsx scripts/test-browser-permissions.mjs && tsx scripts/test-browser-alerts.mjs && tsx scripts/test-browser-alerts.mjs --demo",
     "verify:integrations": "tsx scripts/verify-integrations.mjs",
     "verify:app": "tsx scripts/verify-app.mjs",
     "sql:bundle": "tsx scripts/build-sql.mjs",

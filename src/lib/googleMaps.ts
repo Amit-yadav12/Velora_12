@@ -15,6 +15,11 @@ export function googleKey(): string {
 /** View-only road map centered on the chosen coordinates. This is a URL, not an API key. */
 export function googleLocationEmbedUrl(center: MapCenter): string {
   if (!Number.isFinite(center.lat) || !Number.isFinite(center.lng) || Math.abs(center.lat) > 90 || Math.abs(center.lng) > 180) throw new Error('Invalid map coordinates');
+  const key = googleKey();
+  if (key) {
+    const params = new URLSearchParams({ key, center: `${center.lat},${center.lng}`, zoom: '16', maptype: 'roadmap' });
+    return `https://www.google.com/maps/embed/v1/view?${params.toString()}`;
+  }
   const params = new URLSearchParams({ q: `${center.lat},${center.lng}`, t: 'm', z: '16', output: 'embed' });
   return `https://maps.google.com/maps?${params.toString()}`;
 }
