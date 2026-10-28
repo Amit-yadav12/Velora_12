@@ -15,3 +15,8 @@ The local demo booking write now fails explicitly when browser storage is unavai
 See `.env.example` and `DEPLOY.md` for environment and deployment setup. Live deployment needs matching browser Supabase URL and anon key, server Supabase URL and service-role key, a stable `QR_SIGNING_SECRET`, and deployed origin configuration. Phone OTP requires a Supabase SMS provider and rate-limit configuration; maps, email, calendar and scheduled reminders need their respective optional configuration. Never put service credentials in `VITE_*` variables. Google sign-in is disabled in the interface.
 
 Build/type-check, lint, SQL bundle checks and existing automated verification were run locally. The Playwright suite could not launch: the available Chromium binary lacks required system libraries in this environment; install it in an environment with access to the Playwright browser download host and run `npm run verify:browser`. Browser, real provider and deployed end-to-end scenarios must not be considered verified based on the mocked or DOM-based tests.
+
+
+## Permission and provider audit
+
+Location is requested on user action with denied/unavailable guidance and a city fallback. Browser notifications are permission-gated foreground alerts from the authenticated in-app feed, not background Web Push; they require an open, connected live app and are disabled for local samples. Google Maps/Places and Calendar remain dependent on the separately configured provider APIs and keys described in DEPLOY.md. Calendar OAuth is a deployment-wide shared credential, not a per-business account connection; do not enable it for independent tenants without an appropriate privacy design. Google sign-in remains disabled.

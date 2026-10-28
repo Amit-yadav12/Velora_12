@@ -13,7 +13,7 @@ import EmptyState from '../../components/premium/EmptyState';
 import { BusinessCardSkeleton } from '../../components/premium/Skeleton';
 import GoogleMapEmbed from '../../components/premium/GoogleMapEmbed';
 import InteractiveMap from '../../components/premium/InteractiveMap';
-import supabase from '../../lib/supabase';
+import supabase, { isDemoMode } from '../../lib/supabase';
 import { onBusinessesChanged, onServicesChanged } from '../../services/events';
 import { fetchDiscover, hydrateLiveBusiness } from '../../lib/hybridData';
 import { buildSuggestions, pushSearchHistory, type Suggestion } from '../../lib/smartSearch';
@@ -265,7 +265,7 @@ export default function Explore() {
               <InteractiveMap center={origin} markers={mapBusinesses} activeId={active} onSelect={(id) => { setActive(id); document.getElementById(`map-result-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }} />
             )}
             <div className="absolute left-3 top-[68px] flex rounded-xl border border-app bg-[var(--bg-elev)]/90 backdrop-blur p-0.5 z-[5]">
-              <button onClick={() => setMapMode('google')} title="Google Maps search (separate results)" className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${mapMode === 'google' ? 'grad-btn text-white' : 'text-muted'}`}><MapIcon className="h-3.5 w-3.5" /> Google search</button>
+              {!isDemoMode && <button onClick={() => setMapMode('google')} title="Google Maps search (separate results)" className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${mapMode === 'google' ? 'grad-btn text-white' : 'text-muted'}`}><MapIcon className="h-3.5 w-3.5" /> Google search</button>}
               <button onClick={() => setMapMode('pins')} title="Map of filtered results" className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${mapMode === 'pins' ? 'grad-btn text-white' : 'text-muted'}`}><Pin className="h-3.5 w-3.5" /> Filtered results</button>
             </div>
           </div>

@@ -17,6 +17,8 @@ export default function GoogleMapEmbed({ center, city, category, onSelectLive }:
   const [hasLive, setHasLive] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   const embedSrc = useMemo(() => {
     const query = submitted || category || 'top rated';
@@ -26,17 +28,17 @@ export default function GoogleMapEmbed({ center, city, category, onSelectLive }:
   // Live places refresh with city/category/search (best-effort, cached).
   useEffect(() => {
     let alive = true;
-    setLoading(true);
+    setLoading(true); setUnavailable(false);
     fetchLivePlaces({ lat: center.lat, lng: center.lng, query: submitted || undefined, category: submitted ? undefined : category, city })
-      .then(({ live: ok, results }) => {
+      .then(({ live: ok, results, unavailable: failed }) => {
         if (!alive) return;
-        setHasLive(ok);
+        setHasLive(ok); setUnavailable(!!failed);
         setLive(results);
         setLoading(false);
       })
-      .catch(() => alive && setLoading(false));
+      .catch(() => { if (alive) { setLoading(false); setUnavailable(true); } });
     return () => { alive = false; };
-  }, [center.lat, center.lng, city, category, submitted]);
+  }, [center.lat, center.lng, city, category, submitted, retry]);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,6 +83,8 @@ export default function GoogleMapEmbed({ center, city, category, onSelectLive }:
         </button>
       </form>
 
+      {unavailable && <p role="status" className="glass absolute inset-x-3 top-28 rounded-xl p-3 text-xs">Live Places search is unavailable. The map may still work; check the server Maps key and quota. <button type="button" onClick={() => setRetry(n => n + 1)} className="underline">Retry</button></p>}
+      {!loading && showResults && !unavailable && !hasLive && <p role="status" className="glass absolute inset-x-3 top-28 rounded-xl p-3 text-xs">No live Places results found.</p>}
       {/* Center badge */}
       <div className="glass absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs">
         <MapPin className="h-3.5 w-3.5 text-[var(--text-link-strong)]" />

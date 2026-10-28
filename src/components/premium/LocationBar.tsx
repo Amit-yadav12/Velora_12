@@ -4,6 +4,7 @@ import { MapPin, Crosshair, Search, Loader2, X } from 'lucide-react';
 import { useLocation, POPULAR_CITIES } from '../../contexts/LocationContext';
 import { getCity } from '../../lib/cities';
 import { Coords } from '../../lib/geo';
+import { isDemoMode } from '../../lib/supabase';
 
 export default function LocationBar() {
   const { location, status, requestLocation, setManual, city, setCity, isLive } = useLocation();
@@ -19,6 +20,7 @@ export default function LocationBar() {
     let live = true;
     const t = setTimeout(async () => {
       if (q.trim().length < 3) { setPreds([]); setSearchNotice(''); setLoading(false); return; }
+      if (isDemoMode) { setPreds([]); setSearchNotice('Address search is unavailable in sample mode. Choose a city below.'); setLoading(false); return; }
       setLoading(true);
       try {
         const response = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`, { signal: controller.signal });
@@ -52,17 +54,17 @@ export default function LocationBar() {
 
   return (
     <div ref={boxRef} className="relative">
-      <button onClick={() => setOpen(o => !o)} className="flex items-center gap-2 rounded-xl border border-app bg-elev px-3 py-2 text-sm hover:border-[var(--border-strong)] transition-colors max-w-full">
+      <button aria-label="Choose location" aria-expanded={open} onClick={() => setOpen(o => !o)} className="flex items-center gap-2 rounded-xl border border-app bg-elev px-3 py-2 text-sm hover:border-[var(--border-strong)] transition-colors max-w-full">
         <MapPin className="h-4 w-4 text-[var(--text-link-strong)] shrink-0" />
         <span className="truncate max-w-[160px]">{status === 'prompting' ? 'Locating…' : `${label}${sub}`}</span>
       </button>
       <AnimatePresence>
         {open && (
           <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="absolute left-0 mt-2 w-80 glass rounded-2xl shadow-2xl overflow-hidden z-50 p-2">
-            <button onClick={() => { requestLocation(); setOpen(false); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-[var(--surface-hover)] text-sm">
+            <button onClick={requestLocation} disabled={status === 'prompting'} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-[var(--surface-hover)] text-sm">
               <Crosshair className="h-4 w-4 text-[var(--text-link-strong)]" /> Use my current location
             </button>
-            {status === 'denied' && <p className="px-3 py-1.5 text-[11px] text-amber-400">Location blocked — search a city below.</p>}
+            <p role="status" className="px-3 py-1.5 text-xs text-dim">{status === 'denied' ? 'Location blocked. Allow it in browser site settings, then retry, or choose a city below.' : status === 'unavailable' ? 'Location unavailable. Check HTTPS and device location settings, then retry, or choose a city.' : status === 'prompting' ? 'Waiting for your browser or device location…' : isLive ? 'Using your current location for the map; results remain in your selected city.' : 'Choose a city or use your current location for the map.'}</p>
             <div className="relative mt-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-dim" />
               <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search city or address…" className="w-full rounded-xl bg-elev border border-app pl-9 pr-8 py-2.5 text-sm outline-none focus:border-[var(--color-brand-indigo)]" />

@@ -1,3 +1,4 @@
+import { useBrowserAlerts } from '../lib/useBrowserAlerts';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -8,6 +9,7 @@ import { LogoMark } from '../components/Logo';
 import PageTransition from '../components/premium/PageTransition';
 import ToastHost from '../components/premium/ToastHost';
 import SampleModeBar from '../components/premium/SampleModeBar';
+import BrowserAlerts from '../components/premium/BrowserAlerts';
 import ConsoleScopePicker from '../components/console/ConsoleScopePicker';
 import LiveSyncBadge from '../components/console/LiveSyncBadge';
 import supabase, { isDemoMode } from '../lib/supabase';
@@ -29,7 +31,8 @@ const items = [
 ];
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
-  const { profile, signOut } = useAuth();
+  const { profile, user, signOut } = useAuth();
+  useBrowserAlerts(user?.id, 'admin');
   const { theme, toggle } = useTheme();
   const loc = useLocation();
   const nav = useNavigate();
@@ -141,6 +144,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                       <p className="text-sm font-semibold">Notifications</p>
                       {unread > 0 && <button onClick={markAll} className="text-xs text-[var(--text-link-strong)] font-medium inline-flex items-center gap-1"><CheckCheck className="h-3.5 w-3.5" /> Mark all read</button>}
                     </div>
+                    <BrowserAlerts />
                     <div className="max-h-96 overflow-y-auto p-1.5">
                       {notifs.length === 0 ? (
                         <p className="text-sm text-dim text-center py-8">No notifications yet.<br />New bookings and updates land here in real time.</p>

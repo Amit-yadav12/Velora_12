@@ -85,7 +85,7 @@ const PLACES_TTL = 120000;
 
 export async function fetchLivePlaces(opts: {
   lat: number; lng: number; query?: string; category?: string; city?: string; radius?: number;
-}): Promise<{ live: boolean; results: LivePlace[] }> {
+}): Promise<{ live: boolean; results: LivePlace[]; unavailable?: boolean }> {
   const key = JSON.stringify(opts);
   const hit = placesCache.get(key);
   if (hit && Date.now() - hit.at < PLACES_TTL) return { live: hit.data.length > 0, results: hit.data };
@@ -101,14 +101,15 @@ export async function fetchLivePlaces(opts: {
     const t = setTimeout(() => ctrl.abort(), 6000);
     const res = await fetch(`/api/places?${p.toString()}`, { signal: ctrl.signal });
     clearTimeout(t);
-    if (!res.ok) return { live: false, results: [] };
+    if (!res.ok) return { live: false, results: [], unavailable: true };
     const j = await res.json();
     const results: LivePlace[] = Array.isArray(j?.results) ? j.results : [];
+    if (j?.unavailable) return { live: false, results: [], unavailable: true };
     placesCache.set(key, { at: Date.now(), data: results });
     if (placesCache.size > 40) placesCache.delete(placesCache.keys().next().value as string);
     return { live: !!j?.live && results.length > 0, results };
   } catch {
-    return { live: false, results: [] };
+    return { live: false, results: [], unavailable: true };
   }
 }
 

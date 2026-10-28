@@ -56,10 +56,10 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   // Core fetch. `silent` avoids setting the "prompting" UI state when we already
   // know permission is granted (no visible prompt will appear).
   const doFetch = useCallback((silent = false) => {
-    if (!('geolocation' in navigator)) { setStatus('unavailable'); return; }
+    if (!window.isSecureContext || !('geolocation' in navigator)) { setStatus('unavailable'); return; }
     if (!silent) setStatus('prompting');
     const version = ++requestVersion.current;
-    navigator.geolocation.getCurrentPosition(
+    try { navigator.geolocation.getCurrentPosition(
       (pos) => {
         if (version !== requestVersion.current) return;
         const c: Coords = { lat: pos.coords.latitude, lng: pos.coords.longitude, label: 'Current location' };
@@ -73,7 +73,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
         try { localStorage.setItem(ASKED_KEY, denied ? 'denied' : 'unavailable'); } catch { /* non-fatal */ }
       },
       { enableHighAccuracy: false, timeout: 8000, maximumAge: 1000 * 60 * 30 }
-    );
+    ); } catch { if (version === requestVersion.current) setStatus('unavailable'); }
   }, []);
 
   // Explicit, user-initiated request (button tap). Won't nag if already denied.
@@ -110,12 +110,13 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   // - denied/prompt    -> do nothing; user taps the location button to allow.
   // This prevents the browser from re-asking on every screen.
   useEffect(() => {
-    if (location && location.label !== 'Current location') return;
+    const initialVersion = requestVersion.current;
     if (typeof navigator !== 'undefined' && 'permissions' in navigator) {
       navigator.permissions.query({ name: 'geolocation' as PermissionName }).then((res) => {
-        if (res.state === 'granted') doFetch(true);
-        else setStatus(res.state === 'denied' ? 'denied' : 'idle');
-      }).catch(() => setStatus('idle'));
+        if (initialVersion !== requestVersion.current) return;
+        if (res.state === 'granted' && (!location || location.label === 'Current location')) doFetch(true);
+        else setStatus(res.state === 'denied' ? 'denied' : res.state === 'granted' ? 'granted' : 'idle');
+      }).catch(() => { if (initialVersion === requestVersion.current) setStatus('idle'); });
     }
     // eslint-disable-next-line
   }, []);
