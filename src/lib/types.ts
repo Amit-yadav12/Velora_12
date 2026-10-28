@@ -205,7 +205,7 @@ export interface Slot {
 export interface ConciergeAction {
   type: 'navigate' | 'book' | 'directions';
   to?: string;
-  business_id?: number;
+  business_id?: number | string;
   date?: string;
   preferred_hour?: number | null;
   maps_link?: string;

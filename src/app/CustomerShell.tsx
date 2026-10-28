@@ -1,3 +1,4 @@
+import { useBrowserAlerts } from '../lib/useBrowserAlerts';
 import { apiGet, hasLiveSession } from '../lib/api';
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -25,6 +26,7 @@ const tabs = [
 
 export default function CustomerShell({ children }: { children: React.ReactNode }) {
   const { profile, user, signOut } = useAuth();
+  useBrowserAlerts(user?.id, 'customer');
   const { theme, toggle } = useTheme();
   const loc = useLocation();
   const nav = useNavigate();

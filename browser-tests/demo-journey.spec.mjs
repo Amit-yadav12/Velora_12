@@ -209,6 +209,9 @@ for (const viewport of SIZES) {
     await expect(ticketDialog.locator('[data-ticket-qr] svg')).toBeVisible();
     await expect(ticketDialog).toContainText('Sample ticket');
     await expectAxeClean(page, 'ticket dialog');
+    await page.evaluate(() => { document.documentElement.classList.replace('dark', 'light'); });
+    await expectAxeClean(page, 'ticket dialog light mode');
+    await page.evaluate(() => { document.documentElement.classList.replace('light', 'dark'); });
     await page.keyboard.press('Escape');
     await expect(ticketDialog).toBeHidden();
 

@@ -8,6 +8,7 @@ import { useLocation } from '../../contexts/LocationContext';
 import { markLocalNotificationRead, listLocalNotificationsFor } from '../../lib/offlineStore';
 import { onNotifsChanged } from '../../services/events';
 import type { NotificationRow } from '../../lib/types';
+import BrowserAlerts from '../../components/premium/BrowserAlerts';
 
 const iconFor = (t: string) => t === 'success' ? CheckCircle2 : t === 'warning' ? AlertTriangle : Info;
 const colorFor = (t: string) => t === 'success' ? '#34d399' : t === 'warning' ? '#f59e0b' : '#60a5fa';
@@ -50,6 +51,7 @@ export default function Notifications() {
     <div className="max-w-2xl mx-auto">
       <h1 className="text-2xl font-semibold tracking-tight mb-1">Notifications</h1>
       <p className="text-sm text-dim mb-5">Booking confirmations, reminders and updates.</p>
+      <div className="card mb-4"><BrowserAlerts /></div>
       {actionError && <p role="alert" className="card p-4 mb-4 text-sm text-red-400">{actionError}</p>}
       {error && <p role="alert" className="card p-4 mb-4 text-sm text-red-400">Notifications could not be loaded. <button onClick={load} className="underline">Retry</button></p>}
       {loading ? <div className="card h-24 animate-pulse" /> : error ? null : items.length === 0 ? (

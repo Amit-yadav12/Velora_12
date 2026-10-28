@@ -252,6 +252,7 @@ export default function SuccessExperience({ booking, business, invoice, mapsLink
           <button onClick={downloadPdf} disabled={pdfLoading} className="rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)] disabled:opacity-60">{pdfLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} PDF</button>
           {qrData && <button onClick={downloadQr} className="col-span-2 rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]"><QrCode className="h-4 w-4" /> Download QR ticket (PNG)</button>}
         </motion.div>
+        {!demo && <p className="mt-2 text-xs text-dim">Google Calendar opens a prefilled event; save it there to add it to your calendar.</p>}
         {gmailComposeUrl && (
           <motion.a initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }} href={gmailComposeUrl} target="_blank" rel="noreferrer"
             className="mt-3 w-full max-w-md rounded-xl border border-app py-3 text-sm font-medium flex items-center justify-center gap-2 hover:border-[var(--border-strong)]">

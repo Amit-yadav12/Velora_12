@@ -12,6 +12,30 @@ export function googleKey(): string {
   return import.meta.env?.VITE_GOOGLE_MAPS_API_KEY || '';
 }
 
+/** View-only road map centered on the chosen coordinates. This is a URL, not an API key. */
+export function googleLocationEmbedUrl(center: MapCenter): string {
+  if (!Number.isFinite(center.lat) || !Number.isFinite(center.lng) || Math.abs(center.lat) > 90 || Math.abs(center.lng) > 180) throw new Error('Invalid map coordinates');
+  const key = googleKey();
+  if (key) {
+    const params = new URLSearchParams({ key, center: `${center.lat},${center.lng}`, zoom: '16', maptype: 'roadmap' });
+    return `https://www.google.com/maps/embed/v1/view?${params.toString()}`;
+  }
+  const params = new URLSearchParams({ q: `${center.lat},${center.lng}`, t: 'm', z: '16', output: 'embed' });
+  return `https://maps.google.com/maps?${params.toString()}`;
+}
+
+/** Open the same coordinates in Google Maps if an embed is blocked. */
+export function googleLocationOpenUrl(center: MapCenter): string {
+  const params = new URLSearchParams({ api: '1', query: `${center.lat},${center.lng}` });
+  return `https://www.google.com/maps/search/?${params.toString()}`;
+}
+
+/** Open directions to the selected location; Google determines the origin. */
+export function googleLocationDirectionsUrl(center: MapCenter): string {
+  const params = new URLSearchParams({ api: '1', destination: `${center.lat},${center.lng}` });
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
 /** Keyless universal embed — renders real Google Maps in an iframe. */
 export function googleEmbedUrl(query: string, center?: MapCenter, zoom = 14): string {
   const q = center ? `${query} near ${center.label || `${center.lat},${center.lng}`}` : query;
@@ -85,7 +109,7 @@ const PLACES_TTL = 120000;
 
 export async function fetchLivePlaces(opts: {
   lat: number; lng: number; query?: string; category?: string; city?: string; radius?: number;
-}): Promise<{ live: boolean; results: LivePlace[] }> {
+}): Promise<{ live: boolean; results: LivePlace[]; unavailable?: boolean }> {
   const key = JSON.stringify(opts);
   const hit = placesCache.get(key);
   if (hit && Date.now() - hit.at < PLACES_TTL) return { live: hit.data.length > 0, results: hit.data };
@@ -101,14 +125,15 @@ export async function fetchLivePlaces(opts: {
     const t = setTimeout(() => ctrl.abort(), 6000);
     const res = await fetch(`/api/places?${p.toString()}`, { signal: ctrl.signal });
     clearTimeout(t);
-    if (!res.ok) return { live: false, results: [] };
+    if (!res.ok) return { live: false, results: [], unavailable: true };
     const j = await res.json();
     const results: LivePlace[] = Array.isArray(j?.results) ? j.results : [];
+    if (j?.unavailable) return { live: false, results: [], unavailable: true };
     placesCache.set(key, { at: Date.now(), data: results });
     if (placesCache.size > 40) placesCache.delete(placesCache.keys().next().value as string);
     return { live: !!j?.live && results.length > 0, results };
   } catch {
-    return { live: false, results: [] };
+    return { live: false, results: [], unavailable: true };
   }
 }
 

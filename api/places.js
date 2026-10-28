@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
     const { lat, lng, query, category, city, place_id, radius = '5000' } = req.query;
     const apiKey = key();
-    if (!apiKey) return res.status(200).json({ live: false, results: [] });
+    if (!apiKey) return res.status(200).json({ live: false, results: [], unavailable: true });
 
     if (place_id) {
       const pid = sanitizeText(place_id, 250);
