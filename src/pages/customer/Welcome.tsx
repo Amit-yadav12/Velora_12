@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { ArrowRight, Loader2, Mail, Lock, User, ShieldCheck, CalendarCheck, Sparkles, MapPin, ChevronLeft, Store, UserRound, Building2, KeyRound, Phone, RotateCw } from 'lucide-react';
@@ -6,6 +6,7 @@ import supabase, { isDemoMode } from '../../lib/supabase';
 import { LogoMark } from '../../components/Logo';
 import { inputCls } from '../../components/ui';
 import { signInDemo, isCanonicalDemoCredential } from '../../lib/demoAuth';
+import { enterDemo } from '../../lib/demoMode';
 import { useAuth } from '../../contexts/AuthContext';
 import type { LucideIcon } from 'lucide-react';
 import { errMsg } from '../../lib/types';
@@ -62,6 +63,23 @@ export default function Welcome() {
   // set we stay on this page and say why, instead of silently bouncing the
   // operator into the customer app.
   const [loading, setLoading] = useState(false);
+
+  const demoStartHandled = useRef(false);
+  useEffect(() => {
+    if (!isDemoMode || params.get('startDemo') !== '1' || demoStartHandled.current) return;
+    demoStartHandled.current = true;
+    const target = params.get('role') === 'business' ? 'admin' : 'customer';
+    setLoading(true);
+    signInDemo(target)
+      .then(() => refresh())
+      .then(() => nav(target === 'admin' ? '/admin' : `/business/${DEMO_SAMPLE_BUSINESS_ID}?date=${istTomorrow()}&focus=booking`, { replace: true }))
+      .catch(() => { setErr('Could not start the demo. Please try again.'); setLoading(false); });
+  }, [params, nav, refresh]);
+
+  const openDemo = (demoRole: 'customer' | 'business') => {
+    resetMsgs();
+    try { enterDemo(demoRole); } catch { setErr('Enable browser session storage to use the demo.'); }
+  };
 
   // Landing back here with a live session (e.g. an OAuth redirect) means we
   // should continue to the right home instead of showing the role picker.
@@ -280,6 +298,16 @@ export default function Welcome() {
           <p className="mt-2 text-xs text-dim">Google sign-in isn&apos;t connected in this build.</p>
           {isDemoMode && <p className="mt-2 text-xs text-dim">Sample mode: demo customer, demo business and demo OTP work offline. No SMS or email is sent.</p>}
 
+          {!isDemoMode && <div className="mt-6 rounded-2xl border border-[var(--color-brand-violet)]/30 bg-[var(--color-brand-violet)]/[0.08] p-4 text-left">
+            <p className="text-sm font-semibold">Explore Velora demo</p>
+            <p className="mt-1 text-xs text-dim">Try sample bookings or the business console. Data stays on this device; no real appointment is made.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => openDemo('customer')} className="min-h-11 rounded-xl grad-btn px-3 py-2 text-sm font-semibold text-white">Demo customer</button>
+              <button type="button" onClick={() => openDemo('business')} className="min-h-11 rounded-xl border border-app px-3 py-2 text-sm font-semibold">Demo business</button>
+            </div>
+            {err && <p role="alert" className="mt-2 text-sm text-red-400">{err}</p>}
+          </div>}
+
           {/* Fast path for a presenter: one click starts the exact demo journey
               (Jaipur sample business → slot → QR ticket) as the demo customer. */}
           {isDemoMode && (
@@ -426,6 +454,10 @@ export default function Welcome() {
               <p className="mt-2 text-center text-xs text-dim">Google sign-in isn&apos;t connected in this build.</p>
               {isDemoMode && <p className="mt-2 text-center text-xs text-dim">Sample mode: demo customer, demo business and demo OTP work offline. No SMS or email is sent.</p>}
 
+              {!isDemoMode && <div className="mt-4 rounded-xl border border-[var(--color-brand-violet)]/30 bg-[var(--color-brand-violet)]/[0.08] p-3">
+                <button type="button" onClick={() => openDemo(isAdmin ? 'business' : 'customer')} className="w-full min-h-11 rounded-lg border border-app py-2 text-sm font-semibold hover:bg-[var(--surface-hover)]">Explore {isAdmin ? 'business' : 'customer'} demo</button>
+                <p className="mt-2 text-center text-xs text-dim">Sample data stays on this device. No real bookings are made.</p>
+              </div>}
               {err && !emailOpen && <p role="alert" className="text-sm text-red-400 mt-3">{err}</p>}
               <div className="my-4 flex items-center gap-3 text-xs text-dim">
                 <div className="flex-1 h-px bg-[var(--border)]" />

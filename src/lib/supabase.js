@@ -4,13 +4,18 @@
 // every page renders and the full product flow stays explorable.
 import { createClient } from '@supabase/supabase-js';
 import { classifySupabaseConfig } from './supabaseConfig.js';
+import { demoSelected } from './demoMode.js';
 
 const url = import.meta.env?.VITE_SUPABASE_URL;
 const anon = import.meta.env?.VITE_SUPABASE_ANON_KEY;
 
 const config = classifySupabaseConfig(url, anon);
-export const isDemoMode = config.demo;
-export const supabaseConfigError = config.error;
+let selected = false;
+try { selected = demoSelected(globalThis.sessionStorage); } catch { /* session storage unavailable */ }
+export const isExplicitDemo = selected;
+export const isDemoMode = config.demo || selected;
+export const supabaseConfigError = selected ? '' : config.error;
+export const canExitDemo = !config.demo;
 
 // ── Demo identities shared by the mock client and the "second window" helper ──
 const DEMO_NAME_FOR = (email) => {

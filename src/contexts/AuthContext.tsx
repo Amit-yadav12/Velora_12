@@ -78,7 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     lastUid.current = null;
     setUser(null); applyProfile(null);
     try { await supabase.auth.signOut(); } catch (e) { console.error('[auth] signOut error:', e); }
-    try { Object.keys(localStorage).filter((k) => k.startsWith('sb-') || k.includes('supabase')).forEach((k) => localStorage.removeItem(k)); } catch { /* non-fatal */ }
+    // Supabase clears its own session. Never erase another app or the live
+    // session when switching demo identities.
   };
   // Race-proof refresh: re-read the live session (never the render-scope user,
   // which can be a stale closure right after sign-in) and sync BOTH user and

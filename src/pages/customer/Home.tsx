@@ -8,7 +8,7 @@ import { Business, CATEGORIES } from '../../lib/product';
 import { BusinessCard, SectionTitle, Rating, Grid } from '../../components/product';
 import { apiGet, hasLiveSession } from '../../lib/api';
 import { BusinessCardSkeleton } from '../../components/premium/Skeleton';
-import { onBusinessesChanged, onDemoReset, onServicesChanged } from '../../services/events';
+import { onBusinessesChanged, onDemoReset, onServicesChanged, toast } from '../../services/events';
 import DiscoverCard from '../../components/premium/DiscoverCard';
 import LocationBar from '../../components/premium/LocationBar';
 import { fetchDiscover } from '../../lib/hybridData';
@@ -16,6 +16,7 @@ import { readRecentViews, pushSearchHistory, type RecentView } from '../../lib/s
 import { prefetch } from '../../lib/smartCache';
 import { istHour } from '../../lib/format';
 import { isDemoMode } from '../../lib/supabase';
+import { enterDemo } from '../../lib/demoMode';
 import { isMiRoadElectricianSample, MI_ROAD_ELECTRICIAN_ALT } from '../../lib/miRoadElectrician';
 import { DEMO_SAMPLE_BUSINESS_ID, DEMO_SAMPLE_BUSINESS_NAME } from '../../lib/demoJourney';
 import { openDemoGuide } from '../../lib/demoGuideStore';
@@ -112,6 +113,11 @@ export default function Home() {
           <button className="absolute right-2 top-1/2 -translate-y-1/2 grad-btn text-white text-sm font-medium rounded-xl px-4 py-2.5">Search</button>
         </motion.form>
       </section>
+
+      {!isDemoMode && <section className="card flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5" aria-label="Explore demo">
+        <div><h2 className="font-semibold">Explore the Velora demo</h2><p className="mt-1 text-sm text-muted">Try a sample booking and business check-in. Data stays on this device.</p></div>
+        <button type="button" onClick={() => { try { enterDemo('customer'); } catch { toast('Enable browser session storage to use the demo.', 'error'); } }} className="min-h-11 rounded-xl border border-app px-4 py-2 text-sm font-semibold hover:bg-[var(--surface-hover)]">Explore demo</button>
+      </section>}
 
       {/* Presenter path — the exact five-screen demo, one click from landing.
           Only exists in the local sample tenant, and says so. */}
